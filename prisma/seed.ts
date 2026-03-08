@@ -138,20 +138,32 @@ async function main() {
   }
   console.log(`✅ ${manualListingCount} manuel URL listing oluşturuldu`);
 
-  // ─── Mock Listings (sadece URL'si olmayan varyantlar için) ──
-  const sampleVariants = await prisma.productVariant.findMany({ take: 10 });
+  // ─── iPhone 17 Ailesi için Mock Listing + Fiyat Geçmişi ──
+  const PRICE_MAP: Record<string, number> = {
+    'iphone-17': 65000,
+    'iphone-17-pro': 85000,
+    'iphone-17-pro-max': 105000,
+  };
+  const STORAGE_MULT: Record<number, number> = { 128: 1, 256: 1.12, 512: 1.28, 1024: 1.45 };
+
+  const iphone17Families = await prisma.productFamily.findMany({
+    where: { slug: { in: ['iphone-17', 'iphone-17-pro', 'iphone-17-pro-max'] } },
+  });
+  const iphone17Variants = await prisma.productVariant.findMany({
+    where: { familyId: { in: iphone17Families.map(f => f.id) } },
+    include: { family: true },
+  });
 
   let listingCount = 0;
-  for (const variant of sampleVariants) {
+  for (const variant of iphone17Variants) {
+    const familySlug = variant.family.slug;
+    const base = PRICE_MAP[familySlug] ?? 70000;
+    const storageMult = STORAGE_MULT[variant.storageGb] ?? 1;
+
     for (const retailer of retailers) {
-      // Manuel URL'si varsa atla
-      const existing = await prisma.listing.findUnique({
-        where: { variantId_retailerId: { variantId: variant.id, retailerId: retailer.id } },
-      });
-      if (existing && existing.productUrl && !existing.productUrl.includes('/search?q=')) continue;
-      const basePrice = 25000 + Math.random() * 55000;
-      const price = Math.round(basePrice / 100) * 100;
-      const previousPrice = price + Math.round(Math.random() * 3000 / 100) * 100;
+      const retailerOffset = (Math.random() - 0.5) * 4000;
+      const price = Math.round((base * storageMult + retailerOffset) / 100) * 100;
+      const previousPrice = price + Math.round(Math.random() * 5000 / 100) * 100;
 
       const listing = await prisma.listing.upsert({
         where: {
@@ -160,7 +172,7 @@ async function main() {
             retailerId: retailer.id,
           },
         },
-        update: { currentPrice: price, previousPrice },
+        update: { currentPrice: price, previousPrice, stockStatus: 'IN_STOCK', lastSeenAt: new Date() },
         create: {
           variantId: variant.id,
           retailerId: retailer.id,
@@ -168,39 +180,39 @@ async function main() {
           productUrl: `${retailer.baseUrl}/search?q=${encodeURIComponent(variant.normalizedName)}`,
           currentPrice: price,
           previousPrice,
-          lowestPrice: price - 2000,
-          highestPrice: price + 5000,
+          lowestPrice: price - 3000,
+          highestPrice: price + 6000,
           sellerName: retailer.name,
           stockStatus: 'IN_STOCK',
-          isDeal: Math.random() > 0.7,
-          dealScore: Math.random() > 0.7 ? Math.round(Math.random() * 60 + 40) : null,
+          isDeal: Math.random() > 0.6,
+          dealScore: Math.random() > 0.6 ? Math.round(Math.random() * 60 + 40) : null,
           lastSeenAt: new Date(),
         },
       });
       listingCount++;
 
-      // Son 30 gün mock price snapshot
+      // Son 30 gün mock price snapshot — toplu insert
+      const snapshots = [];
       for (let i = 30; i >= 0; i--) {
         const date = new Date();
         date.setDate(date.getDate() - i);
-        const variation = price + (Math.random() - 0.5) * 6000;
+        const variation = price + (Math.random() - 0.5) * 8000;
         const dayPrice = Math.round(variation / 100) * 100;
-        const prev = i < 30 ? dayPrice + Math.round((Math.random() - 0.3) * 2000 / 100) * 100 : null;
+        const prev = i < 30 ? dayPrice + Math.round((Math.random() - 0.3) * 3000 / 100) * 100 : null;
 
-        await prisma.priceSnapshot.create({
-          data: {
-            listingId: listing.id,
-            observedPrice: dayPrice,
-            previousPrice: prev,
-            changePercent: prev ? ((dayPrice - prev) / prev) * 100 : null,
-            changeAmount: prev ? dayPrice - prev : null,
-            observedAt: date,
-          },
+        snapshots.push({
+          listingId: listing.id,
+          observedPrice: dayPrice,
+          previousPrice: prev,
+          changePercent: prev ? ((dayPrice - prev) / prev) * 100 : null,
+          changeAmount: prev ? dayPrice - prev : null,
+          observedAt: date,
         });
       }
+      await prisma.priceSnapshot.createMany({ data: snapshots });
     }
   }
-  console.log(`✅ ${listingCount} listing ve fiyat geçmişi oluşturuldu`);
+  console.log(`✅ ${listingCount} iPhone 17 listing ve fiyat geçmişi oluşturuldu`);
 }
 
 main()
