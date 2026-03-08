@@ -10,9 +10,9 @@ export async function GET() {
     prisma.retailer.findMany({
       include: {
         listings: {
-          orderBy: { lastSyncedAt: 'desc' },
+          orderBy: { lastSeenAt: 'desc' },
           take: 1,
-          select: { lastSyncedAt: true },
+          select: { lastSeenAt: true },
         },
       },
     }),
@@ -24,17 +24,18 @@ export async function GET() {
           id: lastJob.id,
           status: lastJob.status,
           startedAt: lastJob.startedAt?.toISOString() ?? null,
-          completedAt: lastJob.completedAt?.toISOString() ?? null,
-          itemsFound: lastJob.itemsFound,
-          itemsUpdated: lastJob.itemsUpdated,
-          errorMessage: lastJob.errorMessage,
+          finishedAt: lastJob.finishedAt?.toISOString() ?? null,
+          itemsScanned: lastJob.itemsScanned,
+          itemsMatched: lastJob.itemsMatched,
+          dealsFound: lastJob.dealsFound,
+          errors: lastJob.errors,
         }
       : null,
     retailers: retailers.map((r) => ({
       name: r.name,
       slug: r.slug,
       isActive: r.isActive,
-      lastSyncedAt: r.listings[0]?.lastSyncedAt?.toISOString() ?? null,
+      lastSyncedAt: r.listings[0]?.lastSeenAt?.toISOString() ?? null,
     })),
   });
 }

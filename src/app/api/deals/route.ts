@@ -1,21 +1,44 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 
-/** En iyi fırsatlar: en büyük fiyat düşüşleri ve en ucuz ürünler */
-export async function GET() {
+/** Aktif fırsatlar: deal olarak işaretlenmiş listing'ler */
+export async function GET(req: NextRequest) {
+  const { searchParams } = req.nextUrl;
+  const sort = searchParams.get('sort') ?? 'deal_score';
+  const limit = Math.min(50, Math.max(1, parseInt(searchParams.get('limit') ?? '20', 10)));
+
   const oneDayAgo = new Date();
   oneDayAgo.setDate(oneDayAgo.getDate() - 1);
 
-  // Son 24 saatte en büyük fiyat düşüşleri
-  const biggestDrops = await prisma.priceHistory.findMany({
+  // isDeal olan listing'ler (deal score'a göre sıralı)
+  const deals = await prisma.listing.findMany({
     where: {
-      recordedAt: { gte: oneDayAgo },
-      changePercent: { lt: 0 },
+      isDeal: true,
+      currentPrice: { not: null },
+      stockStatus: 'IN_STOCK',
+    },
+    include: {
+      variant: { include: { family: true } },
+      retailer: true,
+    },
+    orderBy: sort === 'price_asc'
+      ? { currentPrice: 'asc' }
+      : sort === 'price_desc'
+        ? { currentPrice: 'desc' }
+        : { dealScore: 'desc' },
+    take: limit,
+  });
+
+  // Son 24 saatte en büyük düşüşler
+  const biggestDrops = await prisma.priceSnapshot.findMany({
+    where: {
+      observedAt: { gte: oneDayAgo },
+      changePercent: { lt: -2 },
     },
     include: {
       listing: {
         include: {
-          product: true,
+          variant: { include: { family: true } },
           retailer: true,
         },
       },
@@ -24,40 +47,38 @@ export async function GET() {
     take: 10,
   });
 
-  // En ucuz listing'ler
-  const cheapest = await prisma.productListing.findMany({
-    where: {
-      currentPrice: { not: null },
-      inStock: true,
-    },
-    include: {
-      product: true,
-      retailer: true,
-    },
-    orderBy: { currentPrice: 'asc' },
-    take: 10,
-  });
-
   return NextResponse.json({
-    biggestDrops: biggestDrops.map((h) => ({
-      productId: h.listing.product.id,
-      productModel: h.listing.product.model,
-      storage: h.listing.product.storage,
-      retailerName: h.listing.retailer.name,
-      currentPrice: h.price,
-      previousPrice: h.previousPrice,
-      changePercent: h.changePercent,
-      url: h.listing.externalUrl,
-      recordedAt: h.recordedAt.toISOString(),
-    })),
-    cheapest: cheapest.map((l) => ({
-      productId: l.product.id,
-      productModel: l.product.model,
-      storage: l.product.storage,
+    deals: deals.map((l) => ({
+      listingId: l.id,
+      variantId: l.variant.id,
+      familyName: l.variant.family.name,
+      variantName: l.variant.normalizedName,
+      color: l.variant.color,
+      storageGb: l.variant.storageGb,
       retailerName: l.retailer.name,
+      retailerSlug: l.retailer.slug,
       currentPrice: l.currentPrice,
+      previousPrice: l.previousPrice,
       lowestPrice: l.lowestPrice,
-      url: l.externalUrl,
+      dealScore: l.dealScore,
+      productUrl: l.productUrl,
+      lastSeenAt: l.lastSeenAt?.toISOString() ?? null,
+    })),
+    biggestDrops: biggestDrops.map((s) => ({
+      listingId: s.listing.id,
+      variantId: s.listing.variant.id,
+      familyName: s.listing.variant.family.name,
+      variantName: s.listing.variant.normalizedName,
+      color: s.listing.variant.color,
+      storageGb: s.listing.variant.storageGb,
+      retailerName: s.listing.retailer.name,
+      retailerSlug: s.listing.retailer.slug,
+      currentPrice: s.observedPrice,
+      previousPrice: s.previousPrice,
+      changePercent: s.changePercent,
+      changeAmount: s.changeAmount,
+      productUrl: s.listing.productUrl,
+      lastSeenAt: s.observedAt.toISOString(),
     })),
   });
 }

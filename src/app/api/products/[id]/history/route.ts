@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 
+/** Variant fiyat geçmişi: retailer bazlı ve flat format */
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -12,50 +13,52 @@ export async function GET(
   const since = new Date();
   since.setDate(since.getDate() - days);
 
-  const product = await prisma.product.findUnique({
+  const variant = await prisma.productVariant.findUnique({
     where: { id },
     include: {
+      family: { select: { name: true } },
       listings: {
         include: {
           retailer: true,
-          priceHistory: {
-            where: { recordedAt: { gte: since } },
-            orderBy: { recordedAt: 'asc' },
+          snapshots: {
+            where: { observedAt: { gte: since } },
+            orderBy: { observedAt: 'asc' },
           },
         },
       },
     },
   });
 
-  if (!product) {
-    return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+  if (!variant) {
+    return NextResponse.json({ error: 'Variant not found' }, { status: 404 });
   }
 
-  // Retailer bazlı fiyat geçmişi
-  const historyByRetailer = product.listings.map((listing) => ({
+  const historyByRetailer = variant.listings.map((listing) => ({
     retailer: listing.retailer.name,
     retailerSlug: listing.retailer.slug,
-    data: listing.priceHistory.map((h) => ({
-      date: h.recordedAt.toISOString(),
-      price: h.price,
-      previousPrice: h.previousPrice,
-      changePercent: h.changePercent,
+    data: listing.snapshots.map((s) => ({
+      date: s.observedAt.toISOString(),
+      price: s.observedPrice,
+      previousPrice: s.previousPrice,
+      changePercent: s.changePercent,
+      changeAmount: s.changeAmount,
     })),
   }));
 
-  // Flat format (grafik için)
-  const flatHistory = product.listings.flatMap((listing) =>
-    listing.priceHistory.map((h) => ({
-      date: h.recordedAt.toISOString(),
-      price: h.price,
+  const flatHistory = variant.listings.flatMap((listing) =>
+    listing.snapshots.map((s) => ({
+      date: s.observedAt.toISOString(),
+      price: s.observedPrice,
       retailer: listing.retailer.name,
     }))
   );
 
   return NextResponse.json({
-    productId: product.id,
-    model: product.model,
-    storage: product.storage,
+    variantId: variant.id,
+    familyName: variant.family.name,
+    normalizedName: variant.normalizedName,
+    color: variant.color,
+    storageGb: variant.storageGb,
     days,
     historyByRetailer,
     flatHistory,

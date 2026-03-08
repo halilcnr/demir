@@ -32,3 +32,13 @@ next-env.d.ts
 
 # Prisma
 prisma/migrations/
+
+# Turborepo
+.turbo/
+
+# Worker build output
+dist/
+
+# pnpm
+apps/*/node_modules
+packages/*/node_modules

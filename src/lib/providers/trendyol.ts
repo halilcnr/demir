@@ -30,14 +30,16 @@ export class TrendyolProvider extends BaseProvider {
         if (isNaN(price) || price < 1000) return;
 
         results.push({
-          title,
-          model: parsed.model,
-          storage: parsed.storage,
-          color: parsed.color,
-          price,
-          url: href.startsWith('http') ? href : `https://www.trendyol.com${href}`,
-          inStock: true,
           retailerSlug: this.retailerSlug,
+          retailerName: this.retailerName,
+          rawTitle: title,
+          normalizedModel: parsed.model,
+          normalizedColor: parsed.color,
+          normalizedStorageGb: parsed.storageGb,
+          price,
+          currency: 'TRY',
+          stockStatus: 'IN_STOCK',
+          productUrl: href.startsWith('http') ? href : `https://www.trendyol.com${href}`,
           fetchedAt: new Date(),
         });
       } catch {
@@ -69,15 +71,17 @@ export class TrendyolProvider extends BaseProvider {
     const seller = $('.seller-name-text').text().trim() || undefined;
 
     return {
-      title: title.trim(),
-      model: parsed.model,
-      storage: parsed.storage,
-      color: parsed.color,
-      price,
-      url,
-      seller,
-      inStock: !$('.out-of-stock-container').length,
       retailerSlug: this.retailerSlug,
+      retailerName: this.retailerName,
+      rawTitle: title.trim(),
+      normalizedModel: parsed.model,
+      normalizedColor: parsed.color,
+      normalizedStorageGb: parsed.storageGb,
+      price,
+      currency: 'TRY',
+      sellerName: seller,
+      stockStatus: $('.out-of-stock-container').length ? 'OUT_OF_STOCK' : 'IN_STOCK',
+      productUrl: url,
       fetchedAt: new Date(),
     };
   }

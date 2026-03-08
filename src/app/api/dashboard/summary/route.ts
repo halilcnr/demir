@@ -1,94 +1,139 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 
-/** Dashboard özet verileri */
+/** Dashboard özet verileri: fırsatlar, düşüşler, alertler */
 export async function GET() {
   const oneDayAgo = new Date();
   oneDayAgo.setDate(oneDayAgo.getDate() - 1);
 
   const [
-    totalProducts,
+    totalFamilies,
+    totalVariants,
     totalListings,
+    activeDeals,
+    last24hDeals,
     lastSync,
-    cheapestListings,
+    topDeals,
     biggestDrops,
     unreadAlerts,
     recentlyUpdated,
   ] = await Promise.all([
-    prisma.product.count({ where: { isActive: true } }),
-    prisma.productListing.count(),
+    prisma.productFamily.count({ where: { isActive: true } }),
+    prisma.productVariant.count(),
+    prisma.listing.count(),
+    prisma.listing.count({ where: { isDeal: true } }),
+    prisma.listing.count({
+      where: { isDeal: true, lastSeenAt: { gte: oneDayAgo } },
+    }),
     prisma.syncJob.findFirst({
       where: { status: 'COMPLETED' },
-      orderBy: { completedAt: 'desc' },
+      orderBy: { finishedAt: 'desc' },
     }),
-    // En ucuz 5 listing
-    prisma.productListing.findMany({
-      where: { currentPrice: { not: null }, inStock: true },
-      include: { product: true, retailer: true },
-      orderBy: { currentPrice: 'asc' },
+    // En iyi fırsatlar (deal score'a göre)
+    prisma.listing.findMany({
+      where: { isDeal: true, currentPrice: { not: null }, stockStatus: 'IN_STOCK' },
+      include: { variant: { include: { family: true } }, retailer: true },
+      orderBy: { dealScore: 'desc' },
       take: 5,
     }),
     // Son 24 saat en büyük düşüşler
-    prisma.priceHistory.findMany({
-      where: { recordedAt: { gte: oneDayAgo }, changePercent: { lt: -2 } },
-      include: { listing: { include: { product: true, retailer: true } } },
+    prisma.priceSnapshot.findMany({
+      where: { observedAt: { gte: oneDayAgo }, changePercent: { lt: -2 } },
+      include: {
+        listing: {
+          include: { variant: { include: { family: true } }, retailer: true },
+        },
+      },
       orderBy: { changePercent: 'asc' },
       take: 5,
     }),
     // Okunmamış alarm eventleri
     prisma.alertEvent.findMany({
       where: { isRead: false },
-      include: { alertRule: { include: { product: true } } },
-      orderBy: { createdAt: 'desc' },
+      include: {
+        alertRule: {
+          include: { variant: { include: { family: true } } },
+        },
+        listing: { include: { retailer: true } },
+      },
+      orderBy: { triggeredAt: 'desc' },
       take: 10,
     }),
-    // Son güncellenen ürünler
-    prisma.productListing.findMany({
-      where: { lastSyncedAt: { not: null } },
-      include: { product: true, retailer: true },
-      orderBy: { lastSyncedAt: 'desc' },
+    // Son güncellenen listing'ler
+    prisma.listing.findMany({
+      where: { lastSeenAt: { not: null } },
+      include: { variant: { include: { family: true } }, retailer: true },
+      orderBy: { lastSeenAt: 'desc' },
       take: 5,
     }),
   ]);
 
   return NextResponse.json({
-    totalProducts,
+    totalFamilies,
+    totalVariants,
     totalListings,
-    lastSyncAt: lastSync?.completedAt?.toISOString() ?? null,
-    topDeals: cheapestListings.map((l) => ({
-      productId: l.product.id,
-      productModel: l.product.model,
-      storage: l.product.storage,
+    activeDeals,
+    last24hDeals,
+    lastSyncAt: lastSync?.finishedAt?.toISOString() ?? null,
+    lastSyncStatus: lastSync?.status ?? null,
+    topDeals: topDeals.map((l) => ({
+      listingId: l.id,
+      variantId: l.variant.id,
+      familyName: l.variant.family.name,
+      variantName: l.variant.normalizedName,
+      color: l.variant.color,
+      storageGb: l.variant.storageGb,
       retailerName: l.retailer.name,
+      retailerSlug: l.retailer.slug,
       currentPrice: l.currentPrice,
-      url: l.externalUrl,
+      previousPrice: l.previousPrice,
+      dealScore: l.dealScore,
+      productUrl: l.productUrl,
+      lastSeenAt: l.lastSeenAt?.toISOString() ?? null,
     })),
-    biggestDrops: biggestDrops.map((h) => ({
-      productId: h.listing.product.id,
-      productModel: h.listing.product.model,
-      storage: h.listing.product.storage,
-      retailerName: h.listing.retailer.name,
-      currentPrice: h.price,
-      previousPrice: h.previousPrice,
-      changePercent: h.changePercent,
-      url: h.listing.externalUrl,
+    biggestDrops: biggestDrops.map((s) => ({
+      listingId: s.listing.id,
+      variantId: s.listing.variant.id,
+      familyName: s.listing.variant.family.name,
+      variantName: s.listing.variant.normalizedName,
+      color: s.listing.variant.color,
+      storageGb: s.listing.variant.storageGb,
+      retailerName: s.listing.retailer.name,
+      retailerSlug: s.listing.retailer.slug,
+      currentPrice: s.observedPrice,
+      previousPrice: s.previousPrice,
+      changePercent: s.changePercent,
+      changeAmount: s.changeAmount,
+      productUrl: s.listing.productUrl,
+      lastSeenAt: s.observedAt.toISOString(),
     })),
+    cheapestByVariant: [],
     recentAlerts: unreadAlerts.map((e) => ({
       id: e.id,
-      message: e.message,
-      productModel: e.alertRule.product.model,
+      alertType: e.alertType,
+      triggerReason: e.triggerReason,
+      variantName: e.alertRule?.variant?.normalizedName ?? null,
+      retailerName: e.listing?.retailer?.name ?? null,
       oldPrice: e.oldPrice,
       newPrice: e.newPrice,
+      dropPercent: e.dropPercent,
       isRead: e.isRead,
-      createdAt: e.createdAt.toISOString(),
+      triggeredAt: e.triggeredAt.toISOString(),
+      productUrl: e.listing?.productUrl ?? null,
     })),
     recentlyUpdated: recentlyUpdated.map((l) => ({
-      productId: l.product.id,
-      productModel: l.product.model,
-      storage: l.product.storage,
+      listingId: l.id,
+      variantId: l.variant.id,
+      familyName: l.variant.family.name,
+      variantName: l.variant.normalizedName,
+      color: l.variant.color,
+      storageGb: l.variant.storageGb,
       retailerName: l.retailer.name,
       currentPrice: l.currentPrice,
-      lastSyncedAt: l.lastSyncedAt?.toISOString() ?? null,
+      isDeal: l.isDeal,
+      productUrl: l.productUrl,
+      lastSeenAt: l.lastSeenAt?.toISOString() ?? null,
     })),
+    syncErrors: lastSync?.errors ?? null,
   });
 }

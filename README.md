@@ -1,32 +1,31 @@
 # iPhone Price Tracker 🇹🇷
 
-Türkiye e-ticaret sitelerindeki iPhone fiyatlarını takip eden admin dashboard uygulaması.
+Türkiye e-ticaret sitelerindeki iPhone fiyatlarını takip eden monorepo uygulama.
+
+## Mimari
+
+| Servis | Teknoloji | Deploy |
+|--------|-----------|--------|
+| **apps/web** | Next.js 15, React 19, TanStack Query, Recharts | Vercel |
+| **apps/worker** | TypeScript, Cheerio, node-cron | Railway |
+| **packages/shared** | Paylaşılan tipler, utils, Prisma client | — |
+| **prisma/** | Prisma schema & seed | Neon PostgreSQL |
 
 ## Özellikler
 
 - **Çoklu Mağaza Takibi**: Hepsiburada, Trendyol, N11, Amazon.com.tr
-- **Fiyat Karşılaştırma**: Tüm mağazaları tek panelden görüntüleme
-- **Fiyat Geçmişi**: Line chart ile geçmiş veri görselleştirme
-- **Fiyat Alarmları**: Yüzdesel düşüş, hedef fiyat, yeni en düşük fiyat alarmları
-- **Otomatik Senkronizasyon**: Vercel Cron ile 6 saatlik otomatik güncelleme
-- **Responsive Dashboard**: Mobil uyumlu, modern admin arayüzü
-
-## Tech Stack
-
-- **Framework**: Next.js 15 (App Router) + TypeScript
-- **Styling**: Tailwind CSS v4
-- **Database**: PostgreSQL + Prisma ORM
-- **Charts**: Recharts
-- **State**: TanStack React Query
-- **Deployment**: Vercel
-- **DB Hosting**: Neon PostgreSQL (önerilen)
+- **Fırsat Tespiti**: 6 farklı fırsat tipi (fiyat düşüşü, tüm zamanların en düşüğü, mağazalar arası vb.)
+- **Fiyat Geçmişi**: PriceSnapshot tabanlı, mağaza bazlı line chart
+- **Alarm Sistemi**: Yüzdesel düşüş, hedef fiyat, yeni en düşük, mağazalar arası karşılaştırma
+- **Otomatik Senkronizasyon**: Worker servisi ile 6 saatlik periyodik scraping
+- **Responsive Dashboard**: Mobil uyumlu, fırsat-odaklı admin arayüzü
 
 ## Kurulum
 
 ### 1. Bağımlılıkları yükle
 
 ```bash
-npm install
+pnpm install
 ```
 
 ### 2. Environment değişkenlerini ayarla
@@ -36,108 +35,88 @@ cp .env.example .env
 ```
 
 `.env` dosyasını düzenle:
-- `DATABASE_URL`: PostgreSQL bağlantı string'i
-- `NEXTAUTH_SECRET`: Rastgele güçlü bir secret
-- `CRON_SECRET`: Cron endpoint koruması için secret
-- `ADMIN_EMAIL` / `ADMIN_PASSWORD`: Admin giriş bilgileri
+- `DATABASE_URL`: Neon PostgreSQL bağlantı string'i (pooled)
+- `DIRECT_URL`: Neon PostgreSQL doğrudan bağlantı (migration için)
 
 ### 3. Database'i hazırla
 
 ```bash
-npx prisma db push
-npm run db:seed
+pnpm db:generate
+pnpm db:push
+pnpm db:seed
 ```
 
-### 4. Geliştirme sunucusu
+### 4. Geliştirme
 
 ```bash
-npm run dev
+# Tüm servisleri başlat
+pnpm dev
+
+# Sadece web
+pnpm --filter @repo/web dev
+
+# Sadece worker
+pnpm --filter @repo/worker dev
 ```
 
 ## Proje Yapısı
 
 ```
-src/
-├── app/                    # Next.js App Router
-│   ├── api/                # API Routes
-│   │   ├── products/       # Ürün CRUD
-│   │   ├── deals/          # Fırsat endpoint'i
-│   │   ├── alerts/         # Alarm CRUD
-│   │   ├── sync/           # Senkronizasyon
-│   │   ├── dashboard/      # Dashboard özet
-│   │   └── cron/           # Cron job endpoint
-│   ├── products/           # Ürün sayfaları
-│   ├── deals/              # Fırsatlar sayfası
-│   ├── alerts/             # Alarm yönetimi
-│   ├── sync/               # Sync admin paneli
-│   └── settings/           # Ayarlar
-├── components/
-│   ├── charts/             # Recharts bileşenleri
-│   ├── layout/             # Sidebar, Header
-│   ├── providers/          # React Query provider
-│   └── ui/                 # Paylaşılan UI bileşenleri
-├── lib/
-│   ├── providers/          # Scraping provider'lar
-│   │   ├── base.ts         # Abstract base provider
-│   │   ├── hepsiburada.ts  # Hepsiburada scraper
-│   │   ├── trendyol.ts     # Trendyol scraper
-│   │   ├── n11.ts          # N11 scraper
-│   │   ├── amazon.ts       # Amazon scraper
-│   │   ├── mock.ts         # Mock provider (dev)
-│   │   └── index.ts        # Provider registry
-│   ├── db.ts               # Prisma client singleton
-│   ├── sync.ts             # Sync engine
-│   └── utils.ts            # Yardımcı fonksiyonlar
-└── types/
-    └── index.ts            # TypeScript type tanımları
+├── apps/
+│   ├── web/                    # Next.js 15 Frontend & API
+│   │   ├── src/app/            # App Router sayfaları
+│   │   │   ├── api/            # API Routes
+│   │   │   ├── variants/       # Varyant sayfaları
+│   │   │   ├── deals/          # Fırsatlar
+│   │   │   ├── alerts/         # Alarm yönetimi
+│   │   │   ├── sync/           # Sync durumu
+│   │   │   └── settings/       # Ayarlar
+│   │   └── src/components/     # React bileşenleri
+│   └── worker/                 # Scraping Worker (Railway)
+│       ├── src/providers/      # Mağaza scraper'ları
+│       ├── src/sync.ts         # Senkronizasyon motoru
+│       ├── src/deals.ts        # Fırsat tespit motoru
+│       ├── src/scheduler.ts    # Zamanlayıcı
+│       └── Dockerfile          # Railway deploy
+├── packages/
+│   └── shared/                 # Paylaşılan kod
+│       └── src/
+│           ├── types/          # TypeScript tipleri
+│           ├── utils/          # Yardımcı fonksiyonlar
+│           └── db.ts           # Prisma client singleton
+├── prisma/
+│   ├── schema.prisma           # Database schema
+│   └── seed.ts                 # Seed verileri
+├── pnpm-workspace.yaml         # pnpm workspaces
+└── turbo.json                  # Turborepo config
 ```
 
-## Deployment (Vercel)
+## Deployment
 
-### 1. PostgreSQL Database
-[Neon](https://neon.tech) üzerinden ücretsiz PostgreSQL oluştur.
+### Vercel (Web)
 
-### 2. Vercel'de Environment Variables
+1. Vercel'de yeni proje oluştur, root directory: `apps/web`
+2. Environment variables ekle: `DATABASE_URL`, `DIRECT_URL`
+3. Framework: Next.js, Build command otomatik algılanır
 
-| Değişken | Açıklama |
-|----------|----------|
-| `DATABASE_URL` | Neon PostgreSQL bağlantı URL'i |
-| `NEXTAUTH_SECRET` | `openssl rand -base64 32` ile üret |
-| `CRON_SECRET` | Cron endpoint güvenliği |
-| `ADMIN_EMAIL` | Admin e-posta |
-| `ADMIN_PASSWORD` | Admin şifre |
-| `USE_MOCK_PROVIDERS` | `true` ise mock data kullanır |
+### Railway (Worker)
 
-### 3. Deploy
+1. Railway'de yeni servis oluştur
+2. Dockerfile: `apps/worker/Dockerfile`
+3. Environment variables: `DATABASE_URL`, `SYNC_INTERVAL_MS`, `USE_MOCK_PROVIDERS`
 
-```bash
-vercel deploy --prod
-```
+### Neon (Database)
 
-### 4. Database Migration
+1. [Neon](https://neon.tech) üzerinden PostgreSQL oluştur
+2. Pooled URL → `DATABASE_URL`, Direct URL → `DIRECT_URL`
 
-```bash
-npx prisma db push
-npm run db:seed
-```
+## Veri Modeli
 
-## Geliştirme Roadmap
-
-### Faz 1 — MVP ✅
-- [x] Proje iskeleti ve konfigürasyon
-- [x] Database schema (Prisma)
-- [x] Mock provider ile veri simülasyonu
-- [x] Dashboard sayfası
-- [x] Ürün listeleme ve detay
-- [x] Fiyat grafiği (Recharts)
-- [x] Temel alarm sistemi
-- [x] Vercel deployment
-
-### Faz 2 — Gerçek Veri
-- [ ] Provider'ları gerçek scraping'e geçir
-- [ ] Anti-bot stratejileri (proxy, rate limit)
-- [ ] HTML selector bakımı ve monitoring
-- [ ] Hata recovery ve retry mekanizması
+- **ProductFamily** → iPhone modeli (ör. iPhone 15 Pro Max)
+- **ProductVariant** → Renk + depolama (ör. 256GB Natural Titanium)
+- **Listing** → Mağaza kaydı (fiyat, stok, fırsat skoru)
+- **PriceSnapshot** → Her senkronizasyonda alınan fiyat geçmişi
+- **AlertRule / AlertEvent** → Alarm kuralları ve tetiklenen bildirimler
 
 ### Faz 3 — Bildirimler
 - [ ] Telegram bot entegrasyonu

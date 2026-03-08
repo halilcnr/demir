@@ -17,7 +17,7 @@ export class MockProvider extends BaseProvider {
   }
 
   async search(query: string): Promise<ScrapedProduct[]> {
-    await this.delay(200); // Simüle gecikme
+    await this.delay(200);
 
     const parsed = normalizeIPhoneModel(query);
     if (!parsed) return [];
@@ -25,15 +25,20 @@ export class MockProvider extends BaseProvider {
     const basePrice = 30000 + Math.random() * 50000;
     const price = Math.round(basePrice / 100) * 100;
 
+    const slug = parsed.model.toLowerCase().replace(/\s+/g, '-');
+
     return [
       {
-        title: `Apple ${parsed.model} ${parsed.storage}`,
-        model: parsed.model,
-        storage: parsed.storage,
-        price,
-        url: `https://example.com/${this.retailerSlug}/${parsed.model.toLowerCase().replace(/\s+/g, '-')}`,
-        inStock: Math.random() > 0.1,
         retailerSlug: this.retailerSlug,
+        retailerName: this.retailerName,
+        rawTitle: `Apple ${parsed.model} ${parsed.storageGb}GB ${parsed.color}`,
+        normalizedModel: parsed.model,
+        normalizedColor: parsed.color,
+        normalizedStorageGb: parsed.storageGb,
+        price,
+        currency: 'TRY',
+        stockStatus: Math.random() > 0.1 ? 'IN_STOCK' : 'OUT_OF_STOCK',
+        productUrl: `https://example.com/${this.retailerSlug}/${slug}`,
         fetchedAt: new Date(),
       },
     ];

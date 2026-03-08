@@ -7,24 +7,45 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ─── iPhone Modelleri ────────────────────────────────────────────
-model Product {
+// ─── Ürün Ailesi (iPhone 15, iPhone 17 Pro Max vb.) ─────────────
+model ProductFamily {
   id        String   @id @default(cuid())
-  brand     String   @default("Apple") // Şimdilik sadece Apple
-  model     String   // "iPhone 15 Pro Max"
-  storage   String   // "256GB"
-  color     String?  // "Natural Titanium" (opsiyonel)
-  slug      String   @unique // "iphone-15-pro-max-256gb"
-  imageUrl  String?
+  brand     String   @default("Apple")
+  name      String   @unique // "iPhone 15 Pro Max"
+  slug      String   @unique // "iphone-15-pro-max"
+  sortOrder Int      @default(0)
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  listings   ProductListing[]
+  variants   ProductVariant[]
   alertRules AlertRule[]
 
-  @@index([model])
   @@index([slug])
+}
+
+// ─── Ürün Varyantı (model + renk + depolama) ────────────────────
+model ProductVariant {
+  id             String   @id @default(cuid())
+  familyId       String
+  color          String   // "Natural Titanium", "Black", "Blue"
+  storageGb      Int      // 128, 256, 512, 1024
+  normalizedName String   // "iPhone 15 Pro Max 256GB Natural Titanium"
+  slug           String   @unique // "iphone-15-pro-max-256gb-natural-titanium"
+  imageUrl       String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  family     ProductFamily @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  listings   Listing[]
+  alertRules AlertRule[]
+
+  @@unique([familyId, color, storageGb])
+  @@index([familyId])
+  @@index([slug])
+  @@index([storageGb])
+  @@index([color])
 }
 
 // ─── Satış Siteleri ──────────────────────────────────────────────
@@ -37,56 +58,76 @@ model Retailer {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  listings  ProductListing[]
+  listings  Listing[]
   syncJobs  SyncJob[]
 }
 
-// ─── Ürün Listesi (hangi ürün hangi sitede) ─────────────────────
-model ProductListing {
-  id           String   @id @default(cuid())
-  productId    String
-  retailerId   String
-  externalUrl  String   // Ürün sayfası URL'i
-  externalId   String?  // Sitedeki ürün ID'si
-  currentPrice Float?   // Son bilinen fiyat
-  lowestPrice  Float?   // Tarihsel en düşük
-  highestPrice Float?   // Tarihsel en yüksek
-  seller       String?  // Satıcı adı (marketplace'lerde)
-  inStock      Boolean  @default(true)
-  lastSyncedAt DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+// ─── Listing (bir varyantın bir sitedeki ilanı) ──────────────────
+model Listing {
+  id                  String    @id @default(cuid())
+  variantId           String
+  retailerId          String
+  retailerProductTitle String?  // Sitenin kendi ürün başlığı
+  externalId          String?   // Sitedeki ürün ID'si
+  productUrl          String    // Direkt ürün linki
+  imageUrl            String?
+  currentPrice        Float?    // Son gözlemlenen fiyat
+  previousPrice       Float?    // Bir önceki fiyat
+  lowestPrice         Float?    // Tarihsel en düşük
+  highestPrice        Float?    // Tarihsel en yüksek
+  sellerName          String?   // Marketplace satıcı adı
+  stockStatus         StockStatus @default(IN_STOCK)
+  isDeal              Boolean   @default(false)  // Fırsat olarak işaretli mi
+  dealScore           Float?    // Fırsat puanı (0-100)
+  isActive            Boolean   @default(true)
+  lastSeenAt          DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
-  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  retailer     Retailer @relation(fields: [retailerId], references: [id], onDelete: Cascade)
-  priceHistory PriceHistory[]
+  variant         ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  retailer        Retailer       @relation(fields: [retailerId], references: [id], onDelete: Cascade)
+  priceSnapshots  PriceSnapshot[]
+  alertEvents     AlertEvent[]
 
-  @@unique([productId, retailerId])
-  @@index([productId])
+  @@unique([variantId, retailerId])
+  @@index([variantId])
   @@index([retailerId])
   @@index([currentPrice])
+  @@index([isDeal])
+  @@index([lastSeenAt])
 }
 
-// ─── Fiyat Geçmişi ──────────────────────────────────────────────
-model PriceHistory {
-  id          String   @id @default(cuid())
-  listingId   String
-  price       Float
-  previousPrice Float?
-  changePercent Float?  // Yüzdesel değişim
-  recordedAt  DateTime @default(now())
+enum StockStatus {
+  IN_STOCK
+  OUT_OF_STOCK
+  LIMITED
+  UNKNOWN
+}
 
-  listing     ProductListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+// ─── Fiyat Snapshot'ı ────────────────────────────────────────────
+model PriceSnapshot {
+  id            String   @id @default(cuid())
+  listingId     String
+  observedPrice Float
+  previousPrice Float?
+  changePercent Float?   // Yüzdesel değişim
+  changeAmount  Float?   // Tutar olarak değişim
+  observedAt    DateTime @default(now())
+
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
 
   @@index([listingId])
-  @@index([recordedAt])
-  @@index([listingId, recordedAt])
+  @@index([observedAt])
+  @@index([listingId, observedAt])
+  @@index([changePercent])
 }
 
 // ─── Fiyat Alarm Kuralları ───────────────────────────────────────
 model AlertRule {
   id            String    @id @default(cuid())
-  productId     String
+  variantId     String?   // Varyant bazlı alarm
+  familyId      String?   // Aile bazlı alarm (tüm varyantlara uygulanır)
+  retailerSlug  String?   // Belirli bir retailer ile sınırla (opsiyonel)
   type          AlertType
   threshold     Float?    // Hedef fiyat veya yüzde eşiği
   isActive      Boolean   @default(true)
@@ -94,10 +135,12 @@ model AlertRule {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  product       Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
-  events        AlertEvent[]
+  variant  ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  family   ProductFamily?  @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  events   AlertEvent[]
 
-  @@index([productId])
+  @@index([variantId])
+  @@index([familyId])
   @@index([isActive])
 }
 
@@ -105,25 +148,30 @@ enum AlertType {
   PRICE_DROP_PERCENT // Yüzdesel düşüş (ör: %5+)
   PRICE_BELOW        // Belirli bir fiyatın altı
   NEW_LOWEST         // Yeni en düşük fiyat
+  CROSS_RETAILER     // Diğer sitelere göre en ucuz
 }
 
 // ─── Alarm Olayları ──────────────────────────────────────────────
 model AlertEvent {
-  id          String      @id @default(cuid())
-  alertRuleId String
-  listingId   String?
-  message     String
-  oldPrice    Float?
-  newPrice    Float?
-  isRead      Boolean     @default(false)
-  channel     AlertChannel @default(IN_APP)
-  createdAt   DateTime    @default(now())
+  id           String       @id @default(cuid())
+  alertRuleId  String
+  listingId    String?
+  alertType    AlertType    // Trigger eden alarm tipi
+  triggerReason String      // İnsan okunabilir açıklama
+  oldPrice     Float?
+  newPrice     Float?
+  dropPercent  Float?
+  isRead       Boolean      @default(false)
+  channel      AlertChannel @default(IN_APP)
+  triggeredAt  DateTime     @default(now())
 
-  alertRule   AlertRule   @relation(fields: [alertRuleId], references: [id], onDelete: Cascade)
+  alertRule AlertRule @relation(fields: [alertRuleId], references: [id], onDelete: Cascade)
+  listing   Listing?  @relation(fields: [listingId], references: [id], onDelete: SetNull)
 
   @@index([alertRuleId])
+  @@index([listingId])
   @@index([isRead])
-  @@index([createdAt])
+  @@index([triggeredAt])
 }
 
 enum AlertChannel {
@@ -135,17 +183,18 @@ enum AlertChannel {
 
 // ─── Senkronizasyon İşleri ───────────────────────────────────────
 model SyncJob {
-  id          String     @id @default(cuid())
-  retailerId  String?    // null ise tüm retailer'lar
-  status      SyncStatus @default(PENDING)
-  startedAt   DateTime?
-  completedAt DateTime?
-  itemsFound  Int        @default(0)
-  itemsUpdated Int       @default(0)
-  errorMessage String?
-  createdAt   DateTime   @default(now())
+  id           String     @id @default(cuid())
+  retailerId   String?
+  status       SyncStatus @default(PENDING)
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  itemsScanned Int        @default(0) // Taranan toplam öğe
+  itemsMatched Int        @default(0) // Eşleşen / güncellenen öğe
+  dealsFound   Int        @default(0) // Tespit edilen fırsat sayısı
+  errors       String?    // JSON hata logları
+  createdAt    DateTime   @default(now())
 
-  retailer    Retailer?  @relation(fields: [retailerId], references: [id])
+  retailer Retailer? @relation(fields: [retailerId], references: [id])
 
   @@index([status])
   @@index([createdAt])
@@ -160,13 +209,13 @@ enum SyncStatus {
 
 // ─── Kullanıcı (ilerisi için) ────────────────────────────────────
 model User {
-  id            String   @id @default(cuid())
-  email         String   @unique
-  name          String?
-  passwordHash  String
-  role          UserRole @default(ADMIN)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  passwordHash String
+  role         UserRole @default(ADMIN)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 enum UserRole {

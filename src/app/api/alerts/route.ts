@@ -3,8 +3,10 @@ import { prisma } from '@/lib/db';
 import { z } from 'zod';
 
 const alertSchema = z.object({
-  productId: z.string().min(1),
-  type: z.enum(['PRICE_DROP_PERCENT', 'PRICE_BELOW', 'NEW_LOWEST']),
+  variantId: z.string().min(1).optional(),
+  familyId: z.string().min(1).optional(),
+  retailerSlug: z.string().optional(),
+  type: z.enum(['PRICE_DROP_PERCENT', 'PRICE_BELOW', 'NEW_LOWEST', 'CROSS_RETAILER']),
   threshold: z.number().optional(),
 });
 
@@ -12,10 +14,14 @@ const alertSchema = z.object({
 export async function GET() {
   const rules = await prisma.alertRule.findMany({
     include: {
-      product: true,
+      variant: { include: { family: true } },
+      family: true,
       events: {
-        orderBy: { createdAt: 'desc' },
+        orderBy: { triggeredAt: 'desc' },
         take: 5,
+        include: {
+          listing: { include: { retailer: true } },
+        },
       },
     },
     orderBy: { createdAt: 'desc' },
@@ -24,9 +30,11 @@ export async function GET() {
   return NextResponse.json(
     rules.map((r) => ({
       id: r.id,
-      productId: r.productId,
-      productModel: r.product.model,
-      storage: r.product.storage,
+      variantId: r.variantId,
+      familyId: r.familyId,
+      variantName: r.variant?.normalizedName ?? null,
+      familyName: r.family?.name ?? r.variant?.family?.name ?? null,
+      retailerSlug: r.retailerSlug,
       type: r.type,
       threshold: r.threshold,
       isActive: r.isActive,
@@ -34,11 +42,15 @@ export async function GET() {
       createdAt: r.createdAt.toISOString(),
       recentEvents: r.events.map((e) => ({
         id: e.id,
-        message: e.message,
+        alertType: e.alertType,
+        triggerReason: e.triggerReason,
         oldPrice: e.oldPrice,
         newPrice: e.newPrice,
+        dropPercent: e.dropPercent,
         isRead: e.isRead,
-        createdAt: e.createdAt.toISOString(),
+        triggeredAt: e.triggeredAt.toISOString(),
+        retailerName: e.listing?.retailer?.name ?? null,
+        productUrl: e.listing?.productUrl ?? null,
       })),
     }))
   );
@@ -56,16 +68,31 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { productId, type, threshold } = parsed.data;
+  const { variantId, familyId, retailerSlug, type, threshold } = parsed.data;
 
-  // Ürün var mı kontrol et
-  const product = await prisma.product.findUnique({ where: { id: productId } });
-  if (!product) {
-    return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+  if (!variantId && !familyId) {
+    return NextResponse.json(
+      { error: 'variantId veya familyId gerekli' },
+      { status: 400 }
+    );
+  }
+
+  if (variantId) {
+    const variant = await prisma.productVariant.findUnique({ where: { id: variantId } });
+    if (!variant) {
+      return NextResponse.json({ error: 'Variant not found' }, { status: 404 });
+    }
+  }
+
+  if (familyId) {
+    const family = await prisma.productFamily.findUnique({ where: { id: familyId } });
+    if (!family) {
+      return NextResponse.json({ error: 'Family not found' }, { status: 404 });
+    }
   }
 
   const rule = await prisma.alertRule.create({
-    data: { productId, type, threshold },
+    data: { variantId, familyId, retailerSlug, type, threshold },
   });
 
   return NextResponse.json(rule, { status: 201 });

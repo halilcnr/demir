@@ -29,14 +29,16 @@ export class N11Provider extends BaseProvider {
         if (isNaN(price) || price < 1000) return;
 
         results.push({
-          title,
-          model: parsed.model,
-          storage: parsed.storage,
-          color: parsed.color,
-          price,
-          url: href.startsWith('http') ? href : `https://www.n11.com${href}`,
-          inStock: true,
           retailerSlug: this.retailerSlug,
+          retailerName: this.retailerName,
+          rawTitle: title,
+          normalizedModel: parsed.model,
+          normalizedColor: parsed.color,
+          normalizedStorageGb: parsed.storageGb,
+          price,
+          currency: 'TRY',
+          stockStatus: 'IN_STOCK',
+          productUrl: href.startsWith('http') ? href : `https://www.n11.com${href}`,
           fetchedAt: new Date(),
         });
       } catch {
@@ -66,15 +68,17 @@ export class N11Provider extends BaseProvider {
     const seller = $('.sallerName a').text().trim() || undefined;
 
     return {
-      title,
-      model: parsed.model,
-      storage: parsed.storage,
-      color: parsed.color,
-      price,
-      url,
-      seller,
-      inStock: !$('.unf-p-summary-out-of-stock').length,
       retailerSlug: this.retailerSlug,
+      retailerName: this.retailerName,
+      rawTitle: title,
+      normalizedModel: parsed.model,
+      normalizedColor: parsed.color,
+      normalizedStorageGb: parsed.storageGb,
+      price,
+      currency: 'TRY',
+      sellerName: seller,
+      stockStatus: $('.unf-p-summary-out-of-stock').length ? 'OUT_OF_STOCK' : 'IN_STOCK',
+      productUrl: url,
       fetchedAt: new Date(),
     };
   }

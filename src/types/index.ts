@@ -1,14 +1,18 @@
-// ─── Provider / Scraper Çıktı Tipi ─────────────────────────────
+// ─── Provider / Scraper Normalize Çıktısı ───────────────────────
 export interface ScrapedProduct {
-  title: string;
-  model: string;       // "iPhone 15 Pro Max"
-  storage: string;     // "256GB"
-  color?: string;
-  price: number;       // TL cinsinden
-  url: string;
-  seller?: string;
-  inStock: boolean;
   retailerSlug: string;
+  retailerName: string;
+  externalId?: string;
+  rawTitle: string;
+  normalizedModel: string;   // "iPhone 15 Pro Max"
+  normalizedColor: string;   // "Natural Titanium"
+  normalizedStorageGb: number; // 256
+  price: number;
+  currency: string;
+  sellerName?: string;
+  stockStatus: 'IN_STOCK' | 'OUT_OF_STOCK' | 'LIMITED' | 'UNKNOWN';
+  productUrl: string;
+  imageUrl?: string;
   fetchedAt: Date;
 }
 
@@ -22,71 +26,103 @@ export interface RetailerProvider {
 
 // ─── Dashboard Summary ─────────────────────────────────────────
 export interface DashboardSummary {
-  totalProducts: number;
+  totalFamilies: number;
+  totalVariants: number;
   totalListings: number;
+  activeDeals: number;
+  last24hDeals: number;
   lastSyncAt: string | null;
+  lastSyncStatus: string | null;
   topDeals: DealItem[];
   biggestDrops: DealItem[];
+  cheapestByVariant: DealItem[];
   recentAlerts: AlertEventItem[];
-  recentlyUpdated: RecentlyUpdatedItem[];
+  recentlyUpdated: RecentListingItem[];
+  syncErrors: string | null;
 }
 
+// ─── Deal Item ──────────────────────────────────────────────────
 export interface DealItem {
-  productId: string;
-  productModel: string;
-  storage: string;
+  listingId: string;
+  variantId: string;
+  familyName: string;
+  variantName: string;
+  color: string;
+  storageGb: number;
   retailerName: string;
+  retailerSlug: string;
   currentPrice: number;
-  previousPrice?: number;
-  changePercent?: number;
-  url: string;
+  previousPrice?: number | null;
+  lowestPrice?: number | null;
+  changePercent?: number | null;
+  changeAmount?: number | null;
+  dealScore?: number | null;
+  productUrl: string;
+  lastSeenAt?: string | null;
 }
 
+// ─── Alert Event ────────────────────────────────────────────────
 export interface AlertEventItem {
   id: string;
-  message: string;
-  productModel: string;
-  oldPrice?: number;
-  newPrice?: number;
+  alertType: string;
+  triggerReason: string;
+  variantName?: string;
+  retailerName?: string;
+  oldPrice?: number | null;
+  newPrice?: number | null;
+  dropPercent?: number | null;
   isRead: boolean;
-  createdAt: string;
+  triggeredAt: string;
+  productUrl?: string;
 }
 
-export interface RecentlyUpdatedItem {
-  productId: string;
-  productModel: string;
-  storage: string;
+// ─── Recently Updated Listing ───────────────────────────────────
+export interface RecentListingItem {
+  listingId: string;
+  variantId: string;
+  familyName: string;
+  variantName: string;
+  color: string;
+  storageGb: number;
   retailerName: string;
-  currentPrice: number;
-  lastSyncedAt: string;
+  currentPrice: number | null;
+  isDeal: boolean;
+  productUrl: string;
+  lastSeenAt: string | null;
 }
 
-// ─── Product Detail Enriched ────────────────────────────────────
-export interface ProductDetail {
+// ─── Variant Detail ─────────────────────────────────────────────
+export interface VariantDetail {
   id: string;
-  brand: string;
-  model: string;
-  storage: string;
-  color?: string | null;
+  familyId: string;
+  familyName: string;
+  color: string;
+  storageGb: number;
+  normalizedName: string;
   slug: string;
   imageUrl?: string | null;
   listings: ListingWithRetailer[];
   minPrice: number | null;
   maxPrice: number | null;
   avgPrice: number | null;
+  bestRetailer: string | null;
 }
 
 export interface ListingWithRetailer {
   id: string;
   retailerName: string;
   retailerSlug: string;
+  retailerProductTitle: string | null;
   currentPrice: number | null;
+  previousPrice: number | null;
   lowestPrice: number | null;
   highestPrice: number | null;
-  seller?: string | null;
-  inStock: boolean;
-  externalUrl: string;
-  lastSyncedAt: string | null;
+  sellerName: string | null;
+  stockStatus: string;
+  isDeal: boolean;
+  dealScore: number | null;
+  productUrl: string;
+  lastSeenAt: string | null;
 }
 
 // ─── Price History Point ────────────────────────────────────────
@@ -97,15 +133,16 @@ export interface PriceHistoryPoint {
 }
 
 // ─── Filters ────────────────────────────────────────────────────
-export interface ProductFilters {
+export interface VariantFilters {
   search?: string;
-  model?: string;
+  family?: string;
   storage?: string;
   color?: string;
   retailer?: string;
+  isDeal?: boolean;
   page?: number;
   limit?: number;
-  sort?: 'price_asc' | 'price_desc' | 'name' | 'updated';
+  sort?: 'price_asc' | 'price_desc' | 'name' | 'updated' | 'deal_score';
 }
 
 // ─── API Response Wrappers ──────────────────────────────────────
@@ -129,10 +166,11 @@ export interface SyncStatusResponse {
     id: string;
     status: string;
     startedAt: string | null;
-    completedAt: string | null;
-    itemsFound: number;
-    itemsUpdated: number;
-    errorMessage: string | null;
+    finishedAt: string | null;
+    itemsScanned: number;
+    itemsMatched: number;
+    dealsFound: number;
+    errors: string | null;
   } | null;
   retailers: {
     name: string;
@@ -142,9 +180,57 @@ export interface SyncStatusResponse {
   }[];
 }
 
-// ─── Alert Rule ─────────────────────────────────────────────────
+// ─── Alert Rule Input ───────────────────────────────────────────
 export interface AlertRuleInput {
-  productId: string;
-  type: 'PRICE_DROP_PERCENT' | 'PRICE_BELOW' | 'NEW_LOWEST';
+  variantId?: string;
+  familyId?: string;
+  retailerSlug?: string;
+  type: 'PRICE_DROP_PERCENT' | 'PRICE_BELOW' | 'NEW_LOWEST' | 'CROSS_RETAILER';
   threshold?: number;
 }
+
+// ─── Variant List Item ──────────────────────────────────────────
+export interface VariantListItem {
+  id: string;
+  familyName: string;
+  color: string;
+  storageGb: number;
+  normalizedName: string;
+  slug: string;
+  minPrice: number | null;
+  bestRetailerName: string | null;
+  bestRetailerSlug: string | null;
+  listingCount: number;
+  isDeal: boolean;
+  topDealScore: number | null;
+  lastSeenAt: string | null;
+  productUrl: string | null;
+  retailers: {
+    name: string;
+    slug: string;
+    price: number | null;
+    isDeal: boolean;
+    stockStatus: string;
+    productUrl: string;
+  }[];
+}
+
+// ─── Deal Detection Types ───────────────────────────────────────
+export interface DetectedDeal {
+  listingId: string;
+  dealType: DealType;
+  score: number;       // 0-100
+  reason: string;
+  currentPrice: number;
+  referencePrice: number;
+  dropPercent: number;
+}
+
+export type DealType =
+  | 'PRICE_DROP'          // Önceki fiyata göre düşüş
+  | 'DAILY_LOW'           // Son 24 saatin en düşüğü
+  | 'MONTHLY_LOW'         // Son 30 günün en düşüğü
+  | 'ALL_TIME_LOW'        // Tarihsel en düşük
+  | 'CROSS_RETAILER_LOW'  // Diğer sitelere göre en ucuz
+  | 'TARGET_PRICE'        // Hedef fiyat altı
+  | 'SUDDEN_DROP';        // Ani büyük düşüş

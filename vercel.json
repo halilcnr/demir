@@ -1,8 +1,6 @@
 {
-  "crons": [
-    {
-      "path": "/api/cron/sync",
-      "schedule": "0 */6 * * *"
-    }
-  ]
+  "framework": "nextjs",
+  "installCommand": "pnpm install",
+  "buildCommand": "cd ../.. && pnpm turbo build --filter=@repo/web",
+  "outputDirectory": ".next"
 }

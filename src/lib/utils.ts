@@ -57,8 +57,10 @@ export function slugify(text: string): string {
     .replace(/(^-|-$)/g, '');
 }
 
-/** iPhone model adını normalize eder */
-export function normalizeIPhoneModel(title: string): { model: string; storage: string; color?: string } | null {
+/** iPhone model adını, rengi ve depolamayı normalize eder */
+export function normalizeIPhoneModel(
+  title: string
+): { model: string; color: string; storageGb: number } | null {
   const lower = title.toLowerCase();
 
   // iPhone model pattern: iPhone XX (Pro|Pro Max|Plus|Mini)?
@@ -74,11 +76,48 @@ export function normalizeIPhoneModel(title: string): { model: string; storage: s
 
   // Storage pattern
   const storageMatch = lower.match(/(\d+)\s*(gb|tb)/i);
-  const storage = storageMatch
-    ? `${storageMatch[1]}${storageMatch[2].toUpperCase()}`
-    : '128GB';
+  let storageGb = 128; // default
+  if (storageMatch) {
+    const num = parseInt(storageMatch[1], 10);
+    const unit = storageMatch[2].toLowerCase();
+    storageGb = unit === 'tb' ? num * 1024 : num;
+  }
 
-  return { model, storage };
+  // Color detection
+  const color = detectColor(title);
+
+  return { model, color, storageGb };
+}
+
+const COLOR_MAP: Record<string, string> = {
+  // Türkçe & İngilizce renk eşlemeleri
+  'siyah': 'Siyah', 'black': 'Siyah', 'midnight': 'Siyah', 'gece yarısı': 'Siyah',
+  'beyaz': 'Beyaz', 'white': 'Beyaz', 'starlight': 'Beyaz', 'yıldız ışığı': 'Beyaz',
+  'mavi': 'Mavi', 'blue': 'Mavi', 'ultramarine': 'Mavi',
+  'yeşil': 'Yeşil', 'green': 'Yeşil',
+  'pembe': 'Pembe', 'pink': 'Pembe',
+  'kırmızı': 'Kırmızı', 'red': 'Kırmızı', 'product red': 'Kırmızı',
+  'mor': 'Mor', 'purple': 'Mor',
+  'sarı': 'Sarı', 'yellow': 'Sarı',
+  'turuncu': 'Turuncu', 'orange': 'Turuncu',
+  'natural titanium': 'Natural Titanium', 'doğal titanyum': 'Natural Titanium',
+  'blue titanium': 'Blue Titanium', 'mavi titanyum': 'Blue Titanium',
+  'white titanium': 'White Titanium', 'beyaz titanyum': 'White Titanium',
+  'black titanium': 'Black Titanium', 'siyah titanyum': 'Black Titanium',
+  'desert titanium': 'Desert Titanium', 'çöl titanyum': 'Desert Titanium',
+  'teal': 'Teal',
+};
+
+function detectColor(title: string): string {
+  const lower = title.toLowerCase();
+  // Longer keys first to match "natural titanium" before "natural"
+  const sortedKeys = Object.keys(COLOR_MAP).sort((a, b) => b.length - a.length);
+  for (const key of sortedKeys) {
+    if (lower.includes(key)) {
+      return COLOR_MAP[key];
+    }
+  }
+  return 'Bilinmiyor';
 }
 
 export function getRetailerColor(slug: string): string {

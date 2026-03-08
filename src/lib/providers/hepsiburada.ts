@@ -28,14 +28,16 @@ export class HepsiburadaProvider extends BaseProvider {
         if (isNaN(price) || price < 1000) return;
 
         results.push({
-          title,
-          model: parsed.model,
-          storage: parsed.storage,
-          color: parsed.color,
-          price,
-          url: href.startsWith('http') ? href : `https://www.hepsiburada.com${href}`,
-          inStock: true,
           retailerSlug: this.retailerSlug,
+          retailerName: this.retailerName,
+          rawTitle: title,
+          normalizedModel: parsed.model,
+          normalizedColor: parsed.color,
+          normalizedStorageGb: parsed.storageGb,
+          price,
+          currency: 'TRY',
+          stockStatus: 'IN_STOCK',
+          productUrl: href.startsWith('http') ? href : `https://www.hepsiburada.com${href}`,
           fetchedAt: new Date(),
         });
       } catch {
@@ -66,14 +68,16 @@ export class HepsiburadaProvider extends BaseProvider {
     if (isNaN(price)) return null;
 
     return {
-      title,
-      model: parsed.model,
-      storage: parsed.storage,
-      color: parsed.color,
-      price,
-      url,
-      inStock: !$('.out-of-stock-text').length,
       retailerSlug: this.retailerSlug,
+      retailerName: this.retailerName,
+      rawTitle: title,
+      normalizedModel: parsed.model,
+      normalizedColor: parsed.color,
+      normalizedStorageGb: parsed.storageGb,
+      price,
+      currency: 'TRY',
+      stockStatus: $('.out-of-stock-text').length ? 'OUT_OF_STOCK' : 'IN_STOCK',
+      productUrl: url,
       fetchedAt: new Date(),
     };
   }

@@ -1,14 +1,14 @@
 import { prisma } from '@/lib/db';
 import { getProviders, getProvider } from '@/lib/providers';
 import { calculateChangePercent, slugify } from '@/lib/utils';
+import { detectDeal, checkAlertRules } from '@/lib/deals';
 import type { ScrapedProduct } from '@/types';
 
 /**
  * Tüm retailer'lardan veya belirli bir retailer'dan fiyat güncellemesi yapar.
- * SyncJob kaydı oluşturur, provider'lardan veri çeker, DB'ye yazar, alarm kontrolü yapar.
+ * SyncJob kaydı oluşturur, provider'lardan veri çeker, DB'ye yazar, deal tespiti ve alarm kontrolü yapar.
  */
 export async function runSync(retailerSlug?: string) {
-  // SyncJob oluştur
   const syncJob = await prisma.syncJob.create({
     data: {
       retailerId: retailerSlug
@@ -19,14 +19,18 @@ export async function runSync(retailerSlug?: string) {
     },
   });
 
-  let itemsFound = 0;
-  let itemsUpdated = 0;
+  let itemsScanned = 0;
+  let itemsMatched = 0;
+  let dealsFound = 0;
 
   try {
     const providers = retailerSlug ? [getProvider(retailerSlug)].filter(Boolean) : getProviders();
 
-    // Her product için her provider'dan arama yap
-    const products = await prisma.product.findMany({ where: { isActive: true } });
+    // Tüm aktif variant'ları çek — benzersiz arama sorguları oluşturmak için
+    const families = await prisma.productFamily.findMany({
+      where: { isActive: true },
+      select: { name: true },
+    });
 
     for (const provider of providers) {
       if (!provider) continue;
@@ -36,17 +40,20 @@ export async function runSync(retailerSlug?: string) {
       });
       if (!retailer || !retailer.isActive) continue;
 
-      // Benzersiz search query'leri oluştur (model bazlı)
-      const uniqueQueries = [...new Set(products.map((p) => `${p.model} ${p.storage}`))];
+      // Her aile için arama yap
+      const uniqueQueries = [...new Set(families.map((f) => f.name))];
 
       for (const query of uniqueQueries) {
         try {
           const results = await provider.search(query);
-          itemsFound += results.length;
+          itemsScanned += results.length;
 
           for (const result of results) {
-            const updated = await upsertListing(result, retailer.id);
-            if (updated) itemsUpdated++;
+            const matched = await upsertListing(result, retailer.id);
+            if (matched) {
+              itemsMatched++;
+              if (matched.isDeal) dealsFound++;
+            }
           }
 
           // Rate limiting
@@ -57,55 +64,58 @@ export async function runSync(retailerSlug?: string) {
       }
     }
 
-    // SyncJob tamamlandı
     await prisma.syncJob.update({
       where: { id: syncJob.id },
       data: {
         status: 'COMPLETED',
-        completedAt: new Date(),
-        itemsFound,
-        itemsUpdated,
+        finishedAt: new Date(),
+        itemsScanned,
+        itemsMatched,
+        dealsFound,
       },
     });
 
-    return { jobId: syncJob.id, itemsFound, itemsUpdated };
+    return { jobId: syncJob.id, itemsScanned, itemsMatched, dealsFound };
   } catch (error) {
     await prisma.syncJob.update({
       where: { id: syncJob.id },
       data: {
         status: 'FAILED',
-        completedAt: new Date(),
-        errorMessage: error instanceof Error ? error.message : 'Unknown error',
-        itemsFound,
-        itemsUpdated,
+        finishedAt: new Date(),
+        errors: error instanceof Error ? error.message : 'Unknown error',
+        itemsScanned,
+        itemsMatched,
+        dealsFound,
       },
     });
     throw error;
   }
 }
 
-async function upsertListing(result: ScrapedProduct, retailerId: string): Promise<boolean> {
-  // Ürünü bul veya oluştur
-  const productSlug = slugify(`${result.model} ${result.storage}`);
-  let product = await prisma.product.findUnique({ where: { slug: productSlug } });
+async function upsertListing(
+  result: ScrapedProduct,
+  retailerId: string
+): Promise<{ isDeal: boolean } | null> {
+  // Variant'ı bul — model + color + storageGb eşleşmesi
+  const family = await prisma.productFamily.findFirst({
+    where: { name: result.normalizedModel },
+  });
+  if (!family) return null;
 
-  if (!product) {
-    product = await prisma.product.create({
-      data: {
-        brand: 'Apple',
-        model: result.model,
-        storage: result.storage,
-        color: result.color,
-        slug: productSlug,
-      },
-    });
-  }
+  const variant = await prisma.productVariant.findFirst({
+    where: {
+      familyId: family.id,
+      color: result.normalizedColor,
+      storageGb: result.normalizedStorageGb,
+    },
+  });
+  if (!variant) return null;
 
   // Mevcut listing bul
-  const existing = await prisma.productListing.findUnique({
+  const existing = await prisma.listing.findUnique({
     where: {
-      productId_retailerId: {
-        productId: product.id,
+      variantId_retailerId: {
+        variantId: variant.id,
         retailerId,
       },
     },
@@ -114,120 +124,94 @@ async function upsertListing(result: ScrapedProduct, retailerId: string): Promis
   const previousPrice = existing?.currentPrice ?? null;
 
   // Listing upsert
-  const listing = await prisma.productListing.upsert({
+  const listing = await prisma.listing.upsert({
     where: {
-      productId_retailerId: {
-        productId: product.id,
+      variantId_retailerId: {
+        variantId: variant.id,
         retailerId,
       },
     },
     update: {
+      retailerProductTitle: result.rawTitle,
       currentPrice: result.price,
+      previousPrice: previousPrice,
       lowestPrice: existing?.lowestPrice
         ? Math.min(existing.lowestPrice, result.price)
         : result.price,
       highestPrice: existing?.highestPrice
         ? Math.max(existing.highestPrice, result.price)
         : result.price,
-      seller: result.seller,
-      inStock: result.inStock,
-      lastSyncedAt: new Date(),
-      externalUrl: result.url,
+      sellerName: result.sellerName,
+      stockStatus: result.stockStatus,
+      productUrl: result.productUrl,
+      imageUrl: result.imageUrl,
+      externalId: result.externalId,
+      lastSeenAt: new Date(),
     },
     create: {
-      productId: product.id,
+      variantId: variant.id,
       retailerId,
-      externalUrl: result.url,
+      retailerProductTitle: result.rawTitle,
       currentPrice: result.price,
+      previousPrice: null,
       lowestPrice: result.price,
       highestPrice: result.price,
-      seller: result.seller,
-      inStock: result.inStock,
-      lastSyncedAt: new Date(),
+      sellerName: result.sellerName,
+      stockStatus: result.stockStatus,
+      productUrl: result.productUrl,
+      imageUrl: result.imageUrl,
+      externalId: result.externalId,
+      lastSeenAt: new Date(),
     },
   });
 
-  // Fiyat geçmişi kaydet
+  // PriceSnapshot kaydet
   const changePercent = previousPrice
     ? calculateChangePercent(previousPrice, result.price)
     : null;
+  const changeAmount = previousPrice ? result.price - previousPrice : null;
 
-  await prisma.priceHistory.create({
+  await prisma.priceSnapshot.create({
     data: {
       listingId: listing.id,
-      price: result.price,
+      observedPrice: result.price,
       previousPrice,
       changePercent,
+      changeAmount,
     },
   });
 
-  // Alarm kontrolü
-  if (previousPrice && previousPrice !== result.price) {
-    await checkAlerts(product.id, listing.id, previousPrice, result.price);
-  }
-
-  return true;
-}
-
-async function checkAlerts(
-  productId: string,
-  listingId: string,
-  oldPrice: number,
-  newPrice: number
-) {
-  const rules = await prisma.alertRule.findMany({
-    where: { productId, isActive: true },
-    include: { product: true },
+  // Deal tespiti
+  const deal = await detectDeal({
+    listingId: listing.id,
+    variantId: variant.id,
+    currentPrice: result.price,
+    previousPrice,
+    lowestPrice: listing.lowestPrice,
+    highestPrice: listing.highestPrice,
+    retailerSlug: result.retailerSlug,
   });
 
-  for (const rule of rules) {
-    let shouldTrigger = false;
-    let message = '';
+  const isDeal = deal !== null && deal.score >= 30;
 
-    switch (rule.type) {
-      case 'PRICE_DROP_PERCENT': {
-        const drop = calculateChangePercent(oldPrice, newPrice);
-        if (drop < 0 && Math.abs(drop) >= (rule.threshold ?? 5)) {
-          shouldTrigger = true;
-          message = `${rule.product.model} ${rule.product.storage} fiyatı %${Math.abs(drop).toFixed(1)} düştü! ${oldPrice.toLocaleString('tr-TR')} ₺ → ${newPrice.toLocaleString('tr-TR')} ₺`;
-        }
-        break;
-      }
-      case 'PRICE_BELOW': {
-        if (rule.threshold && newPrice <= rule.threshold) {
-          shouldTrigger = true;
-          message = `${rule.product.model} ${rule.product.storage} hedef fiyatın (${rule.threshold.toLocaleString('tr-TR')} ₺) altına düştü: ${newPrice.toLocaleString('tr-TR')} ₺`;
-        }
-        break;
-      }
-      case 'NEW_LOWEST': {
-        const listing = await prisma.productListing.findFirst({
-          where: { id: listingId },
-        });
-        if (listing && listing.lowestPrice !== null && newPrice <= listing.lowestPrice) {
-          shouldTrigger = true;
-          message = `${rule.product.model} ${rule.product.storage} için yeni en düşük fiyat: ${newPrice.toLocaleString('tr-TR')} ₺`;
-        }
-        break;
-      }
-    }
+  await prisma.listing.update({
+    where: { id: listing.id },
+    data: {
+      isDeal,
+      dealScore: deal?.score ?? null,
+    },
+  });
 
-    if (shouldTrigger) {
-      await prisma.alertEvent.create({
-        data: {
-          alertRuleId: rule.id,
-          listingId,
-          message,
-          oldPrice,
-          newPrice,
-          channel: 'IN_APP',
-        },
-      });
-
-      await prisma.alertRule.update({
-        where: { id: rule.id },
-        data: { lastTriggered: new Date() },
-      });
-    }
+  // Alert kurallarını kontrol et
+  if (previousPrice && previousPrice !== result.price) {
+    await checkAlertRules(
+      variant.id,
+      listing.id,
+      result.price,
+      previousPrice,
+      result.retailerSlug
+    );
   }
+
+  return { isDeal };
 }
