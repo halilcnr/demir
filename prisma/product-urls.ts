@@ -331,31 +331,32 @@ export const PRODUCT_URLS: ProductUrlMap = {
   //  iPhone 17 Air — 256 GB
   // ═══════════════════════════════════════════════════════
   'iphone-17-air-256gb-black': {
-    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-air-256-gb-siyah-p-HBCV00009Z41KL',
-    trendyol: 'https://www.trendyol.com/apple/iphone-17-air-256gb-siyah-p-985256871',
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-air-256-gb-uzay-siyahi-p-HBCV00009Z40TG',
+    trendyol: 'https://www.trendyol.com/apple/iphone-air-256gb-uzay-siyahi-p-985256818',
   },
   'iphone-17-air-256gb-white': {
-    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-air-256-gb-beyaz-p-HBCV00009Z41KM',
-    trendyol: 'https://www.trendyol.com/apple/iphone-17-air-256gb-beyaz-p-985256874',
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-air-256-gb-pamuk-beyazi-p-HBCV00009Z3YH5',
+    trendyol: 'https://www.trendyol.com/apple/iphone-air-256gb-pamuk-beyazi-p-985256822',
   },
   'iphone-17-air-256gb-fog-blue': {
-    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-air-256-gb-sis-mavisi-p-HBCV00009Z41KN',
-  },
-  'iphone-17-air-256gb-lavender': {
-    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-air-256-gb-lavanta-p-HBCV00009Z41KO',
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-air-256-gb-gok-mavisi-p-HBCV00009Z6WR8',
+    trendyol: 'https://www.trendyol.com/apple/iphone-air-256gb-gok-mavisi-p-985256832',
+
   },
   'iphone-17-air-256gb-sage': {
-    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-air-256-gb-ada-cayi-p-HBCV00009Z41KP',
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-air-256-gb-ucuk-altin-rengi-p-HBCV00009Z3Z8B',
+    trendyol: 'https://www.trendyol.com/apple/iphone-air-256gb-ucuk-altin-rengi-p-985256827',
+
   },
 
   // ═══════════════════════════════════════════════════════
   //  iPhone 17 Air — 512 GB
   // ═══════════════════════════════════════════════════════
   'iphone-17-air-512gb-black': {
-    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-air-512-gb-siyah-p-HBCV00009Z41KQ',
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-air-512-gb-uzay-siyahi-p-HBCV00009Z3YJ2',
   },
   'iphone-17-air-512gb-white': {
-    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-air-512-gb-beyaz-p-HBCV00009Z41KR',
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-air-512-gb-pamuk-beyazi-p-HBCV00009Z3V98',
   },
 
   // ═══════════════════════════════════════════════════════
