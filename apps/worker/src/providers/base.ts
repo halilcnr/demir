@@ -1,5 +1,6 @@
 import * as cheerio from 'cheerio';
 import type { RetailerProvider, ScrapedProduct } from '@repo/shared';
+import { parseTurkishPrice } from '@repo/shared';
 import {
   ProviderBlockedError,
   RetryableProviderError,
@@ -359,30 +360,9 @@ export abstract class BaseProvider implements RetailerProvider {
 
   /**
    * Parse a Turkish-formatted price string correctly.
-   * Handles: "74.499,00 TL", "₺74.499", "74499", "74.499"
-   * CRITICAL: 74.499 → 74499 (dot is thousands separator in TR)
+   * Delegates to the shared parseTurkishPrice utility.
    */
   protected parseTurkishPrice(text: string): number | null {
-    // Strip currency symbols and whitespace
-    let cleaned = text.replace(/[₺TL\s]/gi, '').trim();
-    if (!cleaned) return null;
-
-    // Turkish format: dots are thousands, comma is decimal
-    // If there's a comma → use it as decimal separator
-    if (cleaned.includes(',')) {
-      cleaned = cleaned.replace(/\./g, '').replace(',', '.');
-    } else {
-      // No comma — dots could be thousands separators
-      // 74.499 → 74499 (thousands), but 74.50 → 74.50 (decimal)
-      // Heuristic: if digits after last dot are exactly 3, it's thousands
-      const dotParts = cleaned.split('.');
-      if (dotParts.length > 1 && dotParts[dotParts.length - 1].length === 3) {
-        cleaned = cleaned.replace(/\./g, '');
-      }
-    }
-
-    cleaned = cleaned.replace(/[^\d.]/g, '');
-    const price = parseFloat(cleaned);
-    return !isNaN(price) && price > 0 ? price : null;
+    return parseTurkishPrice(text);
   }
 }

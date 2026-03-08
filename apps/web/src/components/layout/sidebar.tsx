@@ -10,12 +10,14 @@ import {
   TrendingDown,
   Settings,
   Sparkles,
+  Trophy,
 } from 'lucide-react';
 import { cn } from '@repo/shared';
 
 const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/variants', label: 'Varyantlar', icon: Smartphone },
+  { href: '/best-by-storage', label: 'En Ucuz', icon: Trophy },
   { href: '/deals', label: 'Fırsatlar', icon: TrendingDown },
   { href: '/alerts', label: 'Alarmlar', icon: Bell },
   { href: '/sync', label: 'Senkronizasyon', icon: RefreshCw },

@@ -18,6 +18,7 @@ import { Badge, PriceChangeBadge } from '@/components/ui/badge';
 import { DashboardSkeleton } from '@/components/ui/skeleton';
 import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 import { ProviderHealthCard } from '@/components/provider-health-card';
+import { SystemHealthCard } from '@/components/system-health-card';
 import { formatPrice, formatRelativeDate } from '@repo/shared';
 import type { DashboardSummary } from '@repo/shared';
 import Link from 'next/link';
@@ -70,6 +71,9 @@ export default function DashboardPage() {
 
       {/* Provider Health */}
       <ProviderHealthCard />
+
+      {/* System Health */}
+      <SystemHealthCard />
 
       {/* Main Grid */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

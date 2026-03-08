@@ -63,7 +63,7 @@ export function normalizeIPhoneModel(
 ): { model: string; color: string; storageGb: number } | null {
   const lower = title.toLowerCase();
 
-  const modelMatch = lower.match(/iphone\s*(\d{2,3})\s*(pro\s*max|pro|plus|mini)?/);
+  const modelMatch = lower.match(/iphone\s*(\d{2,3})\s*(pro\s*max|pro|plus|mini|air)?/);
   if (!modelMatch) return null;
 
   const number = modelMatch[1];
@@ -136,6 +136,83 @@ export function getRetailerColor(slug: string): string {
     trendyol: '#f27a1a',
     n11: '#7849b8',
     amazon: '#ff9900',
+    pazarama: '#00b900',
   };
   return colors[slug] ?? '#6b7280';
+}
+
+/**
+ * Robust Turkish price normalization.
+ *
+ * Supported formats:
+ *   ₺74.499       → 74499
+ *   74.499 TL      → 74499
+ *   74.499,00 TL   → 74499
+ *   ₺74,499.00     → 74499 (misformatted — treat comma as thousands)
+ *   74499           → 74499
+ *   74.499,99       → 74499.99
+ *   1.234.567       → 1234567
+ *
+ * Rules:
+ *   1. Strip ₺, TL, whitespace, non-numeric except . and ,
+ *   2. If BOTH dot and comma present → decide by position:
+ *      last separator is decimal, previous ones are thousands
+ *   3. If only comma → check digit count after it:
+ *      ≤2 digits = decimal, 3 digits = thousands
+ *   4. If only dot → check digit count after last dot:
+ *      3 digits = thousands, otherwise decimal
+ *   5. Never return < 1 for iPhone prices
+ */
+export function parseTurkishPrice(text: string): number | null {
+  // Strip currency symbols, letters, whitespace
+  let cleaned = text.replace(/[₺\s]/g, '').replace(/TL/gi, '').trim();
+  if (!cleaned) return null;
+
+  // Remove any remaining non-numeric chars except . and ,
+  cleaned = cleaned.replace(/[^\d.,]/g, '');
+  if (!cleaned) return null;
+
+  const hasDot = cleaned.includes('.');
+  const hasComma = cleaned.includes(',');
+
+  let result: number;
+
+  if (hasDot && hasComma) {
+    // Both present — the LAST separator is decimal
+    const lastDot = cleaned.lastIndexOf('.');
+    const lastComma = cleaned.lastIndexOf(',');
+
+    if (lastComma > lastDot) {
+      // e.g. "74.499,00" → comma is decimal
+      cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+    } else {
+      // e.g. "74,499.00" → dot is decimal
+      cleaned = cleaned.replace(/,/g, '');
+    }
+    result = parseFloat(cleaned);
+  } else if (hasComma) {
+    const parts = cleaned.split(',');
+    const afterComma = parts[parts.length - 1];
+    if (afterComma.length === 3) {
+      // "74,499" → thousands separator
+      cleaned = cleaned.replace(/,/g, '');
+    } else {
+      // "74,50" → decimal
+      cleaned = cleaned.replace(',', '.');
+    }
+    result = parseFloat(cleaned);
+  } else if (hasDot) {
+    const parts = cleaned.split('.');
+    const afterLastDot = parts[parts.length - 1];
+    if (afterLastDot.length === 3) {
+      // "74.499" or "1.234.567" → thousands separator
+      cleaned = cleaned.replace(/\./g, '');
+    }
+    // else: "74.50" → keep as decimal
+    result = parseFloat(cleaned);
+  } else {
+    result = parseFloat(cleaned);
+  }
+
+  return !isNaN(result) && result > 0 ? result : null;
 }

@@ -5,12 +5,13 @@ const prisma = new PrismaClient();
 
 const FAMILIES = [
   { name: 'iPhone 17', sortOrder: 1, variants: { storages: [256, 512], colors: ['Black', 'White', 'Fog Blue', 'Lavender', 'Sage'] } },
-  { name: 'iPhone 17 Pro', sortOrder: 2, variants: { storages: [256, 512, 1024], colors: ['Obsidian', 'Silver', 'Cosmic Orange'] } },
-  { name: 'iPhone 17 Pro Max', sortOrder: 3, variants: { storages: [256, 512, 1024], colors: ['Obsidian', 'Silver', 'Cosmic Orange'] } },
-  { name: 'iPhone 16', sortOrder: 4, variants: { storages: [128, 256, 512], colors: ['Black', 'White', 'Pink', 'Teal', 'Ultramarine'] } },
-  { name: 'iPhone 15', sortOrder: 5, variants: { storages: [128, 256, 512], colors: ['Black', 'Blue', 'Green', 'Yellow', 'Pink'] } },
-  { name: 'iPhone 14', sortOrder: 6, variants: { storages: [128, 256, 512], colors: ['Midnight', 'Starlight', 'Blue', 'Purple', 'Red', 'Yellow'] } },
-  { name: 'iPhone 13', sortOrder: 7, variants: { storages: [128, 256, 512], colors: ['Midnight', 'Starlight', 'Blue', 'Pink', 'Green', 'Red'] } },
+  { name: 'iPhone 17 Air', sortOrder: 2, variants: { storages: [256, 512], colors: ['Black', 'White', 'Fog Blue', 'Lavender', 'Sage'] } },
+  { name: 'iPhone 17 Pro', sortOrder: 3, variants: { storages: [256, 512, 1024], colors: ['Obsidian', 'Silver', 'Cosmic Orange'] } },
+  { name: 'iPhone 17 Pro Max', sortOrder: 4, variants: { storages: [256, 512, 1024], colors: ['Obsidian', 'Silver', 'Cosmic Orange'] } },
+  { name: 'iPhone 16', sortOrder: 5, variants: { storages: [128, 256, 512], colors: ['Black', 'White', 'Pink', 'Teal', 'Ultramarine'] } },
+  { name: 'iPhone 15', sortOrder: 6, variants: { storages: [128, 256, 512], colors: ['Black', 'Blue', 'Green', 'Yellow', 'Pink'] } },
+  { name: 'iPhone 14', sortOrder: 7, variants: { storages: [128, 256, 512], colors: ['Midnight', 'Starlight', 'Blue', 'Purple', 'Red', 'Yellow'] } },
+  { name: 'iPhone 13', sortOrder: 8, variants: { storages: [128, 256, 512], colors: ['Midnight', 'Starlight', 'Blue', 'Pink', 'Green', 'Red'] } },
 ];
 
 function slugify(text: string): string {

@@ -1,15 +1,11 @@
 /**
- * Manuel ürün URL'leri — iPhone 13, 14, 15, 16, 17 aileleri.
+ * Manuel ürün URL'leri — iPhone 13–17 Pro Max aileleri.
  * Her varyant için hangi mağazada hangi URL olduğunu buraya yazın.
  *
  * Format:
  *   "varyant-slug": { "retailer-slug": "url", ... }
  *
  * Retailer slug'ları: "hepsiburada", "trendyol", "n11", "amazon", "pazarama"
- *
- * Tüm varyantları doldurmak zorunda değilsiniz.
- * URL'si olan ürünler doğrudan sayfadan fiyat çekilir (daha doğru).
- * URL'si olmayanlar arama sistemiyle bulunur (fallback).
  */
 
 export interface ProductUrlMap {
@@ -21,7 +17,7 @@ export interface ProductUrlMap {
 export const PRODUCT_URLS: ProductUrlMap = {
 
   // ═══════════════════════════════════════════════════════
-  // iPhone 13 128GB
+  //  iPhone 13 — 128 GB
   // ═══════════════════════════════════════════════════════
   'iphone-13-128gb-midnight': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-13-128-gb-siyah-p-HBCV00000ODHHF',
@@ -50,16 +46,47 @@ export const PRODUCT_URLS: ProductUrlMap = {
     hepsiburada: 'https://www.hepsiburada.com/iphone-13-128-gb-pembe-p-HBCV00000ODHHZ',
     n11: 'https://www.n11.com/urun/apple-iphone-13-128-gb-apple-turkiye-garantili-2141312',
   },
-
-  // ═══════════════════════════════════════════════════════
-  // iPhone 13 256GB
-  // ═══════════════════════════════════════════════════════
-  'iphone-13-256gb-blue': {
-    hepsiburada: 'https://www.hepsiburada.com/iphone-13-256-gb-mavi-p-HBCV00000ODHWO',
+  'iphone-13-128gb-red': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-13-128-gb-kirmizi-p-HBCV00000ODHHR',
   },
 
   // ═══════════════════════════════════════════════════════
-  // iPhone 14 128GB
+  //  iPhone 13 — 256 GB
+  // ═══════════════════════════════════════════════════════
+  'iphone-13-256gb-midnight': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-13-256-gb-siyah-p-HBCV00000ODHWN',
+  },
+  'iphone-13-256gb-starlight': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-13-256-gb-beyaz-p-HBCV00000ODHWP',
+  },
+  'iphone-13-256gb-blue': {
+    hepsiburada: 'https://www.hepsiburada.com/iphone-13-256-gb-mavi-p-HBCV00000ODHWO',
+  },
+  'iphone-13-256gb-pink': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-13-256-gb-pembe-p-HBCV00000ODHWS',
+  },
+  'iphone-13-256gb-green': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-13-256-gb-yesil-p-HBCV00001T9W5T',
+  },
+  'iphone-13-256gb-red': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-13-256-gb-kirmizi-p-HBCV00000ODHWR',
+  },
+
+  // ═══════════════════════════════════════════════════════
+  //  iPhone 13 — 512 GB
+  // ═══════════════════════════════════════════════════════
+  'iphone-13-512gb-midnight': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-13-512-gb-siyah-p-HBCV00000ODHY4',
+  },
+  'iphone-13-512gb-starlight': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-13-512-gb-beyaz-p-HBCV00000ODHY5',
+  },
+  'iphone-13-512gb-blue': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-13-512-gb-mavi-p-HBCV00000ODHY6',
+  },
+
+  // ═══════════════════════════════════════════════════════
+  //  iPhone 14 — 128 GB
   // ═══════════════════════════════════════════════════════
   'iphone-14-128gb-midnight': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-128-gb-siyah-p-HBCV00002VUQ7R',
@@ -72,16 +99,45 @@ export const PRODUCT_URLS: ProductUrlMap = {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-128-gb-mavi-p-HBCV00002VUQ7U',
     pazarama: 'https://www.pazarama.com/apple-iphone-14-mavi-128-gb-6-gb-ram-apple-turkiye-garantili-p-194253409533',
   },
-
-  // ═══════════════════════════════════════════════════════
-  // iPhone 14 256GB
-  // ═══════════════════════════════════════════════════════
-  'iphone-14-256gb-blue': {
-    amazon: 'https://www.amazon.com.tr/dp/B0BDJDQRLD',
+  'iphone-14-128gb-purple': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-128-gb-mor-p-HBCV00002VUQ7V',
+  },
+  'iphone-14-128gb-red': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-128-gb-kirmizi-p-HBCV00002VUQ7T',
+  },
+  'iphone-14-128gb-yellow': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-128-gb-sari-p-HBCV00003S8E4C',
   },
 
   // ═══════════════════════════════════════════════════════
-  // iPhone 15 128GB
+  //  iPhone 14 — 256 GB
+  // ═══════════════════════════════════════════════════════
+  'iphone-14-256gb-midnight': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-256-gb-siyah-p-HBCV00002VUQF4',
+  },
+  'iphone-14-256gb-starlight': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-256-gb-beyaz-p-HBCV00002VUQF5',
+  },
+  'iphone-14-256gb-blue': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-256-gb-mavi-p-HBCV00002VUQF6',
+    amazon: 'https://www.amazon.com.tr/dp/B0BDJDQRLD',
+  },
+  'iphone-14-256gb-purple': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-256-gb-mor-p-HBCV00002VUQF7',
+  },
+
+  // ═══════════════════════════════════════════════════════
+  //  iPhone 14 — 512 GB
+  // ═══════════════════════════════════════════════════════
+  'iphone-14-512gb-midnight': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-512-gb-siyah-p-HBCV00002VUQTS',
+  },
+  'iphone-14-512gb-blue': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-512-gb-mavi-p-HBCV00002VUQTU',
+  },
+
+  // ═══════════════════════════════════════════════════════
+  //  iPhone 15 — 128 GB
   // ═══════════════════════════════════════════════════════
   'iphone-15-128gb-black': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-15-128-gb-siyah-p-HBCV00004X9ZCH',
@@ -110,20 +166,42 @@ export const PRODUCT_URLS: ProductUrlMap = {
   },
 
   // ═══════════════════════════════════════════════════════
-  // iPhone 15 256GB
+  //  iPhone 15 — 256 GB
   // ═══════════════════════════════════════════════════════
   'iphone-15-256gb-black': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-15-256-gb-siyah-p-HBCV00004X9ZMH',
     amazon: 'https://www.amazon.com.tr/dp/B0CHXRNHC4',
   },
   'iphone-15-256gb-blue': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-15-256-gb-mavi-p-HBCV00004X9ZMK',
     amazon: 'https://www.amazon.com.tr/dp/B0CHX43FKD',
   },
   'iphone-15-256gb-pink': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-15-256-gb-pembe-p-HBCV00004X9ZMI',
     amazon: 'https://www.amazon.com.tr/dp/B0CHX9D18W',
+  },
+  'iphone-15-256gb-green': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-15-256-gb-yesil-p-HBCV00004X9ZML',
+  },
+  'iphone-15-256gb-yellow': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-15-256-gb-sari-p-HBCV00004X9ZMJ',
   },
 
   // ═══════════════════════════════════════════════════════
-  // iPhone 16 128GB
+  //  iPhone 15 — 512 GB
+  // ═══════════════════════════════════════════════════════
+  'iphone-15-512gb-black': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-15-512-gb-siyah-p-HBCV00004X9ZVH',
+  },
+  'iphone-15-512gb-blue': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-15-512-gb-mavi-p-HBCV00004X9ZVK',
+  },
+  'iphone-15-512gb-pink': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-15-512-gb-pembe-p-HBCV00004X9ZVI',
+  },
+
+  // ═══════════════════════════════════════════════════════
+  //  iPhone 16 — 128 GB
   // ═══════════════════════════════════════════════════════
   'iphone-16-128gb-black': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-128gb-siyah-p-HBCV00006Y4HFJ',
@@ -157,7 +235,45 @@ export const PRODUCT_URLS: ProductUrlMap = {
   },
 
   // ═══════════════════════════════════════════════════════
-  // iPhone 17 256GB
+  //  iPhone 16 — 256 GB
+  // ═══════════════════════════════════════════════════════
+  'iphone-16-256gb-black': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-256gb-siyah-p-HBCV00006Y4J6Y',
+    trendyol: 'https://www.trendyol.com/apple/iphone-16-256gb-siyah-p-857296098',
+  },
+  'iphone-16-256gb-white': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-256gb-beyaz-p-HBCV00006Y4J6Z',
+    trendyol: 'https://www.trendyol.com/apple/iphone-16-256gb-beyaz-p-857296085',
+  },
+  'iphone-16-256gb-pink': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-256gb-pembe-p-HBCV00006Y4J70',
+    trendyol: 'https://www.trendyol.com/apple/iphone-16-256gb-pembe-p-857296125',
+  },
+  'iphone-16-256gb-teal': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-256gb-deniz-mavisi-p-HBCV00006Y4J71',
+    trendyol: 'https://www.trendyol.com/apple/iphone-16-256gb-deniz-mavisi-p-857296130',
+  },
+  'iphone-16-256gb-ultramarine': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-256gb-lacivert-tas-p-HBCV00006Y4J72',
+    trendyol: 'https://www.trendyol.com/apple/iphone-16-256gb-laciverttas-p-857296124',
+  },
+
+  // ═══════════════════════════════════════════════════════
+  //  iPhone 16 — 512 GB
+  // ═══════════════════════════════════════════════════════
+  'iphone-16-512gb-black': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-512gb-siyah-p-HBCV00006Y4K7Y',
+    trendyol: 'https://www.trendyol.com/apple/iphone-16-512gb-siyah-p-857296101',
+  },
+  'iphone-16-512gb-white': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-512gb-beyaz-p-HBCV00006Y4K7Z',
+  },
+  'iphone-16-512gb-ultramarine': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-512gb-lacivert-tas-p-HBCV00006Y4K82',
+  },
+
+  // ═══════════════════════════════════════════════════════
+  //  iPhone 17 — 256 GB
   // ═══════════════════════════════════════════════════════
   'iphone-17-256gb-black': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-256-gb-siyah-p-HBCV00009Z3Y49',
@@ -189,7 +305,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
   },
 
   // ═══════════════════════════════════════════════════════
-  // iPhone 17 512GB
+  //  iPhone 17 — 512 GB
   // ═══════════════════════════════════════════════════════
   'iphone-17-512gb-black': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-512-gb-siyah-p-HBCV00009Z3V96',
@@ -210,8 +326,40 @@ export const PRODUCT_URLS: ProductUrlMap = {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-512-gb-ada-cayi-p-HBCV00009Z3XIN',
     trendyol: 'https://www.trendyol.com/apple/iphone-17-512gb-ada-cayi-p-985256839',
   },
+
   // ═══════════════════════════════════════════════════════
-  // iPhone 17 Pro 256GB
+  //  iPhone 17 Air — 256 GB
+  // ═══════════════════════════════════════════════════════
+  'iphone-17-air-256gb-black': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-air-256-gb-siyah-p-HBCV00009Z41KL',
+    trendyol: 'https://www.trendyol.com/apple/iphone-17-air-256gb-siyah-p-985256871',
+  },
+  'iphone-17-air-256gb-white': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-air-256-gb-beyaz-p-HBCV00009Z41KM',
+    trendyol: 'https://www.trendyol.com/apple/iphone-17-air-256gb-beyaz-p-985256874',
+  },
+  'iphone-17-air-256gb-fog-blue': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-air-256-gb-sis-mavisi-p-HBCV00009Z41KN',
+  },
+  'iphone-17-air-256gb-lavender': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-air-256-gb-lavanta-p-HBCV00009Z41KO',
+  },
+  'iphone-17-air-256gb-sage': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-air-256-gb-ada-cayi-p-HBCV00009Z41KP',
+  },
+
+  // ═══════════════════════════════════════════════════════
+  //  iPhone 17 Air — 512 GB
+  // ═══════════════════════════════════════════════════════
+  'iphone-17-air-512gb-black': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-air-512-gb-siyah-p-HBCV00009Z41KQ',
+  },
+  'iphone-17-air-512gb-white': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-air-512-gb-beyaz-p-HBCV00009Z41KR',
+  },
+
+  // ═══════════════════════════════════════════════════════
+  //  iPhone 17 Pro — 256 GB
   // ═══════════════════════════════════════════════════════
   'iphone-17-pro-256gb-obsidian': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-pro-256-gb-abis-p-HBCV00009Z3YPK',
@@ -234,7 +382,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
   },
 
   // ═══════════════════════════════════════════════════════
-  // iPhone 17 Pro 512GB
+  //  iPhone 17 Pro — 512 GB
   // ═══════════════════════════════════════════════════════
   'iphone-17-pro-512gb-obsidian': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-pro-512-gb-abis-p-HBCV00009Z3XXB',
@@ -251,7 +399,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
   },
 
   // ═══════════════════════════════════════════════════════
-  // iPhone 17 Pro 1TB
+  //  iPhone 17 Pro — 1 TB
   // ═══════════════════════════════════════════════════════
   'iphone-17-pro-1tb-obsidian': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-pro-1-tb-abis-p-HBCV00009Z403Y',
@@ -264,7 +412,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
   },
 
   // ═══════════════════════════════════════════════════════
-  // iPhone 17 Pro Max 256GB
+  //  iPhone 17 Pro Max — 256 GB
   // ═══════════════════════════════════════════════════════
   'iphone-17-pro-max-256gb-obsidian': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-pro-max-256-gb-abis-p-HBCV00009Z3XOE',
@@ -287,7 +435,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
   },
 
   // ═══════════════════════════════════════════════════════
-  // iPhone 17 Pro Max 512GB
+  //  iPhone 17 Pro Max — 512 GB
   // ═══════════════════════════════════════════════════════
   'iphone-17-pro-max-512gb-obsidian': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-pro-max-512-gb-abis-p-HBCV00009Z3SG4',
@@ -309,7 +457,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
   },
 
   // ═══════════════════════════════════════════════════════
-  // iPhone 17 Pro Max 1TB
+  //  iPhone 17 Pro Max — 1 TB
   // ═══════════════════════════════════════════════════════
   'iphone-17-pro-max-1tb-obsidian': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-pro-max-1-tb-abis-p-HBCV00009Z3XG9',

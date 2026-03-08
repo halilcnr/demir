@@ -239,3 +239,53 @@ export type DealType =
   | 'CROSS_RETAILER_LOW'
   | 'TARGET_PRICE'
   | 'SUDDEN_DROP';
+
+// ─── Best-by-Storage Types ──────────────────────────────────────
+export interface BestByStorageGroup {
+  familyName: string;
+  familySlug: string;
+  storageGb: number;
+  cheapest: {
+    variantId: string;
+    color: string;
+    price: number;
+    retailerName: string;
+    retailerSlug: string;
+    productUrl: string;
+    lastSeenAt: string | null;
+  } | null;
+  allRetailers: {
+    variantId: string;
+    color: string;
+    retailerName: string;
+    retailerSlug: string;
+    price: number | null;
+    stockStatus: string;
+    productUrl: string;
+    lastSeenAt: string | null;
+  }[];
+  priceInsights: {
+    cheapestRetailer: string | null;
+    secondCheapest: string | null;
+    priceSpread: number | null;
+    averagePrice: number | null;
+    cheapestColor: string | null;
+  };
+}
+
+// ─── System Health Types ────────────────────────────────────────
+export type HealthStatus = 'healthy' | 'warning' | 'degraded' | 'error';
+
+export interface SystemHealthInfo {
+  frontend: { status: HealthStatus; detail: string };
+  worker: { status: HealthStatus; detail: string };
+  database: { status: HealthStatus; detail: string };
+  syncEngine: { status: HealthStatus; detail: string };
+}
+
+// ─── Discovery Source Types ─────────────────────────────────────
+export const TRUSTED_RETAILERS = ['amazon', 'hepsiburada', 'trendyol', 'n11', 'pazarama'] as const;
+export type TrustedRetailer = typeof TRUSTED_RETAILERS[number];
+
+export const DISCOVERY_SOURCES = ['enuygun', 'cimri', 'akakce', 'epey'] as const;
+export type DiscoverySource = typeof DISCOVERY_SOURCES[number];

@@ -20,6 +20,7 @@ import {
   recordBlocked,
 } from './provider-health';
 import { clearSyncLogs, addSyncLog, finishSyncLogs } from './sync-logger';
+import { queryFallbackSources } from './discovery';
 
 /**
  * Tüm retailer'lardan veya belirli bir retailer'dan fiyat güncellemesi yapar.
@@ -155,6 +156,7 @@ export async function runSync(retailerSlug?: string) {
                 externalId: result.externalId,
                 lastSeenAt: new Date(),
                 lastSuccessAt: new Date(),
+                discoverySource: 'direct',
               },
             });
 
@@ -205,6 +207,72 @@ export async function runSync(retailerSlug?: string) {
             addSyncLog({ type: 'success', retailer: slug, variant: variantLabel, message: `${slug} → ${result.price.toLocaleString('tr-TR')} TL`, price: result.price });
           } else {
             console.warn(`[sync] ✗ ${slug} — scrape returned null for ${listing.productUrl}`);
+            addSyncLog({ type: 'warn', retailer: slug, variant: variantLabel, message: `${slug} — direkt veri alınamadı, fallback deneniyor...` });
+
+            // ── Fallback discovery ──
+            try {
+              const discoveries = await queryFallbackSources(
+                variant.family.name,
+                variant.storageGb,
+                variant.color
+              );
+
+              const discoveryForRetailer = discoveries.find(d => d.retailerSlug === slug);
+              if (discoveryForRetailer && discoveryForRetailer.productUrl !== listing.productUrl) {
+                console.log(`[sync] 🔍 Fallback found: ${discoveryForRetailer.source} → ${discoveryForRetailer.retailerSlug}`);
+                addSyncLog({ type: 'info', retailer: slug, variant: variantLabel, message: `${discoveryForRetailer.source} üzerinden yeni URL bulundu` });
+
+                // Update listing URL and try scrape again
+                await prisma.listing.update({
+                  where: { id: listing.id },
+                  data: {
+                    productUrl: discoveryForRetailer.productUrl,
+                    resolvedViaFallback: true,
+                    discoverySource: discoveryForRetailer.source,
+                    discoveryConfidence: discoveryForRetailer.confidence,
+                    lastResolvedAt: new Date(),
+                  },
+                });
+
+                // Retry with new URL
+                const retryResult = await provider.scrapeProductPage(discoveryForRetailer.productUrl);
+                if (retryResult && retryResult.price > 0) {
+                  const previousPrice = listing.currentPrice ?? null;
+                  await prisma.listing.update({
+                    where: { id: listing.id },
+                    data: {
+                      retailerProductTitle: retryResult.rawTitle,
+                      currentPrice: retryResult.price,
+                      previousPrice,
+                      lowestPrice: listing.lowestPrice ? Math.min(listing.lowestPrice, retryResult.price) : retryResult.price,
+                      highestPrice: listing.highestPrice ? Math.max(listing.highestPrice, retryResult.price) : retryResult.price,
+                      stockStatus: retryResult.stockStatus,
+                      lastSeenAt: new Date(),
+                      lastSuccessAt: new Date(),
+                    },
+                  });
+                  await prisma.priceSnapshot.create({
+                    data: {
+                      listingId: listing.id,
+                      observedPrice: retryResult.price,
+                      previousPrice,
+                      changePercent: previousPrice ? calculateChangePercent(previousPrice, retryResult.price) : null,
+                      changeAmount: previousPrice ? retryResult.price - previousPrice : null,
+                    },
+                  });
+                  itemsMatched++;
+                  successCount++;
+                  await recordSuccess(slug);
+                  console.log(`[sync] ✓ ${slug} (fallback) — ${retryResult.price} TL`);
+                  addSyncLog({ type: 'success', retailer: slug, variant: variantLabel, message: `${slug} (fallback) → ${retryResult.price.toLocaleString('tr-TR')} TL`, price: retryResult.price });
+                  await new Promise((r) => setTimeout(r, 1500 + Math.floor(Math.random() * 1000)));
+                  continue;
+                }
+              }
+            } catch (fbErr) {
+              console.warn(`[sync] Fallback discovery error for ${variantLabel}:`, fbErr instanceof Error ? fbErr.message : fbErr);
+            }
+
             addSyncLog({ type: 'error', retailer: slug, variant: variantLabel, message: `${slug} — veri alınamadı` });
           }
 

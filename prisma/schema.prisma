@@ -91,6 +91,11 @@ model Listing {
   lastSuccessAt       DateTime?
   lastFailureAt       DateTime?
   lastBlockedAt       DateTime?
+  // Fallback discovery metadata
+  discoverySource     String?   // "direct", "akakce", "cimri", "epey", "enuygun"
+  discoveryConfidence Float?    // 0-1 match confidence
+  resolvedViaFallback Boolean  @default(false)
+  lastResolvedAt      DateTime?
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
