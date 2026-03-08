@@ -103,6 +103,9 @@ model Listing {
   lastResolvedBySource  String?   // which discovery source last resolved this
   lastResolvedRetailerUrl String? // URL that was resolved via fallback
   lastFallbackFailureAt DateTime? // when the last fallback attempt failed
+  // Telegram notification tracking
+  lastNotifiedPrice   Float?    // Son bildirim gönderilen fiyat
+  notificationSentAt  DateTime? // Son bildirim zamanı
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 

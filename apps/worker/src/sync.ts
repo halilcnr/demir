@@ -21,6 +21,7 @@ import {
 } from './provider-health';
 import { clearSyncLogs, addSyncLog, finishSyncLogs, updateSyncProgress } from './sync-logger';
 import { queryFallbackSourcesDetailed } from './discovery';
+import { notifyPriceDrop } from './services/telegram';
 
 /**
  * Tüm retailer'lardan veya belirli bir retailer'dan fiyat güncellemesi yapar.
@@ -239,6 +240,25 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
               );
             }
 
+            // ── Telegram: notify on price drop ──
+            if (previousPrice && result.price < previousPrice) {
+              try {
+                await notifyPriceDrop({
+                  listingId: listing.id,
+                  variantLabel,
+                  retailerName: listing.retailer.name,
+                  retailerSlug: slug,
+                  productUrl: listing.productUrl,
+                  newPrice: result.price,
+                  oldPrice: previousPrice,
+                  lowestPrice: listing.lowestPrice ? Math.min(listing.lowestPrice, result.price) : result.price,
+                  isAllTimeLow: !listing.lowestPrice || result.price < listing.lowestPrice,
+                });
+              } catch (tgErr) {
+                console.error('[telegram] Notification error (non-fatal):', tgErr instanceof Error ? tgErr.message : tgErr);
+              }
+            }
+
             itemsMatched++;
             successCount++;
             await recordSuccess(slug);
@@ -312,6 +332,26 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
                   await recordSuccess(slug);
                   console.log(`[sync] ✓ ${slug} (fallback via ${discoveryForRetailer.source}) — ${retryResult.price} TL`);
                   addSyncLog({ type: 'success', retailer: slug, variant: variantLabel, message: `${slug} (fallback) → ${retryResult.price.toLocaleString('tr-TR')} TL`, price: retryResult.price });
+
+                  // ── Telegram: notify on price drop (fallback) ──
+                  if (previousPrice && retryResult.price < previousPrice) {
+                    try {
+                      await notifyPriceDrop({
+                        listingId: listing.id,
+                        variantLabel,
+                        retailerName: listing.retailer.name,
+                        retailerSlug: slug,
+                        productUrl: discoveryForRetailer.productUrl,
+                        newPrice: retryResult.price,
+                        oldPrice: previousPrice,
+                        lowestPrice: listing.lowestPrice ? Math.min(listing.lowestPrice, retryResult.price) : retryResult.price,
+                        isAllTimeLow: !listing.lowestPrice || retryResult.price < listing.lowestPrice,
+                      });
+                    } catch (tgErr) {
+                      console.error('[telegram] Notification error (non-fatal):', tgErr instanceof Error ? tgErr.message : tgErr);
+                    }
+                  }
+
                   await new Promise((r) => setTimeout(r, 1500 + Math.floor(Math.random() * 1000)));
                   continue;
                 } else {

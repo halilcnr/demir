@@ -2,6 +2,7 @@ import { startScheduler } from './scheduler';
 import { createServer } from 'http';
 import { runSync } from './sync';
 import { getSyncLogs, getSyncProgress } from './sync-logger';
+import { sendTestMessage, getTelegramStats } from './services/telegram';
 
 console.log('=== iPhone Price Tracker Worker ===');
 console.log(`Ortam: ${process.env.NODE_ENV ?? 'development'}`);
@@ -90,6 +91,27 @@ const server = createServer(async (req, res) => {
           isSyncing = false;
         });
     });
+    return;
+  }
+
+  // Telegram test endpoint
+  if (req.method === 'GET' && req.url === '/test-telegram') {
+    const authHeader = req.headers['authorization'] ?? '';
+    if (TRIGGER_SECRET && authHeader !== `Bearer ${TRIGGER_SECRET}`) {
+      res.writeHead(401);
+      res.end(JSON.stringify({ error: 'Unauthorized' }));
+      return;
+    }
+    const result = await sendTestMessage();
+    res.writeHead(result.ok ? 200 : 500);
+    res.end(JSON.stringify(result));
+    return;
+  }
+
+  // Telegram stats endpoint
+  if (req.method === 'GET' && req.url === '/telegram-stats') {
+    res.writeHead(200);
+    res.end(JSON.stringify(getTelegramStats()));
     return;
   }
 
