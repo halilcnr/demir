@@ -1,4 +1,4 @@
-import { BaseProvider } from './base';
+import { BaseProvider, type ScrapeStrategy } from './base';
 import { normalizeIPhoneModel } from '@repo/shared';
 import type { ScrapedProduct } from '@repo/shared';
 
@@ -14,6 +14,15 @@ export class MockProvider extends BaseProvider {
     super();
     this.retailerSlug = slug;
     this.retailerName = name;
+  }
+
+  protected getStrategies(): ScrapeStrategy[] {
+    return [
+      {
+        name: 'mock',
+        run: () => null,
+      },
+    ];
   }
 
   async search(query: string): Promise<ScrapedProduct[]> {
@@ -41,9 +50,5 @@ export class MockProvider extends BaseProvider {
         fetchedAt: new Date(),
       },
     ];
-  }
-
-  async scrapeProductPage(_url: string): Promise<ScrapedProduct | null> {
-    return null;
   }
 }

@@ -1,11 +1,114 @@
 import * as cheerio from 'cheerio';
-import { BaseProvider } from './base';
+import { BaseProvider, type ScrapeStrategy } from './base';
 import { normalizeIPhoneModel } from '@repo/shared';
 import type { ScrapedProduct } from '@repo/shared';
 
 export class PazaramaProvider extends BaseProvider {
   retailerSlug = 'pazarama';
   retailerName = 'Pazarama';
+
+  protected pacing = { baseDelayMs: 1500, jitterMs: 1000, concurrencyLimit: 1 };
+
+  protected getStrategies(): ScrapeStrategy[] {
+    return [
+      {
+        name: 'jsonld',
+        run: (html, url, $) => {
+          const ld = this.extractJsonLd(html);
+          if (!ld) return null;
+          const parsed = normalizeIPhoneModel(ld.name);
+          if (!parsed) return null;
+          const seller = $('.seller-name, .merchant-name').text().trim() || undefined;
+          return {
+            retailerSlug: this.retailerSlug,
+            retailerName: this.retailerName,
+            rawTitle: ld.name,
+            normalizedModel: parsed.model,
+            normalizedColor: parsed.color,
+            normalizedStorageGb: parsed.storageGb,
+            price: ld.price,
+            currency: 'TRY',
+            sellerName: seller,
+            imageUrl: ld.image,
+            stockStatus: ld.inStock ? 'IN_STOCK' : 'OUT_OF_STOCK',
+            productUrl: url,
+            fetchedAt: new Date(),
+          };
+        },
+      },
+      {
+        name: 'css-selectors',
+        run: (_html, url, $) => {
+          const title = $('h1.product-detail__title, h1.product-name, h1').first().text().trim();
+          const priceText = $('span.product-detail__price, .price .discounted-price, .product-price').first().text().trim();
+
+          if (!title || !priceText) return null;
+
+          const parsed = normalizeIPhoneModel(title);
+          if (!parsed) return null;
+
+          const price = this.parseTurkishPrice(priceText);
+          if (!price) return null;
+
+          const seller = $('.seller-name, .merchant-name').text().trim() || undefined;
+
+          return {
+            retailerSlug: this.retailerSlug,
+            retailerName: this.retailerName,
+            rawTitle: title,
+            normalizedModel: parsed.model,
+            normalizedColor: parsed.color,
+            normalizedStorageGb: parsed.storageGb,
+            price,
+            currency: 'TRY',
+            sellerName: seller,
+            stockStatus: $('.out-of-stock, .sold-out').length ? 'OUT_OF_STOCK' : 'IN_STOCK',
+            productUrl: url,
+            fetchedAt: new Date(),
+          };
+        },
+      },
+      {
+        name: 'next-data',
+        run: (html, url) => {
+          const data = this.extractEmbeddedJson(html, [
+            /<script\s+id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/,
+          ]);
+          if (!data) return null;
+
+          const props = (data as Record<string, unknown>).props as Record<string, unknown> | undefined;
+          const pageProps = props?.pageProps as Record<string, unknown> | undefined;
+          const product = (pageProps?.product ?? pageProps?.productDetail) as Record<string, unknown> | undefined;
+          if (!product) return null;
+
+          const name = (product.name as string) || (product.title as string) || '';
+          if (!name) return null;
+
+          const parsed = normalizeIPhoneModel(name);
+          if (!parsed) return null;
+
+          const priceRaw = product.price ?? product.salePrice ?? product.listPrice;
+          const price = typeof priceRaw === 'number' ? priceRaw : this.parseTurkishPrice(String(priceRaw));
+          if (!price || price <= 0) return null;
+
+          return {
+            retailerSlug: this.retailerSlug,
+            retailerName: this.retailerName,
+            rawTitle: name,
+            normalizedModel: parsed.model,
+            normalizedColor: parsed.color,
+            normalizedStorageGb: parsed.storageGb,
+            price,
+            currency: 'TRY',
+            imageUrl: (product.imageUrl ?? product.image) as string | undefined,
+            stockStatus: 'IN_STOCK',
+            productUrl: url,
+            fetchedAt: new Date(),
+          };
+        },
+      },
+    ];
+  }
 
   async search(query: string): Promise<ScrapedProduct[]> {
     const url = `https://www.pazarama.com/search?q=${encodeURIComponent(query)}`;
@@ -24,8 +127,8 @@ export class PazaramaProvider extends BaseProvider {
         const parsed = normalizeIPhoneModel(title);
         if (!parsed) return;
 
-        const price = parseFloat(priceText.replace(/[^\d,]/g, '').replace(',', '.'));
-        if (isNaN(price) || price < 1000) return;
+        const price = this.parseTurkishPrice(priceText);
+        if (!price || price < 1000) return;
 
         results.push({
           retailerSlug: this.retailerSlug,
@@ -46,72 +149,5 @@ export class PazaramaProvider extends BaseProvider {
     });
 
     return results;
-  }
-
-  async scrapeProductPage(url: string): Promise<ScrapedProduct | null> {
-    const html = await this.withRetry(() => this.fetchPage(url));
-    const $ = cheerio.load(html);
-
-    // Primary: JSON-LD extraction
-    const ld = this.extractJsonLd(html);
-    if (ld) {
-      const parsed = normalizeIPhoneModel(ld.name);
-      if (parsed) {
-        const seller = $('.seller-name, .merchant-name').text().trim() || undefined;
-        return {
-          retailerSlug: this.retailerSlug,
-          retailerName: this.retailerName,
-          rawTitle: ld.name,
-          normalizedModel: parsed.model,
-          normalizedColor: parsed.color,
-          normalizedStorageGb: parsed.storageGb,
-          price: ld.price,
-          currency: 'TRY',
-          sellerName: seller,
-          imageUrl: ld.image,
-          stockStatus: ld.inStock ? 'IN_STOCK' : 'OUT_OF_STOCK',
-          productUrl: url,
-          fetchedAt: new Date(),
-        };
-      }
-    }
-
-    // Fallback: CSS selectors
-    const title = $('h1.product-detail__title, h1.product-name, h1').first().text().trim();
-    const priceText = $('span.product-detail__price, .price .discounted-price, .product-price').first().text().trim();
-
-    if (!title || !priceText) {
-      console.warn(`[pazarama] Empty title/price — title=${!!title}, price=${!!priceText}, url=${url}`);
-      return null;
-    }
-
-    const parsed = normalizeIPhoneModel(title);
-    if (!parsed) {
-      console.warn(`[pazarama] Model parse failed — title="${title.slice(0, 80)}", url=${url}`);
-      return null;
-    }
-
-    const price = parseFloat(priceText.replace(/[^\d,]/g, '').replace(',', '.'));
-    if (isNaN(price)) {
-      console.warn(`[pazarama] Price parse failed — priceText="${priceText}", url=${url}`);
-      return null;
-    }
-
-    const seller = $('.seller-name, .merchant-name').text().trim() || undefined;
-
-    return {
-      retailerSlug: this.retailerSlug,
-      retailerName: this.retailerName,
-      rawTitle: title,
-      normalizedModel: parsed.model,
-      normalizedColor: parsed.color,
-      normalizedStorageGb: parsed.storageGb,
-      price,
-      currency: 'TRY',
-      sellerName: seller,
-      stockStatus: $('.out-of-stock, .sold-out').length ? 'OUT_OF_STOCK' : 'IN_STOCK',
-      productUrl: url,
-      fetchedAt: new Date(),
-    };
   }
 }

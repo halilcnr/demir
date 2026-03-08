@@ -5,8 +5,12 @@ import { detectDeal, checkAlertRules } from './deals';
 import {
   ProviderBlockedError,
   RetryableProviderError,
+  RetryableNetworkError,
+  RateLimitedError,
   ListingNotFoundError,
   ParseError,
+  InvalidListingError,
+  StrategyExhaustedError,
 } from './errors';
 import {
   resetCycleState,
@@ -103,6 +107,12 @@ export async function runSync(retailerSlug?: string) {
           itemsScanned++;
 
           if (result) {
+            // Log strategy metadata if available
+            const meta = (result as ScrapedProduct & { _meta?: Record<string, unknown> })._meta;
+            if (meta?.wasFallbackUsed) {
+              console.log(`[sync] ${slug} used fallback strategy "${meta.strategyUsed}" (${meta.responseTimeMs}ms, confidence: ${meta.parseConfidence})`);
+            }
+
             // Phase 1: We already know the variant — update the listing directly
             const previousPrice = listing.currentPrice ?? null;
 
@@ -175,7 +185,7 @@ export async function runSync(retailerSlug?: string) {
             console.warn(`[sync] ✗ ${slug} — scrape returned null for ${listing.productUrl}`);
           }
 
-          await new Promise((r) => setTimeout(r, 1500));
+          await new Promise((r) => setTimeout(r, 1500 + Math.floor(Math.random() * 1000)));
         } catch (err) {
           itemsScanned++;
 
@@ -184,7 +194,6 @@ export async function runSync(retailerSlug?: string) {
             console.error(`[sync] ${slug} provider blocked (HTTP 403)`);
             await recordBlocked(slug);
 
-            // Update listing blocked timestamp
             await prisma.listing.update({
               where: { id: listing.id },
               data: { lastBlockedAt: new Date(), lastFailureAt: new Date() },
@@ -192,13 +201,29 @@ export async function runSync(retailerSlug?: string) {
 
             errorLog.push(`${slug}: provider blocked (HTTP 403)`);
             lastErrorMessage = err.message;
-            // Break out — skip remaining listings for this provider
             break;
+          }
+
+          if (err instanceof RateLimitedError) {
+            console.warn(`[sync] ${slug} rate limited (HTTP 429) — ${listing.productUrl}`);
+            failureCount++;
+            await recordFailure(slug);
+            await prisma.listing.update({
+              where: { id: listing.id },
+              data: { lastFailureAt: new Date() },
+            });
+            errorLog.push(`${slug}: rate limited (429) — ${listing.productUrl}`);
+            // Wait longer before next request to this provider
+            if (err.retryAfterMs) {
+              await new Promise((r) => setTimeout(r, Math.min(err.retryAfterMs!, 30_000)));
+            } else {
+              await new Promise((r) => setTimeout(r, 10_000));
+            }
+            continue;
           }
 
           if (err instanceof ListingNotFoundError) {
             console.warn(`[sync] ${slug} listing not found (HTTP 404) — ${listing.productUrl}`);
-            // Mark listing as inactive
             await prisma.listing.update({
               where: { id: listing.id },
               data: {
@@ -211,15 +236,29 @@ export async function runSync(retailerSlug?: string) {
             continue;
           }
 
-          if (err instanceof ParseError) {
-            console.error(`[sync] ${slug} parse failed — ${listing.productUrl}`);
+          if (err instanceof InvalidListingError) {
+            console.warn(`[sync] ${slug} invalid listing — ${listing.productUrl}`);
+            await prisma.listing.update({
+              where: { id: listing.id },
+              data: { isActive: false, lastFailureAt: new Date() },
+            });
+            failureCount++;
+            continue;
+          }
+
+          if (err instanceof ParseError || err instanceof StrategyExhaustedError) {
+            console.error(`[sync] ${slug} parse/strategy failed — ${listing.productUrl}`);
             failureCount++;
             await recordFailure(slug);
             await prisma.listing.update({
               where: { id: listing.id },
               data: { lastFailureAt: new Date() },
             });
-            errorLog.push(`${slug}: parse failed — ${listing.productUrl}`);
+            if (err instanceof StrategyExhaustedError) {
+              errorLog.push(`${slug}: all strategies failed — ${listing.productUrl}`);
+            } else {
+              errorLog.push(`${slug}: parse failed — ${listing.productUrl}`);
+            }
             continue;
           }
 
@@ -235,17 +274,28 @@ export async function runSync(retailerSlug?: string) {
             continue;
           }
 
-          // Network / timeout / unknown errors
+          if (err instanceof RetryableNetworkError) {
+            console.error(`[sync] ${slug} network error (${err.reason}) — ${listing.productUrl}`);
+            failureCount++;
+            await recordFailure(slug);
+            await prisma.listing.update({
+              where: { id: listing.id },
+              data: { lastFailureAt: new Date() },
+            });
+            errorLog.push(`${slug}: network error (${err.reason}) — ${listing.productUrl}`);
+            continue;
+          }
+
+          // Unknown errors
           const msg = err instanceof Error ? err.message : String(err);
-          const isTimeout = msg.includes('timeout') || msg.includes('abort');
-          console.error(`[sync] ${slug} ${isTimeout ? 'timeout' : 'error'} — ${listing.productUrl}:`, msg);
+          console.error(`[sync] ${slug} unexpected error — ${listing.productUrl}:`, msg);
           failureCount++;
           await recordFailure(slug);
           await prisma.listing.update({
             where: { id: listing.id },
             data: { lastFailureAt: new Date() },
           });
-          errorLog.push(`${slug}: ${isTimeout ? 'timeout' : 'error'} — ${listing.productUrl}`);
+          errorLog.push(`${slug}: unexpected error — ${listing.productUrl}`);
         }
       }
     }

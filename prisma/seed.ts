@@ -3,25 +3,14 @@ import { PRODUCT_URLS } from './product-urls';
 
 const prisma = new PrismaClient();
 
-// Şu an sadece iPhone 17 ailesi aktif (test için)
 const FAMILIES = [
-  // { name: 'iPhone 13', sortOrder: 1, variants: { storages: [128, 256], colors: ['Midnight', 'Starlight', 'Blue', 'Pink', 'Green', 'Red'] } },
-  // { name: 'iPhone 13 Mini', sortOrder: 2, variants: { storages: [128, 256], colors: ['Midnight', 'Starlight', 'Blue', 'Pink', 'Green', 'Red'] } },
-  // { name: 'iPhone 14', sortOrder: 3, variants: { storages: [128, 256], colors: ['Midnight', 'Starlight', 'Blue', 'Purple', 'Red', 'Yellow'] } },
-  // { name: 'iPhone 14 Plus', sortOrder: 4, variants: { storages: [128, 256], colors: ['Midnight', 'Starlight', 'Blue', 'Purple', 'Red', 'Yellow'] } },
-  // { name: 'iPhone 14 Pro', sortOrder: 5, variants: { storages: [128, 256, 512, 1024], colors: ['Space Black', 'Silver', 'Gold', 'Deep Purple'] } },
-  // { name: 'iPhone 14 Pro Max', sortOrder: 6, variants: { storages: [128, 256, 512, 1024], colors: ['Space Black', 'Silver', 'Gold', 'Deep Purple'] } },
-  // { name: 'iPhone 15', sortOrder: 7, variants: { storages: [128, 256], colors: ['Black', 'Blue', 'Green', 'Yellow', 'Pink'] } },
-  // { name: 'iPhone 15 Plus', sortOrder: 8, variants: { storages: [128, 256], colors: ['Black', 'Blue', 'Green', 'Yellow', 'Pink'] } },
-  // { name: 'iPhone 15 Pro', sortOrder: 9, variants: { storages: [128, 256, 512, 1024], colors: ['Natural Titanium', 'Blue Titanium', 'White Titanium', 'Black Titanium'] } },
-  // { name: 'iPhone 15 Pro Max', sortOrder: 10, variants: { storages: [256, 512, 1024], colors: ['Natural Titanium', 'Blue Titanium', 'White Titanium', 'Black Titanium'] } },
-  // { name: 'iPhone 16', sortOrder: 11, variants: { storages: [128, 256, 512], colors: ['Black', 'White', 'Pink', 'Teal', 'Ultramarine'] } },
-  // { name: 'iPhone 16 Plus', sortOrder: 12, variants: { storages: [128, 256, 512], colors: ['Black', 'White', 'Pink', 'Teal', 'Ultramarine'] } },
-  // { name: 'iPhone 16 Pro', sortOrder: 13, variants: { storages: [128, 256, 512, 1024], colors: ['Natural Titanium', 'Blue Titanium', 'White Titanium', 'Black Titanium', 'Desert Titanium'] } },
-  // { name: 'iPhone 16 Pro Max', sortOrder: 14, variants: { storages: [256, 512, 1024], colors: ['Natural Titanium', 'Blue Titanium', 'White Titanium', 'Black Titanium', 'Desert Titanium'] } },
   { name: 'iPhone 17', sortOrder: 1, variants: { storages: [256, 512], colors: ['Black', 'White', 'Fog Blue', 'Lavender', 'Sage'] } },
   { name: 'iPhone 17 Pro', sortOrder: 2, variants: { storages: [256, 512, 1024], colors: ['Obsidian', 'Silver', 'Cosmic Orange'] } },
   { name: 'iPhone 17 Pro Max', sortOrder: 3, variants: { storages: [256, 512, 1024], colors: ['Obsidian', 'Silver', 'Cosmic Orange'] } },
+  { name: 'iPhone 16', sortOrder: 4, variants: { storages: [128, 256, 512], colors: ['Black', 'White', 'Pink', 'Teal', 'Ultramarine'] } },
+  { name: 'iPhone 15', sortOrder: 5, variants: { storages: [128, 256, 512], colors: ['Black', 'Blue', 'Green', 'Yellow', 'Pink'] } },
+  { name: 'iPhone 14', sortOrder: 6, variants: { storages: [128, 256, 512], colors: ['Midnight', 'Starlight', 'Blue', 'Purple', 'Red', 'Yellow'] } },
+  { name: 'iPhone 13', sortOrder: 7, variants: { storages: [128, 256, 512], colors: ['Midnight', 'Starlight', 'Blue', 'Pink', 'Green', 'Red'] } },
 ];
 
 function slugify(text: string): string {

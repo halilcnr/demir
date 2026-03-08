@@ -167,9 +167,14 @@ export interface SyncStatusResponse {
     status: string;
     startedAt: string | null;
     finishedAt: string | null;
+    durationMs: number | null;
     itemsScanned: number;
     itemsMatched: number;
     dealsFound: number;
+    successCount: number;
+    failureCount: number;
+    blockedCount: number;
+    lastErrorMessage: string | null;
     errors: string | null;
   } | null;
   retailers: {

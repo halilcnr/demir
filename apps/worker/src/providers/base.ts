@@ -3,21 +3,62 @@ import type { RetailerProvider, ScrapedProduct } from '@repo/shared';
 import {
   ProviderBlockedError,
   RetryableProviderError,
+  RetryableNetworkError,
+  RateLimitedError,
   ListingNotFoundError,
+  ParseError,
+  StrategyExhaustedError,
 } from '../errors';
 
-/**
- * Base adapter: Tüm retailer provider'lar bu sınıfı extend eder.
- * Ortak HTTP logic, rate limiting, retry, hata yönetimi burada.
- */
+// ─── Strategy Types ─────────────────────────────────────────────
+
+export interface ScrapeStrategy {
+  name: string;
+  run: (html: string, url: string, $: cheerio.CheerioAPI) => ScrapedProduct | null;
+}
+
+export interface ScrapeAttemptResult {
+  success: boolean;
+  strategyUsed: string;
+  responseTimeMs: number;
+  wasFallbackUsed: boolean;
+  parseConfidence: 'high' | 'medium' | 'low';
+  product: ScrapedProduct | null;
+  failures: { strategy: string; error: string }[];
+}
+
+// ─── Per-provider pacing config ─────────────────────────────────
+
+export interface ProviderPacing {
+  /** Base delay between requests in ms */
+  baseDelayMs: number;
+  /** Max random jitter added to delay in ms */
+  jitterMs: number;
+  /** Max concurrent requests (soft limit via pacing) */
+  concurrencyLimit: number;
+}
+
+const DEFAULT_PACING: ProviderPacing = {
+  baseDelayMs: 1500,
+  jitterMs: 1000,
+  concurrencyLimit: 1,
+};
+
+// ─── Base Provider ──────────────────────────────────────────────
+
 export abstract class BaseProvider implements RetailerProvider {
   abstract retailerSlug: string;
   abstract retailerName: string;
+
+  /** Override in subclass for provider-specific pacing */
+  protected pacing: ProviderPacing = DEFAULT_PACING;
 
   private static readonly USER_AGENTS = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
   ];
 
   protected get userAgent(): string {
@@ -25,15 +66,22 @@ export abstract class BaseProvider implements RetailerProvider {
   }
 
   /**
-   * Fetches a page and throws typed errors based on HTTP status:
-   * - 403 → ProviderBlockedError (do NOT retry)
-   * - 404 → ListingNotFoundError (mark listing invalid)
-   * - 5xx → RetryableProviderError (retry with backoff)
-   * - network/timeout → plain Error (retry)
+   * Subclasses must return their ordered strategy array.
+   * Strategies are tried in order; first success wins.
+   */
+  protected abstract getStrategies(): ScrapeStrategy[];
+
+  /**
+   * Fetches a page with browser-like headers and typed error mapping.
+   * - 403 → ProviderBlockedError
+   * - 404 → ListingNotFoundError
+   * - 429 → RateLimitedError
+   * - 5xx → RetryableProviderError
+   * - network/timeout → RetryableNetworkError
    */
   protected async fetchPage(url: string): Promise<string> {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15_000);
+    const timeoutId = setTimeout(() => controller.abort(), 20_000);
 
     try {
       const res = await fetch(url, {
@@ -41,6 +89,7 @@ export abstract class BaseProvider implements RetailerProvider {
           'User-Agent': this.userAgent,
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
           'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Accept-Encoding': 'gzip, deflate, br',
           'Cache-Control': 'no-cache',
           'Pragma': 'no-cache',
           'Sec-Fetch-Dest': 'document',
@@ -48,6 +97,7 @@ export abstract class BaseProvider implements RetailerProvider {
           'Sec-Fetch-Site': 'none',
           'Sec-Fetch-User': '?1',
           'Upgrade-Insecure-Requests': '1',
+          'DNT': '1',
         },
         signal: controller.signal,
         redirect: 'follow',
@@ -55,6 +105,12 @@ export abstract class BaseProvider implements RetailerProvider {
 
       if (res.status === 403) {
         throw new ProviderBlockedError(this.retailerSlug, url);
+      }
+
+      if (res.status === 429) {
+        const retryAfter = res.headers.get('retry-after');
+        const retryAfterMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : undefined;
+        throw new RateLimitedError(this.retailerSlug, url, retryAfterMs);
       }
 
       if (res.status === 404) {
@@ -66,43 +122,57 @@ export abstract class BaseProvider implements RetailerProvider {
       }
 
       if (!res.ok) {
-        throw new Error(`[${this.retailerSlug}] HTTP ${res.status} — ${url}`);
+        throw new RetryableProviderError(this.retailerSlug, res.status, url);
       }
 
       return await res.text();
     } catch (err) {
-      // Re-throw our typed errors as-is
       if (
         err instanceof ProviderBlockedError ||
         err instanceof ListingNotFoundError ||
-        err instanceof RetryableProviderError
+        err instanceof RetryableProviderError ||
+        err instanceof RateLimitedError
       ) {
         throw err;
       }
-      // Network / abort errors
       if (err instanceof DOMException || (err instanceof Error && err.name === 'AbortError')) {
-        throw new Error(`[${this.retailerSlug}] timeout — ${url}`);
+        throw new RetryableNetworkError(this.retailerSlug, url, 'timeout');
       }
-      throw err;
+      if (err instanceof TypeError && (err as Error).message?.includes('fetch')) {
+        throw new RetryableNetworkError(this.retailerSlug, url, 'network');
+      }
+      throw new RetryableNetworkError(
+        this.retailerSlug,
+        url,
+        err instanceof Error ? err.message : String(err),
+      );
     } finally {
       clearTimeout(timeoutId);
     }
   }
 
-  protected async delay(ms: number = 1500): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+  /** Sleep with configurable provider-specific jitter */
+  protected async pacedDelay(): Promise<void> {
+    const jitter = Math.floor(Math.random() * this.pacing.jitterMs);
+    const total = this.pacing.baseDelayMs + jitter;
+    return new Promise((r) => setTimeout(r, total));
+  }
+
+  protected async delay(ms: number): Promise<void> {
+    return new Promise((r) => setTimeout(r, ms));
   }
 
   /**
-   * Status-aware retry wrapper:
+   * Status-aware retry wrapper with exponential backoff:
    * - ProviderBlockedError → immediate throw (no retry)
    * - ListingNotFoundError → immediate throw (no retry)
-   * - RetryableProviderError / network errors → exponential backoff
+   * - RateLimitedError → backoff with hint from Retry-After
+   * - RetryableProviderError / RetryableNetworkError → exponential backoff
    */
   protected async withRetry<T>(
     fn: () => Promise<T>,
-    maxRetries = 3,
-    baseDelayMs = 2000
+    maxRetries = 2,
+    baseDelayMs = 3000,
   ): Promise<T> {
     let lastError: Error | null = null;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -117,9 +187,14 @@ export abstract class BaseProvider implements RetailerProvider {
         }
 
         if (attempt < maxRetries) {
-          const waitMs = baseDelayMs * Math.pow(2, attempt);
+          let waitMs: number;
+          if (err instanceof RateLimitedError && err.retryAfterMs) {
+            waitMs = Math.min(err.retryAfterMs, 30_000);
+          } else {
+            waitMs = baseDelayMs * Math.pow(2, attempt) + Math.floor(Math.random() * 1000);
+          }
           console.warn(
-            `[${this.retailerSlug}] Attempt ${attempt + 1} failed, retrying in ${waitMs}ms...`
+            `[${this.retailerSlug}] Attempt ${attempt + 1}/${maxRetries + 1} failed, retrying in ${waitMs}ms...`,
           );
           await this.delay(waitMs);
         }
@@ -129,11 +204,58 @@ export abstract class BaseProvider implements RetailerProvider {
   }
 
   abstract search(query: string): Promise<ScrapedProduct[]>;
-  abstract scrapeProductPage(url: string): Promise<ScrapedProduct | null>;
+
+  /**
+   * Multi-strategy scrape: fetches the page once, then runs strategies in order.
+   * Returns first successful result or throws StrategyExhaustedError.
+   */
+  async scrapeProductPage(url: string): Promise<ScrapedProduct | null> {
+    const startMs = Date.now();
+    const html = await this.withRetry(() => this.fetchPage(url));
+    const fetchMs = Date.now() - startMs;
+    const $ = cheerio.load(html);
+
+    const strategies = this.getStrategies();
+    const failures: { strategy: string; error: string }[] = [];
+
+    for (let i = 0; i < strategies.length; i++) {
+      const strategy = strategies[i];
+      try {
+        const result = strategy.run(html, url, $);
+        if (result && result.price > 0) {
+          const confidence: 'high' | 'medium' | 'low' = i === 0 ? 'high' : i === 1 ? 'medium' : 'low';
+          if (i > 0) {
+            console.log(
+              `[${this.retailerSlug}] strategy "${strategy.name}" succeeded (fallback #${i}, ${fetchMs}ms) — ${url}`,
+            );
+          }
+          // Attach strategy metadata
+          (result as ScrapedProduct & { _meta?: Record<string, unknown> })._meta = {
+            strategyUsed: strategy.name,
+            responseTimeMs: fetchMs,
+            wasFallbackUsed: i > 0,
+            parseConfidence: confidence,
+          };
+          return result;
+        }
+        failures.push({ strategy: strategy.name, error: 'returned null or invalid price' });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        failures.push({ strategy: strategy.name, error: msg });
+      }
+    }
+
+    // All strategies failed
+    console.warn(
+      `[${this.retailerSlug}] all ${strategies.length} strategies failed — ${url}: ${failures.map((f) => `${f.strategy}(${f.error})`).join(', ')}`,
+    );
+    return null;
+  }
+
+  // ─── Shared Parsing Utilities ─────────────────────────────────
 
   /**
    * Extract product data from JSON-LD (schema.org) script tags.
-   * Returns { name, price, currency, inStock, image } or null.
    */
   protected extractJsonLd(html: string): {
     name: string;
@@ -151,13 +273,11 @@ export abstract class BaseProvider implements RetailerProvider {
         if (!text) continue;
         const data = JSON.parse(text);
 
-        // Handle Product or ProductGroup types
         if (data['@type'] !== 'Product' && data['@type'] !== 'ProductGroup') continue;
 
         const name: string = data.name || '';
         if (!name) continue;
 
-        // Extract price from offers
         const offers = data.offers;
         if (!offers) continue;
 
@@ -166,7 +286,6 @@ export abstract class BaseProvider implements RetailerProvider {
         let inStock = true;
 
         if (Array.isArray(offers)) {
-          // Multiple offers — take the first with a valid price
           for (const offer of offers) {
             const p = parseFloat(offer.price);
             if (!isNaN(p) && p > 0) {
@@ -194,5 +313,76 @@ export abstract class BaseProvider implements RetailerProvider {
       }
     }
     return null;
+  }
+
+  /**
+   * Extract product data from Open Graph / meta tags.
+   */
+  protected extractMetaTags($: cheerio.CheerioAPI): {
+    name: string | null;
+    price: number | null;
+    image: string | null;
+  } {
+    const name = $('meta[property="og:title"]').attr('content')?.trim()
+      || $('meta[name="title"]').attr('content')?.trim()
+      || null;
+    const priceStr = $('meta[property="product:price:amount"]').attr('content')?.trim()
+      || $('meta[property="og:price:amount"]').attr('content')?.trim()
+      || null;
+    const image = $('meta[property="og:image"]').attr('content')?.trim() || null;
+
+    let price: number | null = null;
+    if (priceStr) {
+      price = this.parseTurkishPrice(priceStr);
+    }
+
+    return { name, price, image };
+  }
+
+  /**
+   * Extract embedded JSON data from script tags (non-JSON-LD).
+   * Looks for __NEXT_DATA__, window.__INITIAL_STATE__, etc.
+   */
+  protected extractEmbeddedJson(html: string, patterns: RegExp[]): Record<string, unknown> | null {
+    for (const pattern of patterns) {
+      const match = html.match(pattern);
+      if (match?.[1]) {
+        try {
+          return JSON.parse(match[1]);
+        } catch {
+          continue;
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Parse a Turkish-formatted price string correctly.
+   * Handles: "74.499,00 TL", "₺74.499", "74499", "74.499"
+   * CRITICAL: 74.499 → 74499 (dot is thousands separator in TR)
+   */
+  protected parseTurkishPrice(text: string): number | null {
+    // Strip currency symbols and whitespace
+    let cleaned = text.replace(/[₺TL\s]/gi, '').trim();
+    if (!cleaned) return null;
+
+    // Turkish format: dots are thousands, comma is decimal
+    // If there's a comma → use it as decimal separator
+    if (cleaned.includes(',')) {
+      cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+    } else {
+      // No comma — dots could be thousands separators
+      // 74.499 → 74499 (thousands), but 74.50 → 74.50 (decimal)
+      // Heuristic: if digits after last dot are exactly 3, it's thousands
+      const dotParts = cleaned.split('.');
+      if (dotParts.length > 1 && dotParts[dotParts.length - 1].length === 3) {
+        cleaned = cleaned.replace(/\./g, '');
+      }
+    }
+
+    cleaned = cleaned.replace(/[^\d.]/g, '');
+    const price = parseFloat(cleaned);
+    return !isNaN(price) && price > 0 ? price : null;
   }
 }

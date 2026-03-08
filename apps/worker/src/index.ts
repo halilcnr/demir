@@ -1,9 +1,69 @@
 import { startScheduler } from './scheduler';
+import { createServer } from 'http';
+import { runSync } from './sync';
 
 console.log('=== iPhone Price Tracker Worker ===');
 console.log(`Ortam: ${process.env.NODE_ENV ?? 'development'}`);
 console.log(`Mock Providers: ${process.env.USE_MOCK_PROVIDERS === 'true' ? 'Evet' : 'Hayır'}`);
 console.log('==================================');
+
+// ── HTTP trigger endpoint for manual sync ──
+const PORT = parseInt(process.env.PORT ?? '3001', 10);
+const TRIGGER_SECRET = process.env.SYNC_TRIGGER_SECRET ?? '';
+
+let isSyncing = false;
+
+const server = createServer(async (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+
+  // Health check
+  if (req.method === 'GET' && req.url === '/health') {
+    res.writeHead(200);
+    res.end(JSON.stringify({ ok: true, syncing: isSyncing }));
+    return;
+  }
+
+  // Manual sync trigger
+  if (req.method === 'POST' && req.url === '/trigger-sync') {
+    // Auth check
+    const authHeader = req.headers['authorization'] ?? '';
+    if (TRIGGER_SECRET && authHeader !== `Bearer ${TRIGGER_SECRET}`) {
+      res.writeHead(401);
+      res.end(JSON.stringify({ error: 'Unauthorized' }));
+      return;
+    }
+
+    if (isSyncing) {
+      res.writeHead(409);
+      res.end(JSON.stringify({ error: 'Sync already in progress' }));
+      return;
+    }
+
+    isSyncing = true;
+    res.writeHead(202);
+    res.end(JSON.stringify({ message: 'Sync triggered', startedAt: new Date().toISOString() }));
+
+    // Run sync in background (don't await in request handler)
+    runSync()
+      .then((result) => {
+        console.log(`[trigger] Manual sync completed: ${result.itemsScanned} scanned, ${result.itemsMatched} matched`);
+      })
+      .catch((err) => {
+        console.error('[trigger] Manual sync failed:', err);
+      })
+      .finally(() => {
+        isSyncing = false;
+      });
+    return;
+  }
+
+  res.writeHead(404);
+  res.end(JSON.stringify({ error: 'Not found' }));
+});
+
+server.listen(PORT, () => {
+  console.log(`[worker] HTTP trigger listening on port ${PORT}`);
+});
 
 startScheduler().catch((err) => {
   console.error('[worker] Kritik hata:', err);
