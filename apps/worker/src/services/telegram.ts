@@ -178,9 +178,27 @@ export async function notifyPriceDrop(payload: PriceDropPayload): Promise<void> 
   const message = buildPriceDropMessage(payload);
   const result = await broadcast(message);
 
+  const msgType = payload.isAllTimeLow ? 'ALL_TIME_LOW' : 'PRICE_DROP';
+
   if (result.sent > 0) {
     sentCount++;
     console.log(`[telegram] ✓ Broadcast price drop: ${payload.retailerSlug} — ${payload.variantLabel} (${payload.newPrice} TL) → ${result.sent} subscriber(s)`);
+
+    await prisma.notificationLog.create({
+      data: {
+        messageType: msgType as never,
+        status: result.failed > 0 ? 'PARTIAL' : 'SENT',
+        productName: payload.variantLabel,
+        retailer: payload.retailerName,
+        oldPrice: payload.oldPrice,
+        newPrice: payload.newPrice,
+        dropPercent: ((payload.oldPrice - payload.newPrice) / payload.oldPrice) * 100,
+        messageText: message,
+        sentTo: result.sent,
+        failedTo: result.failed,
+        listingId: payload.listingId,
+      },
+    }).catch(() => {});
 
     await prisma.listing.update({
       where: { id: payload.listingId },
@@ -194,6 +212,23 @@ export async function notifyPriceDrop(payload: PriceDropPayload): Promise<void> 
   } else {
     failCount++;
     console.error(`[telegram] ✗ Broadcast failed: ${result.failed} failure(s), 0 sent`);
+
+    await prisma.notificationLog.create({
+      data: {
+        messageType: msgType as never,
+        status: 'FAILED',
+        productName: payload.variantLabel,
+        retailer: payload.retailerName,
+        oldPrice: payload.oldPrice,
+        newPrice: payload.newPrice,
+        dropPercent: ((payload.oldPrice - payload.newPrice) / payload.oldPrice) * 100,
+        messageText: message,
+        sentTo: 0,
+        failedTo: result.failed,
+        errorMessage: 'All subscribers failed',
+        listingId: payload.listingId,
+      },
+    }).catch(() => {});
   }
 }
 
@@ -211,6 +246,17 @@ export async function sendTestMessage(): Promise<{ ok: boolean; sent?: number; e
   ].join('\n');
 
   const result = await broadcast(text);
+
+  await prisma.notificationLog.create({
+    data: {
+      messageType: 'TEST_MESSAGE',
+      status: result.sent > 0 ? 'SENT' : 'FAILED',
+      messageText: text,
+      sentTo: result.sent,
+      failedTo: result.failed,
+      errorMessage: result.sent === 0 ? (result.failed > 0 ? `${result.failed} failed` : 'No active subscribers') : null,
+    },
+  }).catch(() => {});
 
   if (result.sent > 0) {
     return { ok: true, sent: result.sent };

@@ -110,8 +110,27 @@ const server = createServer(async (req, res) => {
 
   // Telegram stats endpoint
   if (req.method === 'GET' && req.url === '/telegram-stats') {
+    const stats = getTelegramStats();
+    // Also fetch subscriber count from DB
+    const { prisma } = await import('@repo/shared');
+    const [activeCount, totalCount] = await Promise.all([
+      prisma.telegramSubscriber.count({ where: { isActive: true } }),
+      prisma.telegramSubscriber.count(),
+    ]);
     res.writeHead(200);
-    res.end(JSON.stringify(getTelegramStats()));
+    res.end(JSON.stringify({ ...stats, activeSubscribers: activeCount, totalSubscribers: totalCount }));
+    return;
+  }
+
+  // Telegram subscribers list
+  if (req.method === 'GET' && req.url === '/telegram-subscribers') {
+    const { prisma } = await import('@repo/shared');
+    const subscribers = await prisma.telegramSubscriber.findMany({
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, chatId: true, username: true, firstName: true, isActive: true, createdAt: true },
+    });
+    res.writeHead(200);
+    res.end(JSON.stringify(subscribers));
     return;
   }
 

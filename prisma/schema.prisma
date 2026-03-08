@@ -265,6 +265,41 @@ model TelegramSubscriber {
   @@index([isActive])
 }
 
+// ─── Telegram Bildirim Geçmişi ──────────────────────────────────
+model NotificationLog {
+  id            String             @id @default(cuid())
+  messageType   NotificationMsgType
+  status        NotificationStatus
+  productName   String?
+  retailer      String?
+  oldPrice      Float?
+  newPrice      Float?
+  dropPercent   Float?
+  messageText   String?
+  sentTo        Int                @default(0) // kaç kişiye gönderildi
+  failedTo      Int                @default(0)
+  errorMessage  String?
+  listingId     String?
+  createdAt     DateTime           @default(now())
+
+  @@index([createdAt])
+  @@index([messageType])
+  @@index([status])
+}
+
+enum NotificationMsgType {
+  PRICE_DROP
+  ALL_TIME_LOW
+  TEST_MESSAGE
+}
+
+enum NotificationStatus {
+  SENT
+  PARTIAL
+  FAILED
+  SKIPPED
+}
+
 // ─── Senkronizasyon İşleri ───────────────────────────────────────
 model SyncJob {
   id             String     @id @default(cuid())
