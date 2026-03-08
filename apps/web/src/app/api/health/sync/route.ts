@@ -1,20 +1,15 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@repo/shared';
 
-/** Son sync durumu ve retailer bazlı sync bilgisi */
+/** GET /api/health/sync — recent sync job health overview */
 export async function GET() {
-  const [lastJob, retailers] = await Promise.all([
+  const [lastJob, recentJobs] = await Promise.all([
     prisma.syncJob.findFirst({
       orderBy: { createdAt: 'desc' },
     }),
-    prisma.retailer.findMany({
-      include: {
-        listings: {
-          orderBy: { lastSeenAt: 'desc' },
-          take: 1,
-          select: { lastSeenAt: true },
-        },
-      },
+    prisma.syncJob.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 10,
     }),
   ]);
 
@@ -36,11 +31,17 @@ export async function GET() {
           errors: lastJob.errors,
         }
       : null,
-    retailers: retailers.map((r) => ({
-      name: r.name,
-      slug: r.slug,
-      isActive: r.isActive,
-      lastSyncedAt: r.listings[0]?.lastSeenAt?.toISOString() ?? null,
+    recentJobs: recentJobs.map((j) => ({
+      id: j.id,
+      status: j.status,
+      startedAt: j.startedAt?.toISOString() ?? null,
+      finishedAt: j.finishedAt?.toISOString() ?? null,
+      durationMs: j.durationMs,
+      itemsScanned: j.itemsScanned,
+      itemsMatched: j.itemsMatched,
+      successCount: j.successCount,
+      failureCount: j.failureCount,
+      blockedCount: j.blockedCount,
     })),
   });
 }

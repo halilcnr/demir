@@ -2,13 +2,29 @@ import { prisma, calculateChangePercent } from '@repo/shared';
 import type { ScrapedProduct } from '@repo/shared';
 import { getProviders, getProvider } from './providers';
 import { detectDeal, checkAlertRules } from './deals';
+import {
+  ProviderBlockedError,
+  RetryableProviderError,
+  ListingNotFoundError,
+  ParseError,
+} from './errors';
+import {
+  resetCycleState,
+  isBlockedThisCycle,
+  recordSuccess,
+  recordFailure,
+  recordBlocked,
+} from './provider-health';
 
 /**
  * Tüm retailer'lardan veya belirli bir retailer'dan fiyat güncellemesi yapar.
  * 1) Önce DB'deki mevcut listing URL'lerini doğrudan scrape eder (daha güvenilir)
- * 2) URL'si olmayan varyantlar için arama tabanlı keşif yapar (fallback)
+ * 2) URL'si olmayan varyantlar için arama tabanlı keşif yapar (fallback) — şu an devre dışı
  */
 export async function runSync(retailerSlug?: string) {
+  const startMs = Date.now();
+  resetCycleState();
+
   const syncJob = await prisma.syncJob.create({
     data: {
       retailerId: retailerSlug
@@ -22,17 +38,31 @@ export async function runSync(retailerSlug?: string) {
   let itemsScanned = 0;
   let itemsMatched = 0;
   let dealsFound = 0;
+  let successCount = 0;
+  let failureCount = 0;
+  let blockedCount = 0;
+  let lastErrorMessage: string | null = null;
+  const errorLog: string[] = [];
 
   try {
     const providers = retailerSlug ? [getProvider(retailerSlug)].filter(Boolean) : getProviders();
 
     // ── Aşama 1: Mevcut URL'lerden doğrudan fiyat çekme ──
     console.log('[sync] Aşama 1: Mevcut listing URL\'lerinden fiyat güncelleniyor...');
+
     for (const provider of providers) {
       if (!provider) continue;
 
+      const slug = provider.retailerSlug;
+
+      // Skip if already blocked in this cycle
+      if (isBlockedThisCycle(slug)) {
+        console.log(`[sync] ${slug} skipped — blocked this cycle`);
+        continue;
+      }
+
       const retailer = await prisma.retailer.findUnique({
-        where: { slug: provider.retailerSlug },
+        where: { slug },
       });
       if (!retailer || !retailer.isActive) continue;
 
@@ -48,14 +78,26 @@ export async function runSync(retailerSlug?: string) {
         },
       });
 
-      console.log(`[sync] ${provider.retailerSlug}: ${existingListings.length} mevcut listing bulundu`);
+      console.log(`[sync] ${slug}: ${existingListings.length} mevcut listing bulundu`);
 
       for (const listing of existingListings) {
+        // Re-check block status inside listing loop (may have been blocked mid-cycle)
+        if (isBlockedThisCycle(slug)) {
+          console.log(`[sync] ${slug} blocked mid-cycle, skipping remaining listings`);
+          break;
+        }
+
         try {
-          // URL sahte/search URL ise atla (seed mock verisi)
+          // URL sahte/search URL ise atla
           if (listing.productUrl.includes('/search?q=') || listing.productUrl.includes('/ara?q=') || listing.productUrl.includes('/arama?q=') || listing.productUrl.includes('/s?k=') || listing.productUrl.includes('/sr?q=')) {
             continue;
           }
+
+          // Mark as checked regardless of outcome
+          await prisma.listing.update({
+            where: { id: listing.id },
+            data: { lastCheckedAt: new Date() },
+          });
 
           const result = await provider.scrapeProductPage(listing.productUrl);
           itemsScanned++;
@@ -64,54 +106,99 @@ export async function runSync(retailerSlug?: string) {
             const matched = await upsertListing(result, retailer.id);
             if (matched) {
               itemsMatched++;
+              successCount++;
+
+              // Update listing success timestamp
+              await prisma.listing.update({
+                where: { id: listing.id },
+                data: { lastSuccessAt: new Date() },
+              });
+
+              await recordSuccess(slug);
+
               if (matched.isDeal) dealsFound++;
             }
           }
 
           await new Promise((r) => setTimeout(r, 1500));
         } catch (err) {
-          console.error(`[sync] ${provider.retailerSlug} - URL scrape hatası (${listing.productUrl}):`, err);
+          itemsScanned++;
+
+          if (err instanceof ProviderBlockedError) {
+            blockedCount++;
+            console.error(`[sync] ${slug} provider blocked (HTTP 403)`);
+            await recordBlocked(slug);
+
+            // Update listing blocked timestamp
+            await prisma.listing.update({
+              where: { id: listing.id },
+              data: { lastBlockedAt: new Date(), lastFailureAt: new Date() },
+            });
+
+            errorLog.push(`${slug}: provider blocked (HTTP 403)`);
+            lastErrorMessage = err.message;
+            // Break out — skip remaining listings for this provider
+            break;
+          }
+
+          if (err instanceof ListingNotFoundError) {
+            console.warn(`[sync] ${slug} listing not found (HTTP 404) — ${listing.productUrl}`);
+            // Mark listing as inactive
+            await prisma.listing.update({
+              where: { id: listing.id },
+              data: {
+                isActive: false,
+                lastFailureAt: new Date(),
+              },
+            });
+            failureCount++;
+            errorLog.push(`${slug}: listing removed (404) — ${listing.productUrl}`);
+            continue;
+          }
+
+          if (err instanceof ParseError) {
+            console.error(`[sync] ${slug} parse failed — ${listing.productUrl}`);
+            failureCount++;
+            await recordFailure(slug);
+            await prisma.listing.update({
+              where: { id: listing.id },
+              data: { lastFailureAt: new Date() },
+            });
+            errorLog.push(`${slug}: parse failed — ${listing.productUrl}`);
+            continue;
+          }
+
+          if (err instanceof RetryableProviderError) {
+            console.error(`[sync] ${slug} server error (HTTP ${err.statusCode}) — ${listing.productUrl}`);
+            failureCount++;
+            await recordFailure(slug);
+            await prisma.listing.update({
+              where: { id: listing.id },
+              data: { lastFailureAt: new Date() },
+            });
+            errorLog.push(`${slug}: server error (${err.statusCode}) — ${listing.productUrl}`);
+            continue;
+          }
+
+          // Network / timeout / unknown errors
+          const msg = err instanceof Error ? err.message : String(err);
+          const isTimeout = msg.includes('timeout') || msg.includes('abort');
+          console.error(`[sync] ${slug} ${isTimeout ? 'timeout' : 'error'} — ${listing.productUrl}:`, msg);
+          failureCount++;
+          await recordFailure(slug);
+          await prisma.listing.update({
+            where: { id: listing.id },
+            data: { lastFailureAt: new Date() },
+          });
+          errorLog.push(`${slug}: ${isTimeout ? 'timeout' : 'error'} — ${listing.productUrl}`);
         }
       }
     }
 
     // ── Aşama 2: Arama tabanlı keşif (şu an devre dışı — park halinde) ──
-    // console.log('[sync] Aşama 2: Arama tabanlı keşif...');
-    // const families = await prisma.productFamily.findMany({
-    //   where: { isActive: true },
-    //   select: { name: true },
-    // });
-    //
-    // for (const provider of providers) {
-    //   if (!provider) continue;
-    //
-    //   const retailer = await prisma.retailer.findUnique({
-    //     where: { slug: provider.retailerSlug },
-    //   });
-    //   if (!retailer || !retailer.isActive) continue;
-    //
-    //   const uniqueQueries = [...new Set(families.map((f) => f.name))];
-    //
-    //   for (const query of uniqueQueries) {
-    //     try {
-    //       const results = await provider.search(query);
-    //       itemsScanned += results.length;
-    //
-    //       for (const result of results) {
-    //         const matched = await upsertListing(result, retailer.id);
-    //         if (matched) {
-    //           itemsMatched++;
-    //           if (matched.isDeal) dealsFound++;
-    //         }
-    //       }
-    //
-    //       // Rate limiting
-    //       await new Promise((r) => setTimeout(r, 1500));
-    //     } catch (err) {
-    //       console.error(`[sync] ${provider.retailerSlug} - "${query}" hatası:`, err);
-    //     }
-    //   }
-    // }
+    // ...
+
+    const durationMs = Date.now() - startMs;
 
     await prisma.syncJob.update({
       where: { id: syncJob.id },
@@ -121,21 +208,39 @@ export async function runSync(retailerSlug?: string) {
         itemsScanned,
         itemsMatched,
         dealsFound,
+        successCount,
+        failureCount,
+        blockedCount,
+        durationMs,
+        lastErrorMessage,
+        errors: errorLog.length > 0 ? JSON.stringify(errorLog) : null,
       },
     });
 
-    console.log(`[sync] Tamamlandı: ${itemsScanned} taranan, ${itemsMatched} eşleşen, ${dealsFound} fırsat`);
+    console.log(
+      `[sync] Tamamlandı (${(durationMs / 1000).toFixed(1)}s): ` +
+      `${itemsScanned} taranan, ${itemsMatched} eşleşen, ${dealsFound} fırsat, ` +
+      `${successCount} başarılı, ${failureCount} hata, ${blockedCount} engellendi`
+    );
     return { jobId: syncJob.id, itemsScanned, itemsMatched, dealsFound };
   } catch (error) {
+    const durationMs = Date.now() - startMs;
+    lastErrorMessage = error instanceof Error ? error.message : 'Unknown error';
+
     await prisma.syncJob.update({
       where: { id: syncJob.id },
       data: {
         status: 'FAILED',
         finishedAt: new Date(),
-        errors: error instanceof Error ? error.message : 'Unknown error',
         itemsScanned,
         itemsMatched,
         dealsFound,
+        successCount,
+        failureCount,
+        blockedCount,
+        durationMs,
+        lastErrorMessage,
+        errors: errorLog.length > 0 ? JSON.stringify(errorLog) : lastErrorMessage,
       },
     });
     throw error;

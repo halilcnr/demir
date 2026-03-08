@@ -14,6 +14,7 @@ import { StatCard, Card } from '@/components/ui/card';
 import { Badge, PriceChangeBadge } from '@/components/ui/badge';
 import { DashboardSkeleton } from '@/components/ui/skeleton';
 import { EmptyState, ErrorState } from '@/components/ui/empty-state';
+import { ProviderHealthCard } from '@/components/provider-health-card';
 import { formatPrice, formatRelativeDate } from '@repo/shared';
 import type { DashboardSummary } from '@repo/shared';
 import Link from 'next/link';
@@ -56,6 +57,9 @@ export default function DashboardPage() {
           icon={<Clock className="h-5 w-5" />}
         />
       </div>
+
+      {/* Provider Health */}
+      <ProviderHealthCard />
 
       {/* Main Grid */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

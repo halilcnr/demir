@@ -58,6 +58,12 @@ model Retailer {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 
+  lastSuccessAt       DateTime?
+  lastFailureAt       DateTime?
+  lastBlockedAt       DateTime?
+  consecutiveFailures Int       @default(0)
+  blockedCount        Int       @default(0)
+
   listings  Listing[]
   syncJobs  SyncJob[]
 }
@@ -81,6 +87,10 @@ model Listing {
   dealScore           Float?    // Fırsat puanı (0-100)
   isActive            Boolean   @default(true)
   lastSeenAt          DateTime?
+  lastCheckedAt       DateTime?
+  lastSuccessAt       DateTime?
+  lastFailureAt       DateTime?
+  lastBlockedAt       DateTime?
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
@@ -183,16 +193,21 @@ enum AlertChannel {
 
 // ─── Senkronizasyon İşleri ───────────────────────────────────────
 model SyncJob {
-  id           String     @id @default(cuid())
-  retailerId   String?
-  status       SyncStatus @default(PENDING)
-  startedAt    DateTime?
-  finishedAt   DateTime?
-  itemsScanned Int        @default(0) // Taranan toplam öğe
-  itemsMatched Int        @default(0) // Eşleşen / güncellenen öğe
-  dealsFound   Int        @default(0) // Tespit edilen fırsat sayısı
-  errors       String?    // JSON hata logları
-  createdAt    DateTime   @default(now())
+  id             String     @id @default(cuid())
+  retailerId     String?
+  status         SyncStatus @default(PENDING)
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  itemsScanned   Int        @default(0) // Taranan toplam öğe
+  itemsMatched   Int        @default(0) // Eşleşen / güncellenen öğe
+  dealsFound     Int        @default(0) // Tespit edilen fırsat sayısı
+  successCount   Int        @default(0)
+  failureCount   Int        @default(0)
+  blockedCount   Int        @default(0)
+  durationMs     Int?
+  lastErrorMessage String?
+  errors         String?    // JSON hata logları
+  createdAt      DateTime   @default(now())
 
   retailer Retailer? @relation(fields: [retailerId], references: [id])
 
