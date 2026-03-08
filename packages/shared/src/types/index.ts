@@ -312,7 +312,7 @@ export interface SystemHealthInfo {
 export const TRUSTED_RETAILERS = ['amazon', 'hepsiburada', 'trendyol', 'n11', 'pazarama'] as const;
 export type TrustedRetailer = typeof TRUSTED_RETAILERS[number];
 
-export const DISCOVERY_SOURCES = ['enuygun', 'cimri', 'akakce', 'epey'] as const;
+export const DISCOVERY_SOURCES = ['akakce', 'cimri'] as const;
 export type DiscoverySource = typeof DISCOVERY_SOURCES[number];
 
 // ─── Price Intelligence Types ───────────────────────────────────

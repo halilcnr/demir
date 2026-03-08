@@ -203,7 +203,9 @@ export async function runSync(retailerSlug?: string) {
                 changeAmount: previousPrice ? result.price - previousPrice : null,
                 source: 'direct',
                 strategyUsed: (meta?.strategyUsed as string) ?? null,
-                parseConfidence: (meta?.parseConfidence as number) ?? null,
+                parseConfidence: meta?.parseConfidence
+                  ? ({ high: 0.95, medium: 0.7, low: 0.4 } as Record<string, number>)[String(meta.parseConfidence)] ?? null
+                  : null,
               },
             });
 

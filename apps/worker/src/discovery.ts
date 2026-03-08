@@ -658,223 +658,6 @@ async function queryCimri(
   return { results, errors };
 }
 
-// ─── Epey Parser ────────────────────────────────────────────────
-
-/**
- * Epey.com parser.
- * Epey shows product comparison pages with seller offers.
- */
-async function queryEpey(
-  searchQuery: string,
-  expectedFamily: string,
-  expectedStorageGb: number,
-  expectedColor?: string
-): Promise<{ results: DiscoveryResult[]; errors: DiscoveryError[] }> {
-  const results: DiscoveryResult[] = [];
-  const errors: DiscoveryError[] = [];
-
-  const searchUrl = `https://www.epey.com/ara/${encodeURIComponent(searchQuery)}`;
-  console.log(`[discovery:epey] Searching: ${searchUrl}`);
-
-  const html = await fetchWithTimeout(searchUrl);
-  if (!html) {
-    errors.push({
-      type: 'fallback_search_failed',
-      source: 'epey',
-      message: `Failed to fetch search page`,
-      timestamp: new Date().toISOString(),
-    });
-    return { results, errors };
-  }
-
-  const $ = cheerio.load(html);
-
-  // Epey product listing items
-  $('.listele li, .urunler li, .product-list li, article, .urun, [class*="product"]').each((_, el) => {
-    try {
-      const $el = $(el);
-      const title = $el.find('a, h3, h2, .title, .name, .baslik').first().text().trim();
-      if (!title || title.length < 8) return;
-
-      const parsed = parseProductName(title);
-      if (!parsed) return;
-
-      const { confidence, details } = computeMatchConfidence(parsed, expectedFamily, expectedStorageGb, expectedColor);
-      if (confidence < 0.3) return;
-
-      // Look for retailer links
-      $el.find('a[href]').each((_, linkEl) => {
-        const href = $(linkEl).attr('href') || '';
-        const resolvedUrl = extractRedirectTarget(href, 'https://www.epey.com');
-        const checkUrl = resolvedUrl || (href.startsWith('http') ? href : '');
-        if (!checkUrl) return;
-
-        const retailerSlug = resolveRetailerFromUrl(checkUrl);
-        if (!retailerSlug || !isTrustedRetailer(retailerSlug)) return;
-
-        const priceText = $el.find('.fiyat, .price, [class*="price"], [class*="fiyat"]').first().text().trim();
-        const price = parseTurkishPrice(priceText);
-
-        results.push({
-          source: 'epey',
-          retailerSlug,
-          productUrl: checkUrl,
-          price: price && price > 1000 ? price : null,
-          title,
-          confidence: Math.min(1, verifyRetailerDomain(checkUrl, retailerSlug) ? confidence + 0.05 : confidence),
-          matchDetails: { ...details, domainVerified: verifyRetailerDomain(checkUrl, retailerSlug) },
-        });
-      });
-
-      // Seller name blocks
-      $el.find('.seller, .magaza, .merchant, [class*="seller"]').each((_, sellerEl) => {
-        const sellerText = $(sellerEl).text().trim();
-        const retailerSlug = resolveRetailerFromName(sellerText);
-        if (!retailerSlug || !isTrustedRetailer(retailerSlug)) return;
-
-        const link = $(sellerEl).closest('a').attr('href') || $(sellerEl).find('a').attr('href');
-        if (!link) return;
-
-        const resolvedUrl = extractRedirectTarget(link, 'https://www.epey.com');
-        const checkUrl = resolvedUrl || (link.startsWith('http') ? link : '');
-        if (!checkUrl) return;
-
-        const priceText = $(sellerEl).closest('li, div').find('.fiyat, .price').text().trim();
-        const price = parseTurkishPrice(priceText);
-
-        results.push({
-          source: 'epey',
-          retailerSlug,
-          productUrl: checkUrl,
-          price: price && price > 1000 ? price : null,
-          title,
-          confidence: Math.min(1, confidence),
-          matchDetails: { ...details, domainVerified: false },
-        });
-      });
-    } catch { /* skip */ }
-  });
-
-  if (results.length === 0) {
-    errors.push({
-      type: 'no_trusted_offer',
-      source: 'epey',
-      message: `No trusted retailer offers found for "${searchQuery}"`,
-      timestamp: new Date().toISOString(),
-    });
-  }
-
-  return { results, errors };
-}
-
-// ─── EnUygun Parser ─────────────────────────────────────────────
-
-/**
- * EnUygun.com parser.
- * EnUygun shows product comparison pages with seller offers.
- */
-async function queryEnuygun(
-  searchQuery: string,
-  expectedFamily: string,
-  expectedStorageGb: number,
-  expectedColor?: string
-): Promise<{ results: DiscoveryResult[]; errors: DiscoveryError[] }> {
-  const results: DiscoveryResult[] = [];
-  const errors: DiscoveryError[] = [];
-
-  const searchUrl = `https://www.enuygun.com/search?q=${encodeURIComponent(searchQuery)}`;
-  console.log(`[discovery:enuygun] Searching: ${searchUrl}`);
-
-  const html = await fetchWithTimeout(searchUrl);
-  if (!html) {
-    errors.push({
-      type: 'fallback_search_failed',
-      source: 'enuygun',
-      message: `Failed to fetch search page`,
-      timestamp: new Date().toISOString(),
-    });
-    return { results, errors };
-  }
-
-  const $ = cheerio.load(html);
-
-  $('[class*="product"], article, li[class*="item"], [class*="Product"]').each((_, el) => {
-    try {
-      const $el = $(el);
-      const title = $el.find('h3, h2, a, [class*="title"], [class*="name"]').first().text().trim();
-      if (!title || title.length < 8) return;
-
-      const parsed = parseProductName(title);
-      if (!parsed) return;
-
-      const { confidence, details } = computeMatchConfidence(parsed, expectedFamily, expectedStorageGb, expectedColor);
-      if (confidence < 0.3) return;
-
-      // Retailer links
-      $el.find('a[href]').each((_, linkEl) => {
-        const href = $(linkEl).attr('href') || '';
-        const resolvedUrl = extractRedirectTarget(href, 'https://www.enuygun.com');
-        const checkUrl = resolvedUrl || (href.startsWith('http') ? href : '');
-        if (!checkUrl) return;
-
-        const retailerSlug = resolveRetailerFromUrl(checkUrl);
-        if (!retailerSlug || !isTrustedRetailer(retailerSlug)) return;
-
-        const priceText = $el.find('[class*="price"], [class*="fiyat"]').first().text().trim();
-        const price = parseTurkishPrice(priceText);
-
-        results.push({
-          source: 'enuygun',
-          retailerSlug,
-          productUrl: checkUrl,
-          price: price && price > 1000 ? price : null,
-          title,
-          confidence: Math.min(1, verifyRetailerDomain(checkUrl, retailerSlug) ? confidence + 0.05 : confidence),
-          matchDetails: { ...details, domainVerified: verifyRetailerDomain(checkUrl, retailerSlug) },
-        });
-      });
-
-      // Seller text
-      $el.find('[class*="merchant"], [class*="seller"]').each((_, sellerEl) => {
-        const sellerText = $(sellerEl).text().trim();
-        const retailerSlug = resolveRetailerFromName(sellerText);
-        if (!retailerSlug || !isTrustedRetailer(retailerSlug)) return;
-
-        const link = $(sellerEl).closest('a').attr('href') || $(sellerEl).find('a').attr('href');
-        if (!link) return;
-
-        const resolvedUrl = extractRedirectTarget(link, 'https://www.enuygun.com');
-        const checkUrl = resolvedUrl || (link.startsWith('http') ? link : '');
-        if (!checkUrl) return;
-
-        const priceText = $(sellerEl).closest('li, div').find('[class*="price"], [class*="fiyat"]').text().trim();
-        const price = parseTurkishPrice(priceText);
-
-        results.push({
-          source: 'enuygun',
-          retailerSlug,
-          productUrl: checkUrl,
-          price: price && price > 1000 ? price : null,
-          title,
-          confidence: Math.min(1, confidence),
-          matchDetails: { ...details, domainVerified: false },
-        });
-      });
-    } catch { /* skip */ }
-  });
-
-  if (results.length === 0) {
-    errors.push({
-      type: 'no_trusted_offer',
-      source: 'enuygun',
-      message: `No trusted retailer offers found for "${searchQuery}"`,
-      timestamp: new Date().toISOString(),
-    });
-  }
-
-  return { results, errors };
-}
-
 // ─── Main Discovery Orchestrator ────────────────────────────────
 
 export interface FallbackDiscoveryResult {
@@ -917,12 +700,10 @@ export async function queryFallbackSourcesDetailed(
 
   console.log(`[discovery] Querying fallback sources for: ${searchQuery}`);
 
-  // Query all sources in parallel
-  const [akakceResult, cimriResult, epeyResult, enuygunResult] = await Promise.allSettled([
+  // Query active sources in parallel (akakce + cimri only)
+  const [akakceResult, cimriResult] = await Promise.allSettled([
     queryAkakce(searchQuery, familyName, storageGb, color),
     queryCimri(searchQuery, familyName, storageGb, color),
-    queryEpey(searchQuery, familyName, storageGb, color),
-    queryEnuygun(searchQuery, familyName, storageGb, color),
   ]);
 
   const allResults: DiscoveryResult[] = [];
@@ -932,8 +713,6 @@ export async function queryFallbackSourcesDetailed(
   for (const [name, result] of [
     ['akakce', akakceResult],
     ['cimri', cimriResult],
-    ['epey', epeyResult],
-    ['enuygun', enuygunResult],
   ] as const) {
     sourcesQueried.push(name);
     if (result.status === 'fulfilled') {
