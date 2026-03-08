@@ -96,10 +96,13 @@ model Listing {
   confidenceScore     Float?    // 0-1 parse confidence
   parserHealth        String?   // ok, degraded, failing
   // Fallback discovery metadata
-  discoverySource     String?   // "direct", "akakce", "cimri", "epey", "enuygun"
-  discoveryConfidence Float?    // 0-1 match confidence
-  resolvedViaFallback Boolean  @default(false)
-  lastResolvedAt      DateTime?
+  discoverySource       String?   // "direct", "akakce", "cimri", "epey", "enuygun"
+  discoveryConfidence   Float?    // 0-1 match confidence
+  resolvedViaFallback   Boolean  @default(false)
+  lastResolvedAt        DateTime?
+  lastResolvedBySource  String?   // which discovery source last resolved this
+  lastResolvedRetailerUrl String? // URL that was resolved via fallback
+  lastFallbackFailureAt DateTime? // when the last fallback attempt failed
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
