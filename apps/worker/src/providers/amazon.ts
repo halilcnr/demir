@@ -54,6 +54,31 @@ export class AmazonProvider extends BaseProvider {
     const html = await this.withRetry(() => this.fetchPage(url));
     const $ = cheerio.load(html);
 
+    // Primary: JSON-LD extraction
+    const ld = this.extractJsonLd(html);
+    if (ld) {
+      const parsed = normalizeIPhoneModel(ld.name);
+      if (parsed) {
+        const seller = $('#sellerProfileTriggerId').text().trim() || undefined;
+        return {
+          retailerSlug: this.retailerSlug,
+          retailerName: this.retailerName,
+          rawTitle: ld.name,
+          normalizedModel: parsed.model,
+          normalizedColor: parsed.color,
+          normalizedStorageGb: parsed.storageGb,
+          price: ld.price,
+          currency: 'TRY',
+          sellerName: seller,
+          imageUrl: ld.image,
+          stockStatus: ld.inStock ? 'IN_STOCK' : 'OUT_OF_STOCK',
+          productUrl: url,
+          fetchedAt: new Date(),
+        };
+      }
+    }
+
+    // Fallback: CSS selectors
     const title = $('#productTitle').text().trim();
     const wholePrice = $('span.a-price-whole').first().text().trim();
     const fractionPrice = $('span.a-price-fraction').first().text().trim();
@@ -69,7 +94,7 @@ export class AmazonProvider extends BaseProvider {
       return null;
     }
 
-    const priceStr = `${wholePrice}${fractionPrice ? '.' + fractionPrice : ''}`.replace(/[^\d.]/g, '');
+    const priceStr = `${wholePrice.replace(/[^\d]/g, '')}${fractionPrice ? '.' + fractionPrice.replace(/[^\d]/g, '') : ''}`;
     const price = parseFloat(priceStr);
     if (isNaN(price)) {
       console.warn(`[amazon] Price parse failed — priceStr="${priceStr}", url=${url}`);

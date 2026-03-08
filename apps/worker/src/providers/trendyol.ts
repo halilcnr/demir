@@ -54,20 +54,46 @@ export class TrendyolProvider extends BaseProvider {
     const html = await this.withRetry(() => this.fetchPage(url));
     const $ = cheerio.load(html);
 
-    const title = $('h1.pr-new-br span').text().trim()
-      + ' ' + $('h1.pr-new-br .product-detail-name').text().trim();
+    // Primary: JSON-LD extraction (stable, standard)
+    const ld = this.extractJsonLd(html);
+    if (ld) {
+      const parsed = normalizeIPhoneModel(ld.name);
+      if (parsed) {
+        const seller = $('.seller-name-text').text().trim() || undefined;
+        return {
+          retailerSlug: this.retailerSlug,
+          retailerName: this.retailerName,
+          rawTitle: ld.name,
+          normalizedModel: parsed.model,
+          normalizedColor: parsed.color,
+          normalizedStorageGb: parsed.storageGb,
+          price: ld.price,
+          currency: 'TRY',
+          sellerName: seller,
+          imageUrl: ld.image,
+          stockStatus: ld.inStock ? 'IN_STOCK' : 'OUT_OF_STOCK',
+          productUrl: url,
+          fetchedAt: new Date(),
+        };
+      }
+    }
 
-    const priceText = $('span.prc-dsc').text().trim()
+    // Fallback: CSS selectors
+    const title = $('h1[data-testid="product-title"]').text().trim()
+      || ($('h1.pr-new-br span').text().trim() + ' ' + $('h1.pr-new-br .product-detail-name').text().trim()).trim();
+
+    const priceText = $('span.discounted').first().text().trim()
+      || $('span.prc-dsc').text().trim()
       || $('span.prc-slg').text().trim();
 
-    if (!title.trim() || !priceText) {
-      console.warn(`[trendyol] Empty title/price — title=${!!title.trim()}, price=${!!priceText}, url=${url}`);
+    if (!title || !priceText) {
+      console.warn(`[trendyol] Empty title/price — title=${!!title}, price=${!!priceText}, url=${url}`);
       return null;
     }
 
     const parsed = normalizeIPhoneModel(title);
     if (!parsed) {
-      console.warn(`[trendyol] Model parse failed — title="${title.trim().slice(0, 80)}", url=${url}`);
+      console.warn(`[trendyol] Model parse failed — title="${title.slice(0, 80)}", url=${url}`);
       return null;
     }
 
@@ -82,7 +108,7 @@ export class TrendyolProvider extends BaseProvider {
     return {
       retailerSlug: this.retailerSlug,
       retailerName: this.retailerName,
-      rawTitle: title.trim(),
+      rawTitle: title,
       normalizedModel: parsed.model,
       normalizedColor: parsed.color,
       normalizedStorageGb: parsed.storageGb,

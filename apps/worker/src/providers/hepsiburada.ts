@@ -52,6 +52,29 @@ export class HepsiburadaProvider extends BaseProvider {
     const html = await this.withRetry(() => this.fetchPage(url));
     const $ = cheerio.load(html);
 
+    // Primary: JSON-LD extraction (stable, standard)
+    const ld = this.extractJsonLd(html);
+    if (ld) {
+      const parsed = normalizeIPhoneModel(ld.name);
+      if (parsed) {
+        return {
+          retailerSlug: this.retailerSlug,
+          retailerName: this.retailerName,
+          rawTitle: ld.name,
+          normalizedModel: parsed.model,
+          normalizedColor: parsed.color,
+          normalizedStorageGb: parsed.storageGb,
+          price: ld.price,
+          currency: 'TRY',
+          imageUrl: ld.image,
+          stockStatus: ld.inStock ? 'IN_STOCK' : 'OUT_OF_STOCK',
+          productUrl: url,
+          fetchedAt: new Date(),
+        };
+      }
+    }
+
+    // Fallback: CSS selectors
     const title = $('h1[data-test-id="product-name"]').text().trim()
       || $('h1#product-name').text().trim()
       || $('h1').first().text().trim();

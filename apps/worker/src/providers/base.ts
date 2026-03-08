@@ -1,3 +1,4 @@
+import * as cheerio from 'cheerio';
 import type { RetailerProvider, ScrapedProduct } from '@repo/shared';
 import {
   ProviderBlockedError,
@@ -129,4 +130,69 @@ export abstract class BaseProvider implements RetailerProvider {
 
   abstract search(query: string): Promise<ScrapedProduct[]>;
   abstract scrapeProductPage(url: string): Promise<ScrapedProduct | null>;
+
+  /**
+   * Extract product data from JSON-LD (schema.org) script tags.
+   * Returns { name, price, currency, inStock, image } or null.
+   */
+  protected extractJsonLd(html: string): {
+    name: string;
+    price: number;
+    currency: string;
+    inStock: boolean;
+    image?: string;
+  } | null {
+    const $ = cheerio.load(html);
+    const scripts = $('script[type="application/ld+json"]');
+
+    for (let i = 0; i < scripts.length; i++) {
+      try {
+        const text = $(scripts[i]).html();
+        if (!text) continue;
+        const data = JSON.parse(text);
+
+        // Handle Product or ProductGroup types
+        if (data['@type'] !== 'Product' && data['@type'] !== 'ProductGroup') continue;
+
+        const name: string = data.name || '';
+        if (!name) continue;
+
+        // Extract price from offers
+        const offers = data.offers;
+        if (!offers) continue;
+
+        let price: number | undefined;
+        let currency = 'TRY';
+        let inStock = true;
+
+        if (Array.isArray(offers)) {
+          // Multiple offers — take the first with a valid price
+          for (const offer of offers) {
+            const p = parseFloat(offer.price);
+            if (!isNaN(p) && p > 0) {
+              price = p;
+              currency = offer.priceCurrency || currency;
+              inStock = offer.availability !== 'https://schema.org/OutOfStock';
+              break;
+            }
+          }
+        } else {
+          price = parseFloat(offers.price);
+          currency = offers.priceCurrency || currency;
+          inStock = offers.availability !== 'https://schema.org/OutOfStock';
+        }
+
+        if (!price || isNaN(price) || price <= 0) continue;
+
+        const image = typeof data.image === 'string'
+          ? data.image
+          : data.image?.contentUrl?.[0] || data.image?.url || undefined;
+
+        return { name, price, currency, inStock, image };
+      } catch {
+        // Invalid JSON, skip
+      }
+    }
+    return null;
+  }
 }

@@ -53,6 +53,31 @@ export class N11Provider extends BaseProvider {
     const html = await this.withRetry(() => this.fetchPage(url));
     const $ = cheerio.load(html);
 
+    // Primary: JSON-LD extraction
+    const ld = this.extractJsonLd(html);
+    if (ld) {
+      const parsed = normalizeIPhoneModel(ld.name);
+      if (parsed) {
+        const seller = $('.sallerName a').text().trim() || undefined;
+        return {
+          retailerSlug: this.retailerSlug,
+          retailerName: this.retailerName,
+          rawTitle: ld.name,
+          normalizedModel: parsed.model,
+          normalizedColor: parsed.color,
+          normalizedStorageGb: parsed.storageGb,
+          price: ld.price,
+          currency: 'TRY',
+          sellerName: seller,
+          imageUrl: ld.image,
+          stockStatus: ld.inStock ? 'IN_STOCK' : 'OUT_OF_STOCK',
+          productUrl: url,
+          fetchedAt: new Date(),
+        };
+      }
+    }
+
+    // Fallback: CSS selectors
     const title = $('h1.proName').text().trim();
     const priceText = $('.newPrice ins').text().trim()
       || $('.newPrice').text().trim();
