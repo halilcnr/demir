@@ -19,15 +19,18 @@ import {
   recordFailure,
   recordBlocked,
 } from './provider-health';
+import { clearSyncLogs, addSyncLog, finishSyncLogs } from './sync-logger';
 
 /**
  * Tüm retailer'lardan veya belirli bir retailer'dan fiyat güncellemesi yapar.
- * 1) Önce DB'deki mevcut listing URL'lerini doğrudan scrape eder (daha güvenilir)
- * 2) URL'si olmayan varyantlar için arama tabanlı keşif yapar (fallback) — şu an devre dışı
+ * Varyant bazlı round-robin: her varyant için tüm sağlayıcılara bakılır,
+ * böylece aynı sağlayıcıya arka arkaya çok fazla istek gönderilmez.
  */
 export async function runSync(retailerSlug?: string) {
   const startMs = Date.now();
   resetCycleState();
+  clearSyncLogs();
+  addSyncLog({ type: 'info', message: 'Senkronizasyon başlatılıyor...' });
 
   const syncJob = await prisma.syncJob.create({
     data: {
@@ -49,55 +52,75 @@ export async function runSync(retailerSlug?: string) {
   const errorLog: string[] = [];
 
   try {
-    const providers = retailerSlug ? [getProvider(retailerSlug)].filter(Boolean) : getProviders();
+    // Build provider map
+    const providerList = retailerSlug
+      ? [getProvider(retailerSlug)].filter(Boolean)
+      : getProviders();
+    const providerMap = new Map<string, ReturnType<typeof getProvider>>();
+    for (const p of providerList) {
+      if (p) providerMap.set(p.retailerSlug, p);
+    }
 
-    // ── Aşama 1: Mevcut URL'lerden doğrudan fiyat çekme ──
-    console.log('[sync] Aşama 1: Mevcut listing URL\'lerinden fiyat güncelleniyor...');
+    // ── Varyant bazlı round-robin: tüm listing'leri çek, varyanta göre grupla ──
+    console.log('[sync] Varyant bazlı round-robin senkronizasyon başlıyor...');
 
-    for (const provider of providers) {
-      if (!provider) continue;
+    const allListings = await prisma.listing.findMany({
+      where: {
+        isActive: true,
+        productUrl: { not: '' },
+        ...(retailerSlug ? { retailer: { slug: retailerSlug } } : {}),
+        retailer: { isActive: true },
+      },
+      include: {
+        variant: { include: { family: true } },
+        retailer: true,
+      },
+      orderBy: [
+        { variant: { family: { sortOrder: 'asc' } } },
+        { variant: { storageGb: 'asc' } },
+      ],
+    });
 
-      const slug = provider.retailerSlug;
+    type ListingWithRelations = (typeof allListings)[number];
 
-      // Skip if already blocked in this cycle
-      if (isBlockedThisCycle(slug)) {
-        console.log(`[sync] ${slug} skipped — blocked this cycle`);
-        continue;
+    // Group by variant
+    const variantGroups = new Map<string, ListingWithRelations[]>();
+    for (const listing of allListings) {
+      if (!variantGroups.has(listing.variantId)) {
+        variantGroups.set(listing.variantId, []);
       }
+      variantGroups.get(listing.variantId)!.push(listing);
+    }
 
-      const retailer = await prisma.retailer.findUnique({
-        where: { slug },
-      });
-      if (!retailer || !retailer.isActive) continue;
+    console.log(`[sync] ${variantGroups.size} varyant, ${allListings.length} listing bulundu`);
+    addSyncLog({ type: 'info', message: `${variantGroups.size} varyant, ${allListings.length} listing bulundu` });
 
-      // Bu retailer'daki URL'si olan aktif listing'leri al
-      const existingListings = await prisma.listing.findMany({
-        where: {
-          retailerId: retailer.id,
-          isActive: true,
-          productUrl: { not: '' },
-        },
-        include: {
-          variant: { include: { family: true } },
-        },
-      });
+    // Process variant by variant (round-robin across providers)
+    for (const [, listings] of variantGroups) {
+      const variant = listings[0].variant;
+      const variantLabel = `${variant.family.name} ${variant.color} ${variant.storageGb}GB`;
 
-      console.log(`[sync] ${slug}: ${existingListings.length} mevcut listing bulundu`);
+      addSyncLog({ type: 'progress', variant: variantLabel, message: `${variantLabel} araştırılıyor...` });
+      console.log(`[sync] 📱 ${variantLabel} (${listings.length} mağaza)`);
 
-      for (const listing of existingListings) {
-        // Re-check block status inside listing loop (may have been blocked mid-cycle)
+      for (const listing of listings) {
+        const slug = listing.retailer.slug;
+        const provider = providerMap.get(slug);
+        if (!provider) continue;
+
+        // Skip if blocked this cycle
         if (isBlockedThisCycle(slug)) {
-          console.log(`[sync] ${slug} blocked mid-cycle, skipping remaining listings`);
-          break;
+          addSyncLog({ type: 'warn', retailer: slug, variant: variantLabel, message: `${slug} engellendi, atlanıyor` });
+          continue;
         }
 
         try {
-          // URL sahte/search URL ise atla
+          // Skip search/browse URLs
           if (listing.productUrl.includes('/search?q=') || listing.productUrl.includes('/ara?q=') || listing.productUrl.includes('/arama?q=') || listing.productUrl.includes('/s?k=') || listing.productUrl.includes('/sr?q=')) {
             continue;
           }
 
-          // Mark as checked regardless of outcome
+          // Mark as checked
           await prisma.listing.update({
             where: { id: listing.id },
             data: { lastCheckedAt: new Date() },
@@ -107,13 +130,11 @@ export async function runSync(retailerSlug?: string) {
           itemsScanned++;
 
           if (result) {
-            // Log strategy metadata if available
             const meta = (result as ScrapedProduct & { _meta?: Record<string, unknown> })._meta;
             if (meta?.wasFallbackUsed) {
               console.log(`[sync] ${slug} used fallback strategy "${meta.strategyUsed}" (${meta.responseTimeMs}ms, confidence: ${meta.parseConfidence})`);
             }
 
-            // Phase 1: We already know the variant — update the listing directly
             const previousPrice = listing.currentPrice ?? null;
 
             await prisma.listing.update({
@@ -181,8 +202,10 @@ export async function runSync(retailerSlug?: string) {
             if (isDeal) dealsFound++;
 
             console.log(`[sync] ✓ ${slug} — ${result.rawTitle} → ${result.price} TL`);
+            addSyncLog({ type: 'success', retailer: slug, variant: variantLabel, message: `${slug} → ${result.price.toLocaleString('tr-TR')} TL`, price: result.price });
           } else {
             console.warn(`[sync] ✗ ${slug} — scrape returned null for ${listing.productUrl}`);
+            addSyncLog({ type: 'error', retailer: slug, variant: variantLabel, message: `${slug} — veri alınamadı` });
           }
 
           await new Promise((r) => setTimeout(r, 1500 + Math.floor(Math.random() * 1000)));
@@ -200,8 +223,10 @@ export async function runSync(retailerSlug?: string) {
             });
 
             errorLog.push(`${slug}: provider blocked (HTTP 403)`);
+            addSyncLog({ type: 'error', retailer: slug, variant: variantLabel, message: `${slug} engellendi (403)` });
             lastErrorMessage = err.message;
-            break;
+            // Don't break — continue to other providers for this variant
+            continue;
           }
 
           if (err instanceof RateLimitedError) {
@@ -213,7 +238,7 @@ export async function runSync(retailerSlug?: string) {
               data: { lastFailureAt: new Date() },
             });
             errorLog.push(`${slug}: rate limited (429) — ${listing.productUrl}`);
-            // Wait longer before next request to this provider
+            addSyncLog({ type: 'warn', retailer: slug, variant: variantLabel, message: `${slug} hız limiti (429)` });
             if (err.retryAfterMs) {
               await new Promise((r) => setTimeout(r, Math.min(err.retryAfterMs!, 30_000)));
             } else {
@@ -233,6 +258,7 @@ export async function runSync(retailerSlug?: string) {
             });
             failureCount++;
             errorLog.push(`${slug}: listing removed (404) — ${listing.productUrl}`);
+            addSyncLog({ type: 'warn', retailer: slug, variant: variantLabel, message: `${slug} — ürün bulunamadı (404)` });
             continue;
           }
 
@@ -259,6 +285,7 @@ export async function runSync(retailerSlug?: string) {
             } else {
               errorLog.push(`${slug}: parse failed — ${listing.productUrl}`);
             }
+            addSyncLog({ type: 'error', retailer: slug, variant: variantLabel, message: `${slug} — ayrıştırma hatası` });
             continue;
           }
 
@@ -271,6 +298,7 @@ export async function runSync(retailerSlug?: string) {
               data: { lastFailureAt: new Date() },
             });
             errorLog.push(`${slug}: server error (${err.statusCode}) — ${listing.productUrl}`);
+            addSyncLog({ type: 'error', retailer: slug, variant: variantLabel, message: `${slug} — sunucu hatası (${err.statusCode})` });
             continue;
           }
 
@@ -283,6 +311,7 @@ export async function runSync(retailerSlug?: string) {
               data: { lastFailureAt: new Date() },
             });
             errorLog.push(`${slug}: network error (${err.reason}) — ${listing.productUrl}`);
+            addSyncLog({ type: 'error', retailer: slug, variant: variantLabel, message: `${slug} — ağ hatası` });
             continue;
           }
 
@@ -296,14 +325,13 @@ export async function runSync(retailerSlug?: string) {
             data: { lastFailureAt: new Date() },
           });
           errorLog.push(`${slug}: unexpected error — ${listing.productUrl}`);
+          addSyncLog({ type: 'error', retailer: slug, variant: variantLabel, message: `${slug} — beklenmeyen hata` });
         }
       }
     }
 
-    // ── Aşama 2: Arama tabanlı keşif (şu an devre dışı — park halinde) ──
-    // ...
-
     const durationMs = Date.now() - startMs;
+    finishSyncLogs();
 
     await prisma.syncJob.update({
       where: { id: syncJob.id },
@@ -322,15 +350,16 @@ export async function runSync(retailerSlug?: string) {
       },
     });
 
-    console.log(
-      `[sync] Tamamlandı (${(durationMs / 1000).toFixed(1)}s): ` +
-      `${itemsScanned} taranan, ${itemsMatched} eşleşen, ${dealsFound} fırsat, ` +
-      `${successCount} başarılı, ${failureCount} hata, ${blockedCount} engellendi`
-    );
+    const summaryMsg = `Tamamlandı (${(durationMs / 1000).toFixed(1)}s): ${successCount} başarılı, ${failureCount} hata, ${blockedCount} engel`;
+    console.log(`[sync] ${summaryMsg}`);
+    addSyncLog({ type: 'info', message: summaryMsg });
+
     return { jobId: syncJob.id, itemsScanned, itemsMatched, dealsFound };
   } catch (error) {
     const durationMs = Date.now() - startMs;
     lastErrorMessage = error instanceof Error ? error.message : 'Unknown error';
+    finishSyncLogs();
+    addSyncLog({ type: 'error', message: `Sync başarısız: ${lastErrorMessage}` });
 
     await prisma.syncJob.update({
       where: { id: syncJob.id },
