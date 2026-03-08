@@ -5,7 +5,8 @@ import { detectDeal, checkAlertRules } from './deals';
 
 /**
  * Tüm retailer'lardan veya belirli bir retailer'dan fiyat güncellemesi yapar.
- * SyncJob kaydı oluşturur, provider'lardan veri çeker, DB'ye yazar.
+ * 1) Önce DB'deki mevcut listing URL'lerini doğrudan scrape eder (daha güvenilir)
+ * 2) URL'si olmayan varyantlar için arama tabanlı keşif yapar (fallback)
  */
 export async function runSync(retailerSlug?: string) {
   const syncJob = await prisma.syncJob.create({
@@ -25,6 +26,57 @@ export async function runSync(retailerSlug?: string) {
   try {
     const providers = retailerSlug ? [getProvider(retailerSlug)].filter(Boolean) : getProviders();
 
+    // ── Aşama 1: Mevcut URL'lerden doğrudan fiyat çekme ──
+    console.log('[sync] Aşama 1: Mevcut listing URL\'lerinden fiyat güncelleniyor...');
+    for (const provider of providers) {
+      if (!provider) continue;
+
+      const retailer = await prisma.retailer.findUnique({
+        where: { slug: provider.retailerSlug },
+      });
+      if (!retailer || !retailer.isActive) continue;
+
+      // Bu retailer'daki URL'si olan aktif listing'leri al
+      const existingListings = await prisma.listing.findMany({
+        where: {
+          retailerId: retailer.id,
+          isActive: true,
+          productUrl: { not: '' },
+        },
+        include: {
+          variant: { include: { family: true } },
+        },
+      });
+
+      console.log(`[sync] ${provider.retailerSlug}: ${existingListings.length} mevcut listing bulundu`);
+
+      for (const listing of existingListings) {
+        try {
+          // URL sahte/search URL ise atla (seed mock verisi)
+          if (listing.productUrl.includes('/search?q=') || listing.productUrl.includes('/ara?q=') || listing.productUrl.includes('/arama?q=') || listing.productUrl.includes('/s?k=') || listing.productUrl.includes('/sr?q=')) {
+            continue;
+          }
+
+          const result = await provider.scrapeProductPage(listing.productUrl);
+          itemsScanned++;
+
+          if (result) {
+            const matched = await upsertListing(result, retailer.id);
+            if (matched) {
+              itemsMatched++;
+              if (matched.isDeal) dealsFound++;
+            }
+          }
+
+          await new Promise((r) => setTimeout(r, 1500));
+        } catch (err) {
+          console.error(`[sync] ${provider.retailerSlug} - URL scrape hatası (${listing.productUrl}):`, err);
+        }
+      }
+    }
+
+    // ── Aşama 2: Arama tabanlı keşif (URL'si olmayanlar için) ──
+    console.log('[sync] Aşama 2: Arama tabanlı keşif...');
     const families = await prisma.productFamily.findMany({
       where: { isActive: true },
       select: { name: true },

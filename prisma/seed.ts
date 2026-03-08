@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { PRODUCT_URLS } from './product-urls';
 
 const prisma = new PrismaClient();
 
@@ -94,13 +95,60 @@ async function main() {
   }
   console.log(`✅ ${familyCount} aile, ${variantCount} varyant oluşturuldu`);
 
-  // ─── Mock Listings & Price Snapshots ──────────────────
-  // İlk 10 varyant için mock veri oluştur
+  // ─── Manuel URL'lerden Listing'ler ─────────────────────
+  // product-urls.ts'deki URL'leri DB'ye yaz
+  let manualListingCount = 0;
+
+  const allRetailers = await prisma.retailer.findMany();
+  const retailerMap = Object.fromEntries(allRetailers.map(r => [r.slug, r]));
+
+  for (const [variantSlug, urls] of Object.entries(PRODUCT_URLS)) {
+    const variant = await prisma.productVariant.findUnique({ where: { slug: variantSlug } });
+    if (!variant) {
+      console.warn(`⚠️  Varyant bulunamadı: ${variantSlug}`);
+      continue;
+    }
+
+    for (const [rSlug, url] of Object.entries(urls)) {
+      const retailer = retailerMap[rSlug];
+      if (!retailer) {
+        console.warn(`⚠️  Retailer bulunamadı: ${rSlug}`);
+        continue;
+      }
+
+      await prisma.listing.upsert({
+        where: {
+          variantId_retailerId: {
+            variantId: variant.id,
+            retailerId: retailer.id,
+          },
+        },
+        update: { productUrl: url },
+        create: {
+          variantId: variant.id,
+          retailerId: retailer.id,
+          retailerProductTitle: `Apple ${variant.normalizedName}`,
+          productUrl: url,
+          stockStatus: 'UNKNOWN',
+          lastSeenAt: null,
+        },
+      });
+      manualListingCount++;
+    }
+  }
+  console.log(`✅ ${manualListingCount} manuel URL listing oluşturuldu`);
+
+  // ─── Mock Listings (sadece URL'si olmayan varyantlar için) ──
   const sampleVariants = await prisma.productVariant.findMany({ take: 10 });
 
   let listingCount = 0;
   for (const variant of sampleVariants) {
     for (const retailer of retailers) {
+      // Manuel URL'si varsa atla
+      const existing = await prisma.listing.findUnique({
+        where: { variantId_retailerId: { variantId: variant.id, retailerId: retailer.id } },
+      });
+      if (existing && existing.productUrl && !existing.productUrl.includes('/search?q=')) continue;
       const basePrice = 25000 + Math.random() * 55000;
       const price = Math.round(basePrice / 100) * 100;
       const previousPrice = price + Math.round(Math.random() * 3000 / 100) * 100;
