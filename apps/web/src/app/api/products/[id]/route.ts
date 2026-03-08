@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@repo/shared';
 
-/** Variant detayı: listing'ler, fiyat aralığı, tarihsel zekâ, alert kuralları */
+/** Variant detayı: listing'ler fiyata göre sıralı, fiyat aralığı, tarihsel zekâ, alert kuralları, freshness */
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -14,7 +14,6 @@ export async function GET(
       family: { select: { name: true } },
       listings: {
         include: { retailer: true },
-        orderBy: { currentPrice: 'asc' },
       },
       alertRules: {
         where: { isActive: true },
@@ -27,13 +26,34 @@ export async function GET(
     return NextResponse.json({ error: 'Variant not found' }, { status: 404 });
   }
 
-  const prices = variant.listings
+  // ── Sort listings: cheapest first, null/invalid prices to bottom ──
+  const sortedListings = [...variant.listings].sort((a, b) => {
+    const priceA = a.currentPrice;
+    const priceB = b.currentPrice;
+
+    // Null / invalid prices go to the bottom
+    if (priceA == null && priceB == null) return 0;
+    if (priceA == null) return 1;
+    if (priceB == null) return -1;
+
+    // Sort by price ascending
+    if (priceA !== priceB) return priceA - priceB;
+
+    // Equal prices: prefer freshest first
+    const timeA = a.lastSeenAt?.getTime() ?? 0;
+    const timeB = b.lastSeenAt?.getTime() ?? 0;
+    return timeB - timeA;
+  });
+
+  const prices = sortedListings
     .filter((l) => l.currentPrice !== null)
     .map((l) => l.currentPrice as number);
 
-  const bestListing = variant.listings
+  const bestListing = sortedListings
     .filter((l) => l.currentPrice !== null && l.stockStatus === 'IN_STOCK')
     .sort((a, b) => (a.currentPrice ?? Infinity) - (b.currentPrice ?? Infinity))[0];
+
+  const cheapestPrice = prices.length > 0 ? Math.min(...prices) : null;
 
   // Get historical aggregate from PriceSnapshot across all listings for this variant
   const listingIds = variant.listings.map(l => l.id);
@@ -60,6 +80,17 @@ export async function GET(
     }),
   ]);
 
+  // ── Freshness helper ──
+  const now = Date.now();
+  const getFreshness = (lastSeenAt: Date | null, lastBlockedAt: Date | null): 'fresh' | 'recent' | 'stale' | 'blocked' => {
+    if (lastBlockedAt && (!lastSeenAt || lastBlockedAt > lastSeenAt)) return 'blocked';
+    if (!lastSeenAt) return 'stale';
+    const age = now - lastSeenAt.getTime();
+    if (age < 30 * 60 * 1000) return 'fresh';      // < 30 min
+    if (age < 6 * 60 * 60 * 1000) return 'recent';  // < 6 hours
+    return 'stale';
+  };
+
   return NextResponse.json({
     id: variant.id,
     familyId: variant.familyId,
@@ -79,7 +110,7 @@ export async function GET(
     historicalAverage: allTimeAgg._avg.observedPrice ? Math.round(allTimeAgg._avg.observedPrice) : null,
     average30d: avg30d._avg.observedPrice ? Math.round(avg30d._avg.observedPrice) : null,
     snapshotCount: allTimeAgg._count,
-    listings: variant.listings.map((l) => ({
+    listings: sortedListings.map((l, index) => ({
       id: l.id,
       retailerName: l.retailer.name,
       retailerSlug: l.retailer.slug,
@@ -94,6 +125,11 @@ export async function GET(
       dealScore: l.dealScore,
       productUrl: l.productUrl,
       lastSeenAt: l.lastSeenAt?.toISOString() ?? null,
+      lastCheckedAt: l.lastCheckedAt?.toISOString() ?? null,
+      lastBlockedAt: l.lastBlockedAt?.toISOString() ?? null,
+      freshness: getFreshness(l.lastSeenAt, l.lastBlockedAt),
+      isCheapest: cheapestPrice !== null && l.currentPrice === cheapestPrice,
+      priceRank: index + 1,
     })),
     alertRules: variant.alertRules.map((r) => ({
       id: r.id,

@@ -4,9 +4,9 @@ import { prisma } from '@repo/shared';
 const TELEGRAM_ENABLED = process.env.TELEGRAM_ENABLED === 'true';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
 
-const MIN_DROP_PERCENT = 2;    // Minimum % düşüş (bildirim eşiği)
-const MIN_DROP_AMOUNT = 300;   // Minimum TL düşüş
-const COOLDOWN_MS = 4 * 60 * 60 * 1000; // Aynı listing için 4 saat bekleme
+const MIN_DROP_PERCENT = parseFloat(process.env.NOTIFY_DROP_PERCENT ?? '1');  // Minimum % düşüş (bildirim eşiği — default 1%)
+const MIN_DROP_AMOUNT = parseFloat(process.env.NOTIFY_DROP_AMOUNT ?? '100'); // Minimum TL düşüş
+const COOLDOWN_MS = parseInt(process.env.NOTIFY_COOLDOWN_MS ?? String(4 * 60 * 60 * 1000), 10); // Aynı listing için 4 saat bekleme
 const POLL_INTERVAL_MS = 30_000; // getUpdates polling interval
 
 // ─── Types ───────────────────────────────────────────────────────

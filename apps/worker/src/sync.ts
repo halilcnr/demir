@@ -15,11 +15,13 @@ import {
 import {
   resetCycleState,
   isBlockedThisCycle,
+  isInCooldown,
+  applyCooldown,
   recordSuccess,
   recordFailure,
   recordBlocked,
 } from './provider-health';
-import { clearSyncLogs, addSyncLog, finishSyncLogs, updateSyncProgress } from './sync-logger';
+import { clearSyncLogs, addSyncLog, finishSyncLogs, updateSyncProgress, logScrapeAttempt } from './sync-logger';
 import { queryFallbackSourcesDetailed } from './discovery';
 import { notifyPriceDrop } from './services/telegram';
 
@@ -147,6 +149,14 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
         // Skip if blocked this cycle
         if (isBlockedThisCycle(slug)) {
           addSyncLog({ type: 'warn', retailer: slug, variant: variantLabel, message: `${slug} engellendi, atlanıyor` });
+          logScrapeAttempt({ retailer: slug, variant: variantLabel, status: 'skipped', error: 'blocked this cycle' });
+          continue;
+        }
+
+        // Skip if in cooldown (anti-bot pacing)
+        if (isInCooldown(slug)) {
+          addSyncLog({ type: 'warn', retailer: slug, variant: variantLabel, message: `${slug} soğuma süresinde, atlanıyor` });
+          logScrapeAttempt({ retailer: slug, variant: variantLabel, status: 'skipped', error: 'cooldown active' });
           continue;
         }
 
@@ -264,8 +274,11 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
             await recordSuccess(slug);
             if (isDeal) dealsFound++;
 
-            console.log(`[sync] ✓ ${slug} — ${result.rawTitle} → ${result.price} TL`);
-            addSyncLog({ type: 'success', retailer: slug, variant: variantLabel, message: `${slug} → ${result.price.toLocaleString('tr-TR')} TL`, price: result.price });
+            const stratUsed = (meta?.strategyUsed as string) ?? 'unknown';
+            const respTime = (meta?.responseTimeMs as number) ?? 0;
+            console.log(`[sync] ✓ ${slug} — ${result.rawTitle} → ${result.price} TL (${stratUsed}, ${respTime}ms)`);
+            addSyncLog({ type: 'success', retailer: slug, variant: variantLabel, message: `${slug} → ${result.price.toLocaleString('tr-TR')} TL`, price: result.price, strategy: stratUsed, responseTimeMs: respTime });
+            logScrapeAttempt({ retailer: slug, variant: variantLabel, strategy: stratUsed, status: 'success', responseTimeMs: respTime, price: result.price });
           } else {
             console.warn(`[sync] ✗ ${slug} — scrape returned null for ${listing.productUrl}`);
             addSyncLog({ type: 'warn', retailer: slug, variant: variantLabel, message: `${slug} — direkt veri alınamadı, fallback deneniyor...` });
@@ -395,6 +408,7 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
             blockedCount++;
             console.error(`[sync] ${slug} provider blocked (HTTP 403)`);
             await recordBlocked(slug);
+            logScrapeAttempt({ retailer: slug, variant: variantLabel, status: 'blocked', httpStatus: 403 });
 
             await prisma.listing.update({
               where: { id: listing.id },
@@ -402,7 +416,7 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
             });
 
             errorLog.push(`${slug}: provider blocked (HTTP 403)`);
-            addSyncLog({ type: 'error', retailer: slug, variant: variantLabel, message: `${slug} engellendi (403)` });
+            addSyncLog({ type: 'error', retailer: slug, variant: variantLabel, message: `${slug} engellendi (403)`, blocked: true });
             lastErrorMessage = err.message;
             // Don't break — continue to other providers for this variant
             continue;
@@ -412,17 +426,15 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
             console.warn(`[sync] ${slug} rate limited (HTTP 429) — ${listing.productUrl}`);
             failureCount++;
             await recordFailure(slug);
+            applyCooldown(slug, 'rate_limit', err.retryAfterMs);
+            logScrapeAttempt({ retailer: slug, variant: variantLabel, status: 'rate_limited', httpStatus: 429 });
             await prisma.listing.update({
               where: { id: listing.id },
               data: { lastFailureAt: new Date() },
             });
             errorLog.push(`${slug}: rate limited (429) — ${listing.productUrl}`);
             addSyncLog({ type: 'warn', retailer: slug, variant: variantLabel, message: `${slug} hız limiti (429)` });
-            if (err.retryAfterMs) {
-              await new Promise((r) => setTimeout(r, Math.min(err.retryAfterMs!, 30_000)));
-            } else {
-              await new Promise((r) => setTimeout(r, 10_000));
-            }
+            // Use cooldown system instead of hardcoded wait
             continue;
           }
 
@@ -455,6 +467,7 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
             console.error(`[sync] ${slug} parse/strategy failed — ${listing.productUrl}`);
             failureCount++;
             await recordFailure(slug);
+            logScrapeAttempt({ retailer: slug, variant: variantLabel, status: 'parse_fail', error: err.message });
             await prisma.listing.update({
               where: { id: listing.id },
               data: { lastFailureAt: new Date() },
@@ -472,6 +485,7 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
             console.error(`[sync] ${slug} server error (HTTP ${err.statusCode}) — ${listing.productUrl}`);
             failureCount++;
             await recordFailure(slug);
+            logScrapeAttempt({ retailer: slug, variant: variantLabel, status: 'server_error', httpStatus: err.statusCode });
             await prisma.listing.update({
               where: { id: listing.id },
               data: { lastFailureAt: new Date() },
@@ -485,6 +499,7 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
             console.error(`[sync] ${slug} network error (${err.reason}) — ${listing.productUrl}`);
             failureCount++;
             await recordFailure(slug);
+            logScrapeAttempt({ retailer: slug, variant: variantLabel, status: 'network_error', error: err.reason });
             await prisma.listing.update({
               where: { id: listing.id },
               data: { lastFailureAt: new Date() },

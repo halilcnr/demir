@@ -49,6 +49,10 @@ const RETAILER_DOMAINS: Record<string, TrustedRetailer> = {
   'n11.com': 'n11',
   'amazon.com.tr': 'amazon',
   'pazarama.com': 'pazarama',
+  'idefix.com': 'idefix',
+  'mediamarkt.com.tr': 'mediamarkt',
+  'a101.com.tr': 'a101',
+  'migros.com.tr': 'migros',
 };
 
 // Retailer name aliases → slug (case-insensitive matching)
@@ -64,6 +68,16 @@ const RETAILER_NAME_ALIASES: Record<string, TrustedRetailer> = {
   'amazon türkiye': 'amazon',
   'pazarama': 'pazarama',
   'pazarama.com': 'pazarama',
+  'idefix': 'idefix',
+  'idefix.com': 'idefix',
+  'İdefix': 'idefix',
+  'mediamarkt': 'mediamarkt',
+  'media markt': 'mediamarkt',
+  'mediamarkt.com.tr': 'mediamarkt',
+  'a101': 'a101',
+  'a101.com.tr': 'a101',
+  'migros': 'migros',
+  'migros.com.tr': 'migros',
 };
 
 // Turkish color name → English normalized color (for matching)
@@ -468,7 +482,7 @@ async function queryAkakce(
     for (const script of scripts) {
       const content = $(script).html() || '';
       // Look for JSON data with product/price info
-      const jsonMatches = content.matchAll(/"(?:url|link|href)"\s*:\s*"(https?:\/\/[^"]+(?:hepsiburada|trendyol|n11|amazon|pazarama)[^"]*)"/gi);
+      const jsonMatches = content.matchAll(/"(?:url|link|href)"\s*:\s*"(https?:\/\/[^"]+(?:hepsiburada|trendyol|n11|amazon|pazarama|idefix|mediamarkt|a101|migros)[^"]*)"/gi);
       for (const match of jsonMatches) {
         const url = match[1];
         const retailerSlug = resolveRetailerFromUrl(url);
@@ -671,6 +685,218 @@ async function queryCimri(
   return { results, errors };
 }
 
+// ─── EnUygun Parser ─────────────────────────────────────────────
+
+async function queryEnuygun(
+  searchQuery: string,
+  expectedFamily: string,
+  expectedStorageGb: number,
+  expectedColor?: string
+): Promise<{ results: DiscoveryResult[]; errors: DiscoveryError[] }> {
+  const results: DiscoveryResult[] = [];
+  const errors: DiscoveryError[] = [];
+
+  const searchUrl = `https://www.enuygun.com/arama/?q=${encodeURIComponent(searchQuery)}`;
+  console.log(`[discovery:enuygun] Searching: ${searchUrl}`);
+
+  const html = await fetchWithTimeout(searchUrl);
+  if (!html) {
+    errors.push({ type: 'fallback_search_failed', source: 'enuygun', message: 'Failed to fetch search page', timestamp: new Date().toISOString() });
+    return { results, errors };
+  }
+
+  const $ = cheerio.load(html);
+
+  $('[class*="ProductCard"], [class*="product-card"], article, [class*="product-item"], li[class*="product"]').each((_, el) => {
+    try {
+      const $el = $(el);
+      const title = $el.find('h3, h2, [class*="title"], [class*="name"]').first().text().trim();
+      if (!title || title.length < 8) return;
+      const parsed = parseProductName(title);
+      if (!parsed) return;
+      const { confidence, details } = computeMatchConfidence(parsed, expectedFamily, expectedStorageGb, expectedColor);
+      if (confidence < 0.3) return;
+
+      $el.find('a[href]').each((_, linkEl) => {
+        const href = $(linkEl).attr('href') || '';
+        const resolvedUrl = extractRedirectTarget(href, 'https://www.enuygun.com');
+        const checkUrl = resolvedUrl || (href.startsWith('http') ? href : '');
+        if (!checkUrl) return;
+        const retailerSlug = resolveRetailerFromUrl(checkUrl);
+        if (!retailerSlug || !isTrustedRetailer(retailerSlug)) return;
+        const priceText = $el.find('[class*="price"], [class*="fiyat"]').first().text().trim();
+        const price = parseTurkishPrice(priceText);
+        const finalDetails = { ...details, domainVerified: verifyRetailerDomain(checkUrl, retailerSlug) };
+        results.push({
+          source: 'enuygun', retailerSlug, productUrl: checkUrl,
+          price: price && price > 1000 ? price : null, title,
+          confidence: Math.min(1, finalDetails.domainVerified ? confidence + 0.05 : confidence),
+          matchDetails: finalDetails,
+        });
+      });
+
+      $el.find('[class*="seller"], [class*="merchant"], [class*="magaza"]').each((_, sellerEl) => {
+        const sellerText = $(sellerEl).text().trim();
+        const retailerSlug = resolveRetailerFromName(sellerText);
+        if (!retailerSlug || !isTrustedRetailer(retailerSlug)) return;
+        const link = $(sellerEl).closest('a').attr('href') || $(sellerEl).find('a').attr('href');
+        if (!link) return;
+        const resolvedUrl = extractRedirectTarget(link, 'https://www.enuygun.com');
+        const checkUrl = resolvedUrl || (link.startsWith('http') ? link : '');
+        if (!checkUrl) return;
+        const priceText = $(sellerEl).closest('li, div, tr').find('[class*="price"], [class*="fiyat"]').text().trim();
+        const price = parseTurkishPrice(priceText);
+        const finalDetails = { ...details, domainVerified: verifyRetailerDomain(checkUrl, retailerSlug) };
+        results.push({
+          source: 'enuygun', retailerSlug, productUrl: checkUrl,
+          price: price && price > 1000 ? price : null, title,
+          confidence: Math.min(1, finalDetails.domainVerified ? confidence + 0.05 : confidence),
+          matchDetails: finalDetails,
+        });
+      });
+    } catch { /* skip */ }
+  });
+
+  // Try embedded JSON
+  try {
+    const nextDataScript = $('#__NEXT_DATA__').html();
+    if (nextDataScript) {
+      const data = JSON.parse(nextDataScript);
+      const products = data?.props?.pageProps?.products || data?.props?.pageProps?.searchResult?.products || [];
+      for (const product of (Array.isArray(products) ? products : [])) {
+        const title = product?.name || product?.title || '';
+        if (!title) continue;
+        const parsed = parseProductName(title);
+        if (!parsed) continue;
+        const { confidence, details } = computeMatchConfidence(parsed, expectedFamily, expectedStorageGb, expectedColor);
+        if (confidence < 0.3) continue;
+        const offers = product?.merchants || product?.offers || product?.sellers || [];
+        for (const offer of (Array.isArray(offers) ? offers : [])) {
+          const merchantName = offer?.merchantName || offer?.name || offer?.sellerName || '';
+          const retailerSlug = resolveRetailerFromName(merchantName);
+          if (!retailerSlug || !isTrustedRetailer(retailerSlug)) continue;
+          const url = offer?.url || offer?.link || offer?.productUrl || '';
+          if (!url) continue;
+          const price = typeof offer?.price === 'number' ? offer.price : parseTurkishPrice(String(offer?.price || ''));
+          results.push({
+            source: 'enuygun', retailerSlug, productUrl: url,
+            price: price && price > 1000 ? price : null, title,
+            confidence: Math.min(1, verifyRetailerDomain(url, retailerSlug) ? confidence + 0.05 : confidence),
+            matchDetails: { ...details, domainVerified: verifyRetailerDomain(url, retailerSlug) },
+          });
+        }
+      }
+    }
+  } catch { /* ignore */ }
+
+  if (results.length === 0) {
+    errors.push({ type: 'no_trusted_offer', source: 'enuygun', message: `No trusted retailer offers found for "${searchQuery}"`, timestamp: new Date().toISOString() });
+  }
+  return { results, errors };
+}
+
+// ─── Epey Parser ────────────────────────────────────────────────
+
+async function queryEpey(
+  searchQuery: string,
+  expectedFamily: string,
+  expectedStorageGb: number,
+  expectedColor?: string
+): Promise<{ results: DiscoveryResult[]; errors: DiscoveryError[] }> {
+  const results: DiscoveryResult[] = [];
+  const errors: DiscoveryError[] = [];
+
+  const searchUrl = `https://www.epey.com/ara/${encodeURIComponent(searchQuery.replace(/\s+/g, '+'))}`;
+  console.log(`[discovery:epey] Searching: ${searchUrl}`);
+
+  const html = await fetchWithTimeout(searchUrl);
+  if (!html) {
+    errors.push({ type: 'fallback_search_failed', source: 'epey', message: 'Failed to fetch search page', timestamp: new Date().toISOString() });
+    return { results, errors };
+  }
+
+  const $ = cheerio.load(html);
+
+  // Epey shows product cards with seller offer links
+  $('[class*="product"], article, li[class*="item"], .listele .row, [class*="compare-item"]').each((_, el) => {
+    try {
+      const $el = $(el);
+      const title = $el.find('h3, h2, a[class*="name"], [class*="title"], [class*="urun-adi"]').first().text().trim();
+      if (!title || title.length < 8) return;
+      const parsed = parseProductName(title);
+      if (!parsed) return;
+      const { confidence, details } = computeMatchConfidence(parsed, expectedFamily, expectedStorageGb, expectedColor);
+      if (confidence < 0.3) return;
+
+      $el.find('a[href]').each((_, linkEl) => {
+        const href = $(linkEl).attr('href') || '';
+        const resolvedUrl = extractRedirectTarget(href, 'https://www.epey.com');
+        const checkUrl = resolvedUrl || (href.startsWith('http') ? href : '');
+        if (!checkUrl) return;
+        const retailerSlug = resolveRetailerFromUrl(checkUrl);
+        if (!retailerSlug || !isTrustedRetailer(retailerSlug)) return;
+        const priceText = $el.find('[class*="price"], [class*="fiyat"]').first().text().trim();
+        const price = parseTurkishPrice(priceText);
+        const finalDetails = { ...details, domainVerified: verifyRetailerDomain(checkUrl, retailerSlug) };
+        results.push({
+          source: 'epey', retailerSlug, productUrl: checkUrl,
+          price: price && price > 1000 ? price : null, title,
+          confidence: Math.min(1, finalDetails.domainVerified ? confidence + 0.05 : confidence),
+          matchDetails: finalDetails,
+        });
+      });
+
+      $el.find('[class*="magaza"], [class*="seller"], [class*="merchant"]').each((_, sellerEl) => {
+        const sellerText = $(sellerEl).text().trim();
+        const retailerSlug = resolveRetailerFromName(sellerText);
+        if (!retailerSlug || !isTrustedRetailer(retailerSlug)) return;
+        const link = $(sellerEl).closest('a').attr('href') || $(sellerEl).find('a').attr('href');
+        if (!link) return;
+        const resolvedUrl = extractRedirectTarget(link, 'https://www.epey.com');
+        const checkUrl = resolvedUrl || (link.startsWith('http') ? link : '');
+        if (!checkUrl) return;
+        const priceText = $(sellerEl).closest('li, div, tr').find('[class*="price"], [class*="fiyat"]').text().trim();
+        const price = parseTurkishPrice(priceText);
+        const finalDetails = { ...details, domainVerified: verifyRetailerDomain(checkUrl, retailerSlug) };
+        results.push({
+          source: 'epey', retailerSlug, productUrl: checkUrl,
+          price: price && price > 1000 ? price : null, title,
+          confidence: Math.min(1, finalDetails.domainVerified ? confidence + 0.05 : confidence),
+          matchDetails: finalDetails,
+        });
+      });
+    } catch { /* skip */ }
+  });
+
+  // Try embedded data
+  try {
+    const scripts = $('script').toArray();
+    for (const script of scripts) {
+      const content = $(script).html() || '';
+      const jsonMatches = content.matchAll(/"(?:url|link|href)"\s*:\s*"(https?:\/\/[^"]+(?:hepsiburada|trendyol|n11|amazon|pazarama|idefix|mediamarkt|a101|migros)[^"]*)"/gi);
+      for (const match of jsonMatches) {
+        const url = match[1];
+        const retailerSlug = resolveRetailerFromUrl(url);
+        if (!retailerSlug || !isTrustedRetailer(retailerSlug)) continue;
+        const priceMatch = content.substring(Math.max(0, match.index! - 200), match.index! + match[0].length + 200)
+          .match(/"(?:price|fiyat|amount)"\s*:\s*"?(\d[\d.,]+)"?/i);
+        const price = priceMatch ? parseTurkishPrice(priceMatch[1]) : null;
+        results.push({
+          source: 'epey', retailerSlug, productUrl: url,
+          price: price && price > 1000 ? price : null, title: searchQuery,
+          confidence: 0.5,
+          matchDetails: { familyMatch: true, storageMatch: true, colorMatch: 'missing', titleSimilarity: 0.5, domainVerified: verifyRetailerDomain(url, retailerSlug) },
+        });
+      }
+    }
+  } catch { /* ignore */ }
+
+  if (results.length === 0) {
+    errors.push({ type: 'no_trusted_offer', source: 'epey', message: `No trusted retailer offers found for "${searchQuery}"`, timestamp: new Date().toISOString() });
+  }
+  return { results, errors };
+}
+
 // ─── Main Discovery Orchestrator ────────────────────────────────
 
 export interface FallbackDiscoveryResult {
@@ -713,10 +939,12 @@ export async function queryFallbackSourcesDetailed(
 
   console.log(`[discovery] Querying fallback sources for: ${searchQuery}`);
 
-  // Query active sources in parallel (akakce + cimri only)
-  const [akakceResult, cimriResult] = await Promise.allSettled([
+  // Query all 4 discovery sources in parallel
+  const [akakceResult, cimriResult, enuygunResult, epeyResult] = await Promise.allSettled([
     queryAkakce(searchQuery, familyName, storageGb, color),
     queryCimri(searchQuery, familyName, storageGb, color),
+    queryEnuygun(searchQuery, familyName, storageGb, color),
+    queryEpey(searchQuery, familyName, storageGb, color),
   ]);
 
   const allResults: DiscoveryResult[] = [];
@@ -726,6 +954,8 @@ export async function queryFallbackSourcesDetailed(
   for (const [name, result] of [
     ['akakce', akakceResult],
     ['cimri', cimriResult],
+    ['enuygun', enuygunResult],
+    ['epey', epeyResult],
   ] as const) {
     sourcesQueried.push(name);
     if (result.status === 'fulfilled') {

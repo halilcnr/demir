@@ -65,6 +65,26 @@ async function main() {
       update: {},
       create: { name: 'Pazarama', slug: 'pazarama', baseUrl: 'https://www.pazarama.com', logoUrl: '/retailers/pazarama.svg' },
     }),
+    prisma.retailer.upsert({
+      where: { slug: 'idefix' },
+      update: {},
+      create: { name: 'İdefix', slug: 'idefix', baseUrl: 'https://www.idefix.com', logoUrl: '/retailers/idefix.svg' },
+    }),
+    prisma.retailer.upsert({
+      where: { slug: 'mediamarkt' },
+      update: {},
+      create: { name: 'MediaMarkt', slug: 'mediamarkt', baseUrl: 'https://www.mediamarkt.com.tr', logoUrl: '/retailers/mediamarkt.svg' },
+    }),
+    prisma.retailer.upsert({
+      where: { slug: 'a101' },
+      update: {},
+      create: { name: 'A101', slug: 'a101', baseUrl: 'https://www.a101.com.tr', logoUrl: '/retailers/a101.svg' },
+    }),
+    prisma.retailer.upsert({
+      where: { slug: 'migros' },
+      update: {},
+      create: { name: 'Migros', slug: 'migros', baseUrl: 'https://www.migros.com.tr', logoUrl: '/retailers/migros.svg' },
+    }),
   ]);
   console.log(`✅ ${retailers.length} retailer oluşturuldu`);
 

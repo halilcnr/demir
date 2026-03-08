@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@repo/shared';
 
-type ProviderStatus = 'healthy' | 'warning' | 'blocked' | 'error';
+type ProviderStatus = 'healthy' | 'warning' | 'blocked' | 'error' | 'cooldown';
 
 const HEALTHY_WINDOW_MS = 15 * 60 * 1000;
 const WARNING_WINDOW_MS = 30 * 60 * 1000;
@@ -41,7 +41,10 @@ function deriveStatus(retailer: {
   return 'error';
 }
 
-/** GET /api/health/providers — provider health status */
+/**
+ * GET /api/health/providers — provider health status for all retailers
+ * Also returns freshness metadata from last listing scrape
+ */
 export async function GET() {
   const retailers = await prisma.retailer.findMany({
     include: {
@@ -50,21 +53,27 @@ export async function GET() {
         take: 1,
         select: { lastSeenAt: true, lastSuccessAt: true, lastFailureAt: true, lastBlockedAt: true },
       },
+      _count: { select: { listings: true } },
     },
   });
 
-  const providers = retailers.map((r) => ({
-    slug: r.slug,
-    name: r.name,
-    isActive: r.isActive,
-    status: deriveStatus(r),
-    lastSuccessAt: r.lastSuccessAt?.toISOString() ?? null,
-    lastFailureAt: r.lastFailureAt?.toISOString() ?? null,
-    lastBlockedAt: r.lastBlockedAt?.toISOString() ?? null,
-    consecutiveFailures: r.consecutiveFailures,
-    blockedCount: r.blockedCount,
-    lastListingSeenAt: r.listings[0]?.lastSeenAt?.toISOString() ?? null,
-  }));
+  const providers = retailers.map((r) => {
+    const status = deriveStatus(r);
+    const lastListing = r.listings[0];
+    return {
+      slug: r.slug,
+      name: r.name,
+      isActive: r.isActive,
+      status,
+      lastSuccessAt: r.lastSuccessAt?.toISOString() ?? null,
+      lastFailureAt: r.lastFailureAt?.toISOString() ?? null,
+      lastBlockedAt: r.lastBlockedAt?.toISOString() ?? null,
+      consecutiveFailures: r.consecutiveFailures,
+      blockedCount: r.blockedCount,
+      listingCount: r._count.listings,
+      lastListingSeenAt: lastListing?.lastSeenAt?.toISOString() ?? null,
+    };
+  });
 
   return NextResponse.json({ providers });
 }

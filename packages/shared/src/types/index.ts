@@ -309,10 +309,13 @@ export interface SystemHealthInfo {
 }
 
 // ─── Discovery Source Types ─────────────────────────────────────
-export const TRUSTED_RETAILERS = ['amazon', 'hepsiburada', 'trendyol', 'n11', 'pazarama'] as const;
+export const TRUSTED_RETAILERS = [
+  'amazon', 'hepsiburada', 'trendyol', 'n11', 'pazarama',
+  'idefix', 'mediamarkt', 'a101', 'migros',
+] as const;
 export type TrustedRetailer = typeof TRUSTED_RETAILERS[number];
 
-export const DISCOVERY_SOURCES = ['akakce', 'cimri'] as const;
+export const DISCOVERY_SOURCES = ['akakce', 'cimri', 'enuygun', 'epey'] as const;
 export type DiscoverySource = typeof DISCOVERY_SOURCES[number];
 
 // ─── Price Intelligence Types ───────────────────────────────────

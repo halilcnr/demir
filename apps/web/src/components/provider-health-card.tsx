@@ -10,12 +10,13 @@ interface ProviderInfo {
   slug: string;
   name: string;
   isActive: boolean;
-  status: 'healthy' | 'warning' | 'blocked' | 'error';
+  status: 'healthy' | 'warning' | 'blocked' | 'error' | 'cooldown';
   lastSuccessAt: string | null;
   lastFailureAt: string | null;
   lastBlockedAt: string | null;
   consecutiveFailures: number;
   blockedCount: number;
+  listingCount?: number;
   lastListingSeenAt: string | null;
 }
 
@@ -24,6 +25,7 @@ const statusConfig: Record<string, { label: string; variant: 'success' | 'warnin
   warning: { label: 'Uyarı', variant: 'warning' },
   blocked: { label: 'Engellendi', variant: 'danger' },
   error: { label: 'Hata', variant: 'danger' },
+  cooldown: { label: 'Soğuma', variant: 'warning' },
 };
 
 export function ProviderHealthCard() {
@@ -59,7 +61,7 @@ export function ProviderHealthCard() {
         </div>
         <div>
           <h3 className="text-sm font-semibold text-text-primary">Sağlayıcı Durumu</h3>
-          <p className="text-[11px] text-text-tertiary">5 sağlayıcı takipte</p>
+          <p className="text-[11px] text-text-tertiary">{data.providers.length} sağlayıcı takipte</p>
         </div>
       </div>
       <div className="space-y-1.5">
@@ -76,7 +78,7 @@ export function ProviderHealthCard() {
                     className={`h-2 w-2 rounded-full ${
                       p.status === 'healthy'
                         ? 'bg-emerald-500'
-                        : p.status === 'warning'
+                        : p.status === 'warning' || p.status === 'cooldown'
                           ? 'bg-amber-500'
                           : 'bg-rose-500'
                     }`}

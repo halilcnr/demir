@@ -137,6 +137,10 @@ export function getRetailerColor(slug: string): string {
     n11: '#7849b8',
     amazon: '#ff9900',
     pazarama: '#00b900',
+    idefix: '#00a1e4',
+    mediamarkt: '#df0000',
+    a101: '#004e9a',
+    migros: '#f26f21',
   };
   return colors[slug] ?? '#6b7280';
 }

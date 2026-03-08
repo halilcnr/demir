@@ -18,6 +18,9 @@ import {
   Zap,
   RefreshCw,
   Check,
+  Clock,
+  ShieldAlert,
+  Crown,
 } from 'lucide-react';
 
 import { Card, StatCard } from '@/components/ui/card';
@@ -34,6 +37,35 @@ import {
   getRetailerColor,
 } from '@repo/shared';
 import type { VariantDetail, PriceHistoryPoint } from '@repo/shared';
+
+interface ListingWithFreshness {
+  id: string;
+  retailerName: string;
+  retailerSlug: string;
+  retailerProductTitle?: string | null;
+  currentPrice: number | null;
+  previousPrice: number | null;
+  lowestPrice: number | null;
+  highestPrice: number | null;
+  sellerName?: string | null;
+  stockStatus: string;
+  isDeal: boolean;
+  dealScore: number | null;
+  productUrl: string;
+  lastSeenAt: string | null;
+  lastCheckedAt?: string | null;
+  lastBlockedAt?: string | null;
+  freshness?: 'fresh' | 'recent' | 'stale' | 'blocked';
+  isCheapest?: boolean;
+  priceRank?: number;
+}
+
+const freshnessConfig = {
+  fresh:   { label: 'Az önce güncellendi', color: 'text-emerald-600', icon: Clock, bgColor: 'bg-emerald-50' },
+  recent:  { label: 'Güncel', color: 'text-blue-600', icon: Clock, bgColor: 'bg-blue-50' },
+  stale:   { label: 'Gecikmiş', color: 'text-amber-600', icon: AlertTriangle, bgColor: 'bg-amber-50' },
+  blocked: { label: 'Geçici engel', color: 'text-red-600', icon: ShieldAlert, bgColor: 'bg-red-50' },
+} as const;
 
 export default function VariantDetailPage() {
   const params = useParams();
@@ -133,8 +165,10 @@ export default function VariantDetailPage() {
   if (error) return <ErrorState onRetry={() => refetch()} />;
   if (!variant) return <EmptyState description="Varyant bulunamadı" />;
 
-  const bestListing = variant.listings.find(
-    (l) => l.currentPrice === variant.minPrice,
+  // Listings are already sorted by price ascending from the API
+  const listings = (variant.listings ?? []) as ListingWithFreshness[];
+  const bestListing = listings.find(
+    (l) => l.isCheapest || l.currentPrice === variant.minPrice,
   );
 
   return (
@@ -287,18 +321,26 @@ export default function VariantDetailPage() {
         </Card>
       )}
 
-      {/* Retailer Listings */}
+      {/* Retailer Listings — sorted cheapest first */}
       <Card>
-        <h2 className="mb-4 text-sm font-semibold text-text-primary">
-          Mağaza Karşılaştırması
-        </h2>
-        {variant.listings.length === 0 ? (
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-semibold text-text-primary">
+            Mağaza Karşılaştırması
+          </h2>
+          <span className="text-[11px] text-text-tertiary">
+            {listings.filter(l => l.currentPrice != null).length} fiyat · en ucuzdan pahalıya
+          </span>
+        </div>
+        {listings.length === 0 ? (
           <EmptyState description="Bu varyant için henüz listing yok" />
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-border">
               <thead>
                 <tr className="bg-surface-secondary">
+                  <th className="px-2 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-text-tertiary w-10">
+                    #
+                  </th>
                   <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
                     Mağaza
                   </th>
@@ -318,7 +360,7 @@ export default function VariantDetailPage() {
                     Fırsat
                   </th>
                   <th className="px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
-                    Son Görülme
+                    Güncelleme
                   </th>
                   <th className="px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
                     İşlem
@@ -326,14 +368,48 @@ export default function VariantDetailPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border-light">
-                {variant.listings.map((listing) => {
+                {listings.map((listing) => {
                   const change =
                     listing.currentPrice != null && listing.previousPrice != null
                       ? calculateChangePercent(listing.previousPrice, listing.currentPrice)
                       : null;
 
+                  const rank = listing.priceRank ?? 0;
+                  const isTop3 = rank >= 1 && rank <= 3 && listing.currentPrice != null;
+                  const isCheapest = listing.isCheapest || rank === 1;
+                  const freshness = listing.freshness ?? 'stale';
+                  const freshConfig = freshnessConfig[freshness];
+                  const FreshIcon = freshConfig.icon;
+
                   return (
-                    <tr key={listing.id} className="group hover:bg-surface-secondary transition-colors">
+                    <tr
+                      key={listing.id}
+                      className={`group transition-colors ${
+                        isCheapest
+                          ? 'bg-emerald-50/50 hover:bg-emerald-50/80 border-l-2 border-l-emerald-500'
+                          : isTop3
+                            ? 'bg-blue-50/30 hover:bg-blue-50/50'
+                            : 'hover:bg-surface-secondary'
+                      }`}
+                    >
+                      {/* Rank */}
+                      <td className="px-2 py-3 text-center">
+                        {listing.currentPrice != null ? (
+                          <span className={`inline-flex items-center justify-center h-6 w-6 rounded-full text-[11px] font-bold ${
+                            isCheapest
+                              ? 'bg-emerald-500 text-white'
+                              : isTop3
+                                ? 'bg-blue-100 text-blue-700'
+                                : 'bg-surface-secondary text-text-tertiary'
+                          }`}>
+                            {rank}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-text-tertiary">—</span>
+                        )}
+                      </td>
+
+                      {/* Retailer */}
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2.5">
                           <span
@@ -343,6 +419,11 @@ export default function VariantDetailPage() {
                           <span className="text-[13px] font-medium text-text-primary">
                             {listing.retailerName}
                           </span>
+                          {isCheapest && listing.currentPrice != null && (
+                            <Badge variant="success" size="sm" className="ml-1">
+                              <Crown className="h-3 w-3 mr-0.5" /> En Ucuz
+                            </Badge>
+                          )}
                         </div>
                         {listing.sellerName && (
                           <p className="text-[11px] text-text-tertiary ml-[18px]">
@@ -350,17 +431,29 @@ export default function VariantDetailPage() {
                           </p>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right text-[13px] font-semibold text-text-primary tabular-nums">
+
+                      {/* Current Price */}
+                      <td className={`px-4 py-3 text-right tabular-nums ${
+                        isCheapest
+                          ? 'text-[14px] font-bold text-emerald-700'
+                          : 'text-[13px] font-semibold text-text-primary'
+                      }`}>
                         {listing.currentPrice != null ? formatPrice(listing.currentPrice) : '—'}
                       </td>
+
+                      {/* Previous Price */}
                       <td className="px-4 py-3 text-right text-[13px] text-text-tertiary tabular-nums">
                         {listing.previousPrice != null
                           ? formatPrice(listing.previousPrice)
                           : '—'}
                       </td>
+
+                      {/* Change */}
                       <td className="px-4 py-3 text-right">
                         {change != null ? <PriceChangeBadge changePercent={change} /> : <span className="text-[11px] text-text-tertiary">—</span>}
                       </td>
+
+                      {/* Stock */}
                       <td className="px-4 py-3 text-center">
                         <Badge
                           variant={
@@ -381,6 +474,8 @@ export default function VariantDetailPage() {
                                 : 'Bilinmiyor'}
                         </Badge>
                       </td>
+
+                      {/* Deal */}
                       <td className="px-4 py-3 text-center">
                         {listing.isDeal ? (
                           <Badge variant="warning">
@@ -390,11 +485,25 @@ export default function VariantDetailPage() {
                           <span className="text-[11px] text-text-tertiary">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-center text-[11px] text-text-tertiary">
-                        {listing.lastSeenAt
-                          ? formatRelativeDate(listing.lastSeenAt)
-                          : '—'}
+
+                      {/* Freshness */}
+                      <td className="px-4 py-3 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <FreshIcon className={`h-3 w-3 ${freshConfig.color}`} />
+                          <span className={`text-[11px] ${freshConfig.color}`}>
+                            {listing.lastSeenAt
+                              ? formatRelativeDate(listing.lastSeenAt)
+                              : freshConfig.label}
+                          </span>
+                        </div>
+                        {freshness === 'blocked' && (
+                          <span className="text-[10px] text-red-500 mt-0.5 block">
+                            Geçici engel
+                          </span>
+                        )}
                       </td>
+
+                      {/* Action */}
                       <td className="px-4 py-3 text-center">
                         <a
                           href={listing.productUrl}
@@ -429,7 +538,7 @@ export default function VariantDetailPage() {
               Mağaza Karşılaştırması
             </h2>
             <RetailerComparisonChart
-              data={variant.listings
+              data={listings
                 .filter((l) => l.currentPrice != null)
                 .map((l) => ({
                   retailer: l.retailerName,

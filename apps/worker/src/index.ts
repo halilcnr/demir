@@ -1,12 +1,14 @@
-import { startScheduler } from './scheduler';
+import { startScheduler, getSchedulerState } from './scheduler';
 import { createServer } from 'http';
 import { runSync } from './sync';
 import { getSyncLogs, getSyncProgress } from './sync-logger';
 import { sendTestMessage, getTelegramStats, startTelegramPolling, sendCustomMessage, sendListingAlert } from './services/telegram';
 
+const startedAt = new Date().toISOString();
 console.log('=== iPhone Price Tracker Worker ===');
 console.log(`Ortam: ${process.env.NODE_ENV ?? 'development'}`);
 console.log(`Mock Providers: ${process.env.USE_MOCK_PROVIDERS === 'true' ? 'Evet' : 'Hayır'}`);
+console.log(`Started at: ${startedAt}`);
 console.log('==================================');
 
 // ── HTTP trigger endpoint for manual sync ──
@@ -18,10 +20,28 @@ let isSyncing = false;
 const server = createServer(async (req, res) => {
   res.setHeader('Content-Type', 'application/json');
 
-  // Health check
+  // Health check — detailed
   if (req.method === 'GET' && req.url === '/health') {
+    const scheduler = getSchedulerState();
     res.writeHead(200);
-    res.end(JSON.stringify({ ok: true, syncing: isSyncing }));
+    res.end(JSON.stringify({
+      ok: true,
+      syncing: isSyncing || scheduler.syncRunning,
+      startedAt,
+      uptime: Math.round((Date.now() - new Date(startedAt).getTime()) / 1000),
+      cycleCount: scheduler.cycleCount,
+      intervalMs: scheduler.intervalMs,
+      lastSync: scheduler.lastSyncResult,
+    }));
+    return;
+  }
+
+  // Readiness probe — returns 200 only when worker is ready to accept syncs
+  if (req.method === 'GET' && req.url === '/ready') {
+    const scheduler = getSchedulerState();
+    const isReady = scheduler.cycleCount > 0 || !scheduler.syncRunning;
+    res.writeHead(isReady ? 200 : 503);
+    res.end(JSON.stringify({ ready: isReady, syncing: scheduler.syncRunning }));
     return;
   }
 
