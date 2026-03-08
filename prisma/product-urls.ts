@@ -35,11 +35,13 @@ export const PRODUCT_URLS: ProductUrlMap = {
   },
   'iphone-13-128gb-blue': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-13-128-gb-mavi-p-HBCV00000ODHHV',
+    trendyol: 'https://www.trendyol.com/apple/iphone-13-128-gb-mavi-cep-telefonu-apple-turkiye-garantili-p-150059501',
     n11: 'https://www.n11.com/urun/apple-iphone-13-128-gb-apple-turkiye-garantili-2141312',
     pazarama: 'https://www.pazarama.com/apple-iphone-13-mavi-128-gb-4-gb-ram-61-inc-12-mp-akilli-telefon-p-194252708330',
   },
   'iphone-13-128gb-green': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-13-128-gb-yesil-p-HBCV00001T9W5S',
+    trendyol: 'https://www.trendyol.com/apple/iphone-13-128-gb-yesil-cep-telefonu-apple-turkiye-garantili-p-266090694',
     n11: 'https://www.n11.com/urun/apple-iphone-13-128-gb-apple-turkiye-garantili-2141312',
   },
   'iphone-13-128gb-pink': {
@@ -48,6 +50,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
   },
   'iphone-13-128gb-red': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-13-128-gb-kirmizi-p-HBCV00000ODHHR',
+    n11: 'https://www.n11.com/urun/apple-iphone-13-128-gb-apple-turkiye-garantili-2141312',
   },
 
   // ═══════════════════════════════════════════════════════
@@ -58,6 +61,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
   },
   'iphone-13-256gb-starlight': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-13-256-gb-beyaz-p-HBCV00000ODHWP',
+    trendyol: 'https://www.trendyol.com/apple/iphone-13-256-gb-yildiz-isigi-cep-telefonu-apple-turkiye-garantili-p-153303511',
   },
   'iphone-13-256gb-blue': {
     hepsiburada: 'https://www.hepsiburada.com/iphone-13-256-gb-mavi-p-HBCV00000ODHWO',
@@ -77,12 +81,25 @@ export const PRODUCT_URLS: ProductUrlMap = {
   // ═══════════════════════════════════════════════════════
   'iphone-13-512gb-midnight': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-13-512-gb-siyah-p-HBCV00000ODHY4',
+    n11: 'https://www.n11.com/urun/apple-iphone-13-512-gb-apple-turkiye-garantili-2141345',
   },
   'iphone-13-512gb-starlight': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-13-512-gb-beyaz-p-HBCV00000ODHY5',
+    n11: 'https://www.n11.com/urun/apple-iphone-13-512-gb-apple-turkiye-garantili-2141345',
   },
   'iphone-13-512gb-blue': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-13-512-gb-mavi-p-HBCV00000ODHY6',
+    n11: 'https://www.n11.com/urun/apple-iphone-13-512-gb-apple-turkiye-garantili-2141345',
+  },
+  'iphone-13-512gb-pink': {
+    trendyol: 'https://www.trendyol.com/apple/iphone-13-512-gb-pembe-cep-telefonu-apple-turkiye-garantili-p-155084747',
+    n11: 'https://www.n11.com/urun/apple-iphone-13-512-gb-apple-turkiye-garantili-2141345',
+  },
+  'iphone-13-512gb-green': {
+    n11: 'https://www.n11.com/urun/apple-iphone-13-512-gb-apple-turkiye-garantili-2141345',
+  },
+  'iphone-13-512gb-red': {
+    n11: 'https://www.n11.com/urun/apple-iphone-13-512-gb-apple-turkiye-garantili-2141345',
   },
 
   // ═══════════════════════════════════════════════════════
@@ -90,23 +107,31 @@ export const PRODUCT_URLS: ProductUrlMap = {
   // ═══════════════════════════════════════════════════════
   'iphone-14-128gb-midnight': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-128-gb-siyah-p-HBCV00002VUQ7R',
+    trendyol: 'https://www.trendyol.com/apple/iphone-14-128-gb-gece-yarisi-p-355707175',
+    n11: 'https://www.n11.com/urun/apple-iphone-14-128-gb-apple-turkiye-garantili-22964656',
     pazarama: 'https://www.pazarama.com/apple-iphone-14-siyah-128-gb-6-gb-ram-apple-turkiye-garantili-p-194253408215',
   },
   'iphone-14-128gb-starlight': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-128-gb-beyaz-p-HBCV00002VUQ7S',
+    trendyol: 'https://www.trendyol.com/apple/iphone-14-128-gb-yildiz-isigi-p-355707118',
+    n11: 'https://www.n11.com/urun/apple-iphone-14-128-gb-apple-turkiye-garantili-22964656',
   },
   'iphone-14-128gb-blue': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-128-gb-mavi-p-HBCV00002VUQ7U',
+    n11: 'https://www.n11.com/urun/apple-iphone-14-128-gb-apple-turkiye-garantili-22964656',
     pazarama: 'https://www.pazarama.com/apple-iphone-14-mavi-128-gb-6-gb-ram-apple-turkiye-garantili-p-194253409533',
   },
   'iphone-14-128gb-purple': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-128-gb-mor-p-HBCV00002VUQ7V',
+    n11: 'https://www.n11.com/urun/apple-iphone-14-128-gb-apple-turkiye-garantili-22964656',
   },
   'iphone-14-128gb-red': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-128-gb-kirmizi-p-HBCV00002VUQ7T',
+    n11: 'https://www.n11.com/urun/apple-iphone-14-128-gb-apple-turkiye-garantili-22964656',
   },
   'iphone-14-128gb-yellow': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-128-gb-sari-p-HBCV00003S8E4C',
+    n11: 'https://www.n11.com/urun/apple-iphone-14-128-gb-apple-turkiye-garantili-22964656',
   },
 
   // ═══════════════════════════════════════════════════════
@@ -114,16 +139,22 @@ export const PRODUCT_URLS: ProductUrlMap = {
   // ═══════════════════════════════════════════════════════
   'iphone-14-256gb-midnight': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-256-gb-siyah-p-HBCV00002VUQF4',
+    n11: 'https://www.n11.com/urun/apple-iphone-14-256-gb-apple-turkiye-garantili-22968231',
   },
   'iphone-14-256gb-starlight': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-256-gb-beyaz-p-HBCV00002VUQF5',
+    trendyol: 'https://www.trendyol.com/apple/iphone-14-256-gb-yildiz-isigi-cep-telefonu-p-355707120',
+    n11: 'https://www.n11.com/urun/apple-iphone-14-256-gb-apple-turkiye-garantili-22968231',
   },
   'iphone-14-256gb-blue': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-256-gb-mavi-p-HBCV00002VUQF6',
+    trendyol: 'https://www.trendyol.com/apple/iphone-14-256-gb-mavi-p-355707129',
+    n11: 'https://www.n11.com/urun/apple-iphone-14-256-gb-apple-turkiye-garantili-22968231',
     amazon: 'https://www.amazon.com.tr/dp/B0BDJDQRLD',
   },
   'iphone-14-256gb-purple': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-256-gb-mor-p-HBCV00002VUQF7',
+    n11: 'https://www.n11.com/urun/apple-iphone-14-256-gb-apple-turkiye-garantili-22968231',
   },
 
   // ═══════════════════════════════════════════════════════
@@ -142,25 +173,31 @@ export const PRODUCT_URLS: ProductUrlMap = {
   'iphone-15-128gb-black': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-15-128-gb-siyah-p-HBCV00004X9ZCH',
     trendyol: 'https://www.trendyol.com/apple/iphone-15-128-gb-siyah-p-762254878',
+    n11: 'https://www.n11.com/urun/apple-iphone-15-128-gb-apple-turkiye-garantili-43821353',
     amazon: 'https://www.amazon.com.tr/dp/B0CHXCFS1J',
     pazarama: 'https://www.pazarama.com/apple-iphone-15-128-6-gb-ram-5g-apple-turkiye-garantili-p-195949036040',
   },
   'iphone-15-128gb-blue': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-15-128-gb-mavi-p-HBCV00004X9ZCK',
     trendyol: 'https://www.trendyol.com/apple/iphone-15-128-gb-mavi-p-762254881',
+    n11: 'https://www.n11.com/urun/apple-iphone-15-128-gb-apple-turkiye-garantili-43821353',
     amazon: 'https://www.amazon.com.tr/dp/B0CHXGB3NG',
     pazarama: 'https://www.pazarama.com/apple-iphone-15-128-6-gb-ram-5g-apple-turkiye-garantili-p-195949036583',
   },
   'iphone-15-128gb-green': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-15-128-gb-p-HBCV00004X9ZCL',
+    n11: 'https://www.n11.com/urun/apple-iphone-15-128-gb-apple-turkiye-garantili-43821353',
     amazon: 'https://www.amazon.com.tr/dp/B0CHXMLVKJ',
   },
   'iphone-15-128gb-yellow': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-15-128-gb-sari-p-HBCV00004X9ZCJ',
+    n11: 'https://www.n11.com/urun/apple-iphone-15-128-gb-apple-turkiye-garantili-43821353',
     amazon: 'https://www.amazon.com.tr/dp/B0CHWZC5D7',
   },
   'iphone-15-128gb-pink': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-15-128-gb-pembe-p-HBCV00004X9ZCI',
+    trendyol: 'https://www.trendyol.com/apple/iphone-15-128-gb-pembe-p-762254841',
+    n11: 'https://www.n11.com/urun/apple-iphone-15-128-gb-apple-turkiye-garantili-43821353',
     amazon: 'https://www.amazon.com.tr/dp/B0CHXFG737',
     pazarama: 'https://www.pazarama.com/apple-iphone-15-128-6-gb-ram-5g-apple-turkiye-garantili-p-195949036224',
   },
@@ -170,21 +207,29 @@ export const PRODUCT_URLS: ProductUrlMap = {
   // ═══════════════════════════════════════════════════════
   'iphone-15-256gb-black': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-15-256-gb-siyah-p-HBCV00004X9ZMH',
+    trendyol: 'https://www.trendyol.com/apple/iphone-15-256-gb-siyah-p-762254844',
+    n11: 'https://www.n11.com/urun/apple-iphone-15-256-gb-apple-turkiye-garantili-43821352',
     amazon: 'https://www.amazon.com.tr/dp/B0CHXRNHC4',
   },
   'iphone-15-256gb-blue': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-15-256-gb-mavi-p-HBCV00004X9ZMK',
+    trendyol: 'https://www.trendyol.com/apple/iphone-15-256-gb-mavi-p-762254862',
+    n11: 'https://www.n11.com/urun/apple-iphone-15-256-gb-apple-turkiye-garantili-43821352',
     amazon: 'https://www.amazon.com.tr/dp/B0CHX43FKD',
   },
   'iphone-15-256gb-pink': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-15-256-gb-pembe-p-HBCV00004X9ZMI',
+    trendyol: 'https://www.trendyol.com/apple/iphone-15-256-gb-pembe-p-762254854',
+    n11: 'https://www.n11.com/urun/apple-iphone-15-256-gb-apple-turkiye-garantili-43821352',
     amazon: 'https://www.amazon.com.tr/dp/B0CHX9D18W',
   },
   'iphone-15-256gb-green': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-15-256-gb-yesil-p-HBCV00004X9ZML',
+    n11: 'https://www.n11.com/urun/apple-iphone-15-256-gb-apple-turkiye-garantili-43821352',
   },
   'iphone-15-256gb-yellow': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-15-256-gb-sari-p-HBCV00004X9ZMJ',
+    n11: 'https://www.n11.com/urun/apple-iphone-15-256-gb-apple-turkiye-garantili-43821352',
   },
 
   // ═══════════════════════════════════════════════════════
@@ -192,12 +237,15 @@ export const PRODUCT_URLS: ProductUrlMap = {
   // ═══════════════════════════════════════════════════════
   'iphone-15-512gb-black': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-15-512-gb-siyah-p-HBCV00004X9ZVH',
+    n11: 'https://www.n11.com/urun/apple-iphone-15-512-gb-apple-turkiye-garantili-43821371',
   },
   'iphone-15-512gb-blue': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-15-512-gb-mavi-p-HBCV00004X9ZVK',
+    n11: 'https://www.n11.com/urun/apple-iphone-15-512-gb-apple-turkiye-garantili-43821371',
   },
   'iphone-15-512gb-pink': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-15-512-gb-pembe-p-HBCV00004X9ZVI',
+    n11: 'https://www.n11.com/urun/apple-iphone-15-512-gb-apple-turkiye-garantili-43821371',
   },
 
   // ═══════════════════════════════════════════════════════
@@ -206,30 +254,35 @@ export const PRODUCT_URLS: ProductUrlMap = {
   'iphone-16-128gb-black': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-128gb-siyah-p-HBCV00006Y4HFJ',
     trendyol: 'https://www.trendyol.com/apple/iphone-16-128gb-siyah-p-857296095',
+    n11: 'https://www.n11.com/urun/apple-iphone-16-128-gb-apple-turkiye-garantili-59257801',
     amazon: 'https://www.amazon.com.tr/dp/B0DGJJZWQX',
     pazarama: 'https://www.pazarama.com/apple-iphone-16-128-gb-siyah-p-195949821943',
   },
   'iphone-16-128gb-white': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-128gb-beyaz-p-HBCV00006Y4HFL',
     trendyol: 'https://www.trendyol.com/apple/iphone-16-128gb-beyaz-p-857296082',
+    n11: 'https://www.n11.com/urun/apple-iphone-16-128-gb-apple-turkiye-garantili-59257801',
     amazon: 'https://www.amazon.com.tr/dp/B0DGJJPYGP',
     pazarama: 'https://www.pazarama.com/apple-iphone-16-128-gb-beyaz-p-195949822124',
   },
   'iphone-16-128gb-pink': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-128gb-pembe-p-HBCV00006Y4HU3',
     trendyol: 'https://www.trendyol.com/apple/iphone-16-128gb-pembe-p-857296122',
+    n11: 'https://www.n11.com/urun/apple-iphone-16-128-gb-apple-turkiye-garantili-59257801',
     amazon: 'https://www.amazon.com.tr/dp/B0DGJQYLQB',
     pazarama: 'https://www.pazarama.com/apple-iphone-16-128-gb-pembe-p-195949822308',
   },
   'iphone-16-128gb-teal': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-128gb-deniz-mavisi-p-HBCV00006Y4HFP',
     trendyol: 'https://www.trendyol.com/apple/iphone-16-128gb-deniz-mavisi-p-857296127',
+    n11: 'https://www.n11.com/urun/apple-iphone-16-128-gb-apple-turkiye-garantili-59257801',
     amazon: 'https://www.amazon.com.tr/dp/B0DGJ6B6SM',
     pazarama: 'https://www.pazarama.com/apple-iphone-16-128-gb-teal-p-195949822667',
   },
   'iphone-16-128gb-ultramarine': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-128gb-lacivert-tas-p-HBCV00006Y4HFN',
     trendyol: 'https://www.trendyol.com/apple/iphone-16-128gb-laciverttas-p-857296121',
+    n11: 'https://www.n11.com/urun/apple-iphone-16-128-gb-apple-turkiye-garantili-59257801',
     amazon: 'https://www.amazon.com.tr/dp/B0DGJ9XTZ1',
     pazarama: 'https://www.pazarama.com/apple-iphone-16-128-gb-ultramarine-p-195949822483',
   },
@@ -309,22 +362,26 @@ export const PRODUCT_URLS: ProductUrlMap = {
   // ═══════════════════════════════════════════════════════
   'iphone-17-512gb-black': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-512-gb-siyah-p-HBCV00009Z3V96',
-    n11: 'https://www.n11.com/urun/apple-iphone-17-256-gb-apple-turkiye-garantili-100918382',
+    n11: 'https://www.n11.com/urun/apple-iphone-17-512-gb-apple-turkiye-garantili-100697071',
   },
   'iphone-17-512gb-white': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-512-gb-beyaz-p-HBCV00009Z3XDK',
     trendyol: 'https://www.trendyol.com/apple/iphone-17-512gb-beyaz-p-985256823',
+    n11: 'https://www.n11.com/urun/apple-iphone-17-512-gb-apple-turkiye-garantili-100697071',
   },
   'iphone-17-512gb-fog-blue': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-512-gb-sis-mavisi-p-HBCV00009Z3YPJ',
+    n11: 'https://www.n11.com/urun/apple-iphone-17-512-gb-apple-turkiye-garantili-100697071',
   },
   'iphone-17-512gb-lavender': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-512-gb-lavanta-p-HBCV00009Z3SG0',
     trendyol: 'https://www.trendyol.com/apple/iphone-17-512gb-lavanta-p-985256833',
+    n11: 'https://www.n11.com/urun/apple-iphone-17-512-gb-apple-turkiye-garantili-100697071',
   },
   'iphone-17-512gb-sage': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-512-gb-ada-cayi-p-HBCV00009Z3XIN',
     trendyol: 'https://www.trendyol.com/apple/iphone-17-512gb-ada-cayi-p-985256839',
+    n11: 'https://www.n11.com/urun/apple-iphone-17-512-gb-apple-turkiye-garantili-100697071',
   },
 
   // ═══════════════════════════════════════════════════════
@@ -333,20 +390,25 @@ export const PRODUCT_URLS: ProductUrlMap = {
   'iphone-17-air-256gb-black': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-air-256-gb-uzay-siyahi-p-HBCV00009Z40TG',
     trendyol: 'https://www.trendyol.com/apple/iphone-air-256gb-uzay-siyahi-p-985256818',
+    n11: 'https://www.n11.com/urun/apple-iphone-air-256-gb-apple-turkiye-garantili-100726529',
   },
   'iphone-17-air-256gb-white': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-air-256-gb-pamuk-beyazi-p-HBCV00009Z3YH5',
     trendyol: 'https://www.trendyol.com/apple/iphone-air-256gb-pamuk-beyazi-p-985256822',
+    n11: 'https://www.n11.com/urun/apple-iphone-air-256-gb-apple-turkiye-garantili-100726529',
   },
   'iphone-17-air-256gb-fog-blue': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-air-256-gb-gok-mavisi-p-HBCV00009Z6WR8',
     trendyol: 'https://www.trendyol.com/apple/iphone-air-256gb-gok-mavisi-p-985256832',
-
+    n11: 'https://www.n11.com/urun/apple-iphone-air-256-gb-apple-turkiye-garantili-100726529',
+  },
+  'iphone-17-air-256gb-lavender': {
+    n11: 'https://www.n11.com/urun/apple-iphone-air-256-gb-apple-turkiye-garantili-100726529',
   },
   'iphone-17-air-256gb-sage': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-air-256-gb-ucuk-altin-rengi-p-HBCV00009Z3Z8B',
     trendyol: 'https://www.trendyol.com/apple/iphone-air-256gb-ucuk-altin-rengi-p-985256827',
-
+    n11: 'https://www.n11.com/urun/apple-iphone-air-256-gb-apple-turkiye-garantili-100726529',
   },
 
   // ═══════════════════════════════════════════════════════
@@ -354,9 +416,20 @@ export const PRODUCT_URLS: ProductUrlMap = {
   // ═══════════════════════════════════════════════════════
   'iphone-17-air-512gb-black': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-air-512-gb-uzay-siyahi-p-HBCV00009Z3YJ2',
+    n11: 'https://www.n11.com/urun/apple-iphone-air-512-gb-apple-turkiye-garantili-100725280',
   },
   'iphone-17-air-512gb-white': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-air-512-gb-pamuk-beyazi-p-HBCV00009Z3V98',
+    n11: 'https://www.n11.com/urun/apple-iphone-air-512-gb-apple-turkiye-garantili-100725280',
+  },
+  'iphone-17-air-512gb-fog-blue': {
+    n11: 'https://www.n11.com/urun/apple-iphone-air-512-gb-apple-turkiye-garantili-100725280',
+  },
+  'iphone-17-air-512gb-lavender': {
+    n11: 'https://www.n11.com/urun/apple-iphone-air-512-gb-apple-turkiye-garantili-100725280',
+  },
+  'iphone-17-air-512gb-sage': {
+    n11: 'https://www.n11.com/urun/apple-iphone-air-512-gb-apple-turkiye-garantili-100725280',
   },
 
   // ═══════════════════════════════════════════════════════
@@ -404,12 +477,15 @@ export const PRODUCT_URLS: ProductUrlMap = {
   // ═══════════════════════════════════════════════════════
   'iphone-17-pro-1tb-obsidian': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-pro-1-tb-abis-p-HBCV00009Z403Y',
+    n11: 'https://www.n11.com/urun/apple-iphone-17-pro-1-tb-apple-turkiye-garantili-100728058',
   },
   'iphone-17-pro-1tb-silver': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-pro-1-tb-gumus-p-HBCV00009Z3ZAB',
+    n11: 'https://www.n11.com/urun/apple-iphone-17-pro-1-tb-apple-turkiye-garantili-100728058',
   },
   'iphone-17-pro-1tb-cosmic-orange': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-pro-1-tb-kozmik-turuncu-p-HBCV00009Z3Z03',
+    n11: 'https://www.n11.com/urun/apple-iphone-17-pro-1-tb-apple-turkiye-garantili-100728058',
   },
 
   // ═══════════════════════════════════════════════════════
@@ -462,12 +538,15 @@ export const PRODUCT_URLS: ProductUrlMap = {
   // ═══════════════════════════════════════════════════════
   'iphone-17-pro-max-1tb-obsidian': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-pro-max-1-tb-abis-p-HBCV00009Z3XG9',
+    n11: 'https://www.n11.com/urun/apple-iphone-17-pro-max-1-tb-apple-turkiye-garantili-100822552',
   },
   'iphone-17-pro-max-1tb-silver': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-pro-max-1-tb-gumus-p-HBCV00009Z3U2S',
+    n11: 'https://www.n11.com/urun/apple-iphone-17-pro-max-1-tb-apple-turkiye-garantili-100822552',
   },
   'iphone-17-pro-max-1tb-cosmic-orange': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-pro-max-1-tb-kozmik-turuncu-p-HBCV00009Z4112',
     trendyol: 'https://www.trendyol.com/apple/iphone-17-pro-max-1tb-kozmik-turuncu-p-985256869',
+    n11: 'https://www.n11.com/urun/apple-iphone-17-pro-max-1-tb-apple-turkiye-garantili-100822552',
   },
 };
