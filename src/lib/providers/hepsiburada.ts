@@ -1,0 +1,80 @@
+import * as cheerio from 'cheerio';
+import { BaseProvider } from './base';
+import { normalizeIPhoneModel } from '@/lib/utils';
+import type { ScrapedProduct } from '@/types';
+
+export class HepsiburadaProvider extends BaseProvider {
+  retailerSlug = 'hepsiburada';
+  retailerName = 'Hepsiburada';
+
+  async search(query: string): Promise<ScrapedProduct[]> {
+    const url = `https://www.hepsiburada.com/ara?q=${encodeURIComponent(query)}`;
+    const html = await this.fetchPage(url);
+    const $ = cheerio.load(html);
+    const results: ScrapedProduct[] = [];
+
+    $('[data-test-id="product-card-item"]').each((_, el) => {
+      try {
+        const title = $(el).find('[data-test-id="product-card-name"]').text().trim();
+        const priceText = $(el).find('[data-test-id="price-current-price"]').text().trim();
+        const href = $(el).find('a').attr('href');
+
+        if (!title || !priceText || !href) return;
+
+        const parsed = normalizeIPhoneModel(title);
+        if (!parsed) return;
+
+        const price = parseFloat(priceText.replace(/[^\d,]/g, '').replace(',', '.'));
+        if (isNaN(price) || price < 1000) return;
+
+        results.push({
+          title,
+          model: parsed.model,
+          storage: parsed.storage,
+          color: parsed.color,
+          price,
+          url: href.startsWith('http') ? href : `https://www.hepsiburada.com${href}`,
+          inStock: true,
+          retailerSlug: this.retailerSlug,
+          fetchedAt: new Date(),
+        });
+      } catch {
+        // Selector değişmiş olabilir, skip
+      }
+    });
+
+    return results;
+  }
+
+  async scrapeProductPage(url: string): Promise<ScrapedProduct | null> {
+    const html = await this.fetchPage(url);
+    const $ = cheerio.load(html);
+
+    const title = $('h1[data-test-id="product-name"]').text().trim()
+      || $('h1#product-name').text().trim()
+      || $('h1').first().text().trim();
+
+    const priceText = $('[data-test-id="price-current-price"]').text().trim()
+      || $('span[data-bind="markupText:\'currentPriceBeforePoint\'"]').text().trim();
+
+    if (!title || !priceText) return null;
+
+    const parsed = normalizeIPhoneModel(title);
+    if (!parsed) return null;
+
+    const price = parseFloat(priceText.replace(/[^\d,]/g, '').replace(',', '.'));
+    if (isNaN(price)) return null;
+
+    return {
+      title,
+      model: parsed.model,
+      storage: parsed.storage,
+      color: parsed.color,
+      price,
+      url,
+      inStock: !$('.out-of-stock-text').length,
+      retailerSlug: this.retailerSlug,
+      fetchedAt: new Date(),
+    };
+  }
+}

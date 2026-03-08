@@ -1,0 +1,175 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── iPhone Modelleri ────────────────────────────────────────────
+model Product {
+  id        String   @id @default(cuid())
+  brand     String   @default("Apple") // Şimdilik sadece Apple
+  model     String   // "iPhone 15 Pro Max"
+  storage   String   // "256GB"
+  color     String?  // "Natural Titanium" (opsiyonel)
+  slug      String   @unique // "iphone-15-pro-max-256gb"
+  imageUrl  String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  listings   ProductListing[]
+  alertRules AlertRule[]
+
+  @@index([model])
+  @@index([slug])
+}
+
+// ─── Satış Siteleri ──────────────────────────────────────────────
+model Retailer {
+  id        String   @id @default(cuid())
+  name      String   @unique // "Hepsiburada", "Trendyol", "N11", "Amazon"
+  slug      String   @unique // "hepsiburada"
+  baseUrl   String   // "https://www.hepsiburada.com"
+  logoUrl   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  listings  ProductListing[]
+  syncJobs  SyncJob[]
+}
+
+// ─── Ürün Listesi (hangi ürün hangi sitede) ─────────────────────
+model ProductListing {
+  id           String   @id @default(cuid())
+  productId    String
+  retailerId   String
+  externalUrl  String   // Ürün sayfası URL'i
+  externalId   String?  // Sitedeki ürün ID'si
+  currentPrice Float?   // Son bilinen fiyat
+  lowestPrice  Float?   // Tarihsel en düşük
+  highestPrice Float?   // Tarihsel en yüksek
+  seller       String?  // Satıcı adı (marketplace'lerde)
+  inStock      Boolean  @default(true)
+  lastSyncedAt DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  retailer     Retailer @relation(fields: [retailerId], references: [id], onDelete: Cascade)
+  priceHistory PriceHistory[]
+
+  @@unique([productId, retailerId])
+  @@index([productId])
+  @@index([retailerId])
+  @@index([currentPrice])
+}
+
+// ─── Fiyat Geçmişi ──────────────────────────────────────────────
+model PriceHistory {
+  id          String   @id @default(cuid())
+  listingId   String
+  price       Float
+  previousPrice Float?
+  changePercent Float?  // Yüzdesel değişim
+  recordedAt  DateTime @default(now())
+
+  listing     ProductListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId])
+  @@index([recordedAt])
+  @@index([listingId, recordedAt])
+}
+
+// ─── Fiyat Alarm Kuralları ───────────────────────────────────────
+model AlertRule {
+  id            String    @id @default(cuid())
+  productId     String
+  type          AlertType
+  threshold     Float?    // Hedef fiyat veya yüzde eşiği
+  isActive      Boolean   @default(true)
+  lastTriggered DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  product       Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  events        AlertEvent[]
+
+  @@index([productId])
+  @@index([isActive])
+}
+
+enum AlertType {
+  PRICE_DROP_PERCENT // Yüzdesel düşüş (ör: %5+)
+  PRICE_BELOW        // Belirli bir fiyatın altı
+  NEW_LOWEST         // Yeni en düşük fiyat
+}
+
+// ─── Alarm Olayları ──────────────────────────────────────────────
+model AlertEvent {
+  id          String      @id @default(cuid())
+  alertRuleId String
+  listingId   String?
+  message     String
+  oldPrice    Float?
+  newPrice    Float?
+  isRead      Boolean     @default(false)
+  channel     AlertChannel @default(IN_APP)
+  createdAt   DateTime    @default(now())
+
+  alertRule   AlertRule   @relation(fields: [alertRuleId], references: [id], onDelete: Cascade)
+
+  @@index([alertRuleId])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+enum AlertChannel {
+  IN_APP
+  TELEGRAM
+  EMAIL
+  WHATSAPP
+}
+
+// ─── Senkronizasyon İşleri ───────────────────────────────────────
+model SyncJob {
+  id          String     @id @default(cuid())
+  retailerId  String?    // null ise tüm retailer'lar
+  status      SyncStatus @default(PENDING)
+  startedAt   DateTime?
+  completedAt DateTime?
+  itemsFound  Int        @default(0)
+  itemsUpdated Int       @default(0)
+  errorMessage String?
+  createdAt   DateTime   @default(now())
+
+  retailer    Retailer?  @relation(fields: [retailerId], references: [id])
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+enum SyncStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+// ─── Kullanıcı (ilerisi için) ────────────────────────────────────
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String?
+  passwordHash  String
+  role          UserRole @default(ADMIN)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+enum UserRole {
+  ADMIN
+  VIEWER
+}
