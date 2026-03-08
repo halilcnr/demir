@@ -87,21 +87,35 @@ export function normalizeIPhoneModel(
 }
 
 const COLOR_MAP: Record<string, string> = {
-  'siyah': 'Siyah', 'black': 'Siyah', 'midnight': 'Siyah', 'gece yarısı': 'Siyah',
-  'beyaz': 'Beyaz', 'white': 'Beyaz', 'starlight': 'Beyaz', 'yıldız ışığı': 'Beyaz',
-  'mavi': 'Mavi', 'blue': 'Mavi', 'ultramarine': 'Mavi',
-  'yeşil': 'Yeşil', 'green': 'Yeşil',
-  'pembe': 'Pembe', 'pink': 'Pembe',
-  'kırmızı': 'Kırmızı', 'red': 'Kırmızı', 'product red': 'Kırmızı',
-  'mor': 'Mor', 'purple': 'Mor',
-  'sarı': 'Sarı', 'yellow': 'Sarı',
-  'turuncu': 'Turuncu', 'orange': 'Turuncu',
+  // Basic colors — map Turkish retailer names to English DB names
+  'siyah': 'Black', 'black': 'Black', 'midnight': 'Black', 'gece yarısı': 'Black',
+  'beyaz': 'White', 'white': 'White', 'starlight': 'White', 'yıldız ışığı': 'White',
+  'mavi': 'Blue', 'blue': 'Blue', 'ultramarine': 'Blue',
+  'yeşil': 'Green', 'green': 'Green',
+  'pembe': 'Pink', 'pink': 'Pink',
+  'kırmızı': 'Red', 'red': 'Red', 'product red': 'Red',
+  'mor': 'Purple', 'purple': 'Purple',
+  'sarı': 'Yellow', 'yellow': 'Yellow',
+  'turuncu': 'Orange', 'orange': 'Orange',
+  'teal': 'Teal',
+  // Titanium variants
   'natural titanium': 'Natural Titanium', 'doğal titanyum': 'Natural Titanium',
   'blue titanium': 'Blue Titanium', 'mavi titanyum': 'Blue Titanium',
   'white titanium': 'White Titanium', 'beyaz titanyum': 'White Titanium',
   'black titanium': 'Black Titanium', 'siyah titanyum': 'Black Titanium',
   'desert titanium': 'Desert Titanium', 'çöl titanyum': 'Desert Titanium',
-  'teal': 'Teal',
+  // iPhone 17 colors
+  'fog blue': 'Fog Blue', 'sis mavisi': 'Fog Blue', 'sis mavi': 'Fog Blue',
+  'lavender': 'Lavender', 'lavanta': 'Lavender',
+  'sage': 'Sage', 'ada çayı': 'Sage', 'ada cayi': 'Sage', 'adaçayı': 'Sage',
+  // iPhone 17 Pro / Pro Max colors
+  'obsidian': 'Obsidian', 'obsidyen': 'Obsidian', 'abis': 'Obsidian',
+  'silver': 'Silver', 'gümüş': 'Silver', 'gumus': 'Silver', 'gümüş rengi': 'Silver',
+  'cosmic orange': 'Cosmic Orange', 'kozmik turuncu': 'Cosmic Orange',
+  // Space Black (iPhone 14 Pro etc.)
+  'space black': 'Space Black', 'uzay siyahı': 'Space Black',
+  'gold': 'Gold', 'altın': 'Gold',
+  'deep purple': 'Deep Purple', 'derin mor': 'Deep Purple',
 };
 
 function detectColor(title: string): string {

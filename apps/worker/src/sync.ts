@@ -103,21 +103,76 @@ export async function runSync(retailerSlug?: string) {
           itemsScanned++;
 
           if (result) {
-            const matched = await upsertListing(result, retailer.id);
-            if (matched) {
-              itemsMatched++;
-              successCount++;
+            // Phase 1: We already know the variant — update the listing directly
+            const previousPrice = listing.currentPrice ?? null;
 
-              // Update listing success timestamp
-              await prisma.listing.update({
-                where: { id: listing.id },
-                data: { lastSuccessAt: new Date() },
-              });
+            await prisma.listing.update({
+              where: { id: listing.id },
+              data: {
+                retailerProductTitle: result.rawTitle,
+                currentPrice: result.price,
+                previousPrice,
+                lowestPrice: listing.lowestPrice
+                  ? Math.min(listing.lowestPrice, result.price)
+                  : result.price,
+                highestPrice: listing.highestPrice
+                  ? Math.max(listing.highestPrice, result.price)
+                  : result.price,
+                sellerName: result.sellerName,
+                stockStatus: result.stockStatus,
+                imageUrl: result.imageUrl,
+                externalId: result.externalId,
+                lastSeenAt: new Date(),
+                lastSuccessAt: new Date(),
+              },
+            });
 
-              await recordSuccess(slug);
+            await prisma.priceSnapshot.create({
+              data: {
+                listingId: listing.id,
+                observedPrice: result.price,
+                previousPrice,
+                changePercent: previousPrice
+                  ? calculateChangePercent(previousPrice, result.price)
+                  : null,
+                changeAmount: previousPrice ? result.price - previousPrice : null,
+              },
+            });
 
-              if (matched.isDeal) dealsFound++;
+            const deal = await detectDeal({
+              listingId: listing.id,
+              variantId: listing.variantId,
+              currentPrice: result.price,
+              previousPrice,
+              lowestPrice: listing.lowestPrice ?? result.price,
+              highestPrice: listing.highestPrice ?? result.price,
+              retailerSlug: result.retailerSlug,
+            });
+
+            const isDeal = deal !== null && deal.score >= 30;
+            await prisma.listing.update({
+              where: { id: listing.id },
+              data: { isDeal, dealScore: deal?.score ?? null },
+            });
+
+            if (previousPrice && previousPrice !== result.price) {
+              await checkAlertRules(
+                listing.variantId,
+                listing.id,
+                result.price,
+                previousPrice,
+                result.retailerSlug,
+              );
             }
+
+            itemsMatched++;
+            successCount++;
+            await recordSuccess(slug);
+            if (isDeal) dealsFound++;
+
+            console.log(`[sync] ✓ ${slug} — ${result.rawTitle} → ${result.price} TL`);
+          } else {
+            console.warn(`[sync] ✗ ${slug} — scrape returned null for ${listing.productUrl}`);
           }
 
           await new Promise((r) => setTimeout(r, 1500));

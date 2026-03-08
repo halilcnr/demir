@@ -60,13 +60,22 @@ export class TrendyolProvider extends BaseProvider {
     const priceText = $('span.prc-dsc').text().trim()
       || $('span.prc-slg').text().trim();
 
-    if (!title.trim() || !priceText) return null;
+    if (!title.trim() || !priceText) {
+      console.warn(`[trendyol] Empty title/price — title=${!!title.trim()}, price=${!!priceText}, url=${url}`);
+      return null;
+    }
 
     const parsed = normalizeIPhoneModel(title);
-    if (!parsed) return null;
+    if (!parsed) {
+      console.warn(`[trendyol] Model parse failed — title="${title.trim().slice(0, 80)}", url=${url}`);
+      return null;
+    }
 
     const price = parseFloat(priceText.replace(/[^\d,]/g, '').replace(',', '.'));
-    if (isNaN(price)) return null;
+    if (isNaN(price)) {
+      console.warn(`[trendyol] Price parse failed — priceText="${priceText}", url=${url}`);
+      return null;
+    }
 
     const seller = $('.seller-name-text').text().trim() || undefined;
 

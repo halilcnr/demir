@@ -58,14 +58,23 @@ export class AmazonProvider extends BaseProvider {
     const wholePrice = $('span.a-price-whole').first().text().trim();
     const fractionPrice = $('span.a-price-fraction').first().text().trim();
 
-    if (!title || !wholePrice) return null;
+    if (!title || !wholePrice) {
+      console.warn(`[amazon] Empty title/price — title=${!!title}, price=${!!wholePrice}, url=${url}`);
+      return null;
+    }
 
     const parsed = normalizeIPhoneModel(title);
-    if (!parsed) return null;
+    if (!parsed) {
+      console.warn(`[amazon] Model parse failed — title="${title.slice(0, 80)}", url=${url}`);
+      return null;
+    }
 
     const priceStr = `${wholePrice}${fractionPrice ? '.' + fractionPrice : ''}`.replace(/[^\d.]/g, '');
     const price = parseFloat(priceStr);
-    if (isNaN(price)) return null;
+    if (isNaN(price)) {
+      console.warn(`[amazon] Price parse failed — priceStr="${priceStr}", url=${url}`);
+      return null;
+    }
 
     const seller = $('#sellerProfileTriggerId').text().trim() || undefined;
     const outOfStock = $('#outOfStock').length > 0 || $('#availability .a-color-price').length > 0;

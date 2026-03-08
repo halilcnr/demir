@@ -55,13 +55,22 @@ export class PazaramaProvider extends BaseProvider {
     const title = $('h1.product-detail__title, h1.product-name, h1').first().text().trim();
     const priceText = $('span.product-detail__price, .price .discounted-price, .product-price').first().text().trim();
 
-    if (!title || !priceText) return null;
+    if (!title || !priceText) {
+      console.warn(`[pazarama] Empty title/price — title=${!!title}, price=${!!priceText}, url=${url}`);
+      return null;
+    }
 
     const parsed = normalizeIPhoneModel(title);
-    if (!parsed) return null;
+    if (!parsed) {
+      console.warn(`[pazarama] Model parse failed — title="${title.slice(0, 80)}", url=${url}`);
+      return null;
+    }
 
     const price = parseFloat(priceText.replace(/[^\d,]/g, '').replace(',', '.'));
-    if (isNaN(price)) return null;
+    if (isNaN(price)) {
+      console.warn(`[pazarama] Price parse failed — priceText="${priceText}", url=${url}`);
+      return null;
+    }
 
     const seller = $('.seller-name, .merchant-name').text().trim() || undefined;
 
