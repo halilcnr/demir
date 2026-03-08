@@ -149,14 +149,14 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
         // Skip if blocked this cycle
         if (isBlockedThisCycle(slug)) {
           addSyncLog({ type: 'warn', retailer: slug, variant: variantLabel, message: `${slug} engellendi, atlanıyor` });
-          logScrapeAttempt({ retailer: slug, variant: variantLabel, status: 'skipped', error: 'blocked this cycle' });
+          logScrapeAttempt({ retailer: slug, variant: variantLabel, status: 'skipped_blocked', error: 'blocked this cycle' });
           continue;
         }
 
         // Skip if in cooldown (anti-bot pacing)
         if (isInCooldown(slug)) {
           addSyncLog({ type: 'warn', retailer: slug, variant: variantLabel, message: `${slug} soğuma süresinde, atlanıyor` });
-          logScrapeAttempt({ retailer: slug, variant: variantLabel, status: 'skipped', error: 'cooldown active' });
+          logScrapeAttempt({ retailer: slug, variant: variantLabel, status: 'skipped_cooldown', error: 'cooldown active' });
           continue;
         }
 

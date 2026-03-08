@@ -34,6 +34,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
     n11: 'https://www.n11.com/urun/apple-iphone-13-128-gb-apple-turkiye-garantili-2141312',
     amazon: 'https://www.amazon.com.tr/dp/B09G9RQTP3',
     pazarama: 'https://www.pazarama.com/iphone-13-128-gb-gece-yarisi-p-194252707258',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-13-128-gb-cep-telefonu-siyah_p-26020876',
   },
   'iphone-13-128gb-starlight': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-13-128-gb-beyaz-p-HBCV00000ODHHO',
@@ -119,6 +120,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
     trendyol: 'https://www.trendyol.com/apple/iphone-14-128-gb-gece-yarisi-p-355707175',
     n11: 'https://www.n11.com/urun/apple-iphone-14-128-gb-apple-turkiye-garantili-22964656',
     pazarama: 'https://www.pazarama.com/apple-iphone-14-siyah-128-gb-6-gb-ram-apple-turkiye-garantili-p-194253408215',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-14-128-gb-cep-telefonu-siyah_p-26029309',
   },
   'iphone-14-128gb-starlight': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-128-gb-beyaz-p-HBCV00002VUQ7S',
@@ -129,6 +131,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-128-gb-mavi-p-HBCV00002VUQ7U',
     n11: 'https://www.n11.com/urun/apple-iphone-14-128-gb-apple-turkiye-garantili-22964656',
     pazarama: 'https://www.pazarama.com/apple-iphone-14-mavi-128-gb-6-gb-ram-apple-turkiye-garantili-p-194253409533',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-14-128-gb-cep-telefonu-mavi_p-26029309',
   },
   'iphone-14-128gb-purple': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-128-gb-mor-p-HBCV00002VUQ7V',
@@ -154,12 +157,14 @@ export const PRODUCT_URLS: ProductUrlMap = {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-256-gb-beyaz-p-HBCV00002VUQF5',
     trendyol: 'https://www.trendyol.com/apple/iphone-14-256-gb-yildiz-isigi-cep-telefonu-p-355707120',
     n11: 'https://www.n11.com/urun/apple-iphone-14-256-gb-apple-turkiye-garantili-22968231',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-14-256-gb-cep-telefonu-beyaz_p-26031160',
   },
   'iphone-14-256gb-blue': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-256-gb-mavi-p-HBCV00002VUQF6',
     trendyol: 'https://www.trendyol.com/apple/iphone-14-256-gb-mavi-p-355707129',
     n11: 'https://www.n11.com/urun/apple-iphone-14-256-gb-apple-turkiye-garantili-22968231',
     amazon: 'https://www.amazon.com.tr/dp/B0BDJDQRLD',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-14-256-gb-cep-telefonu-mavi_p-26031160',
   },
   'iphone-14-256gb-purple': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-256-gb-mor-p-HBCV00002VUQF7',
@@ -174,6 +179,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
   },
   'iphone-14-512gb-blue': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-512-gb-mavi-p-HBCV00002VUQTU',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-14-512-gb-cep-telefonu-mavi_p-26029310',
   },
 
   // ═══════════════════════════════════════════════════════
@@ -187,6 +193,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
     pazarama: 'https://www.pazarama.com/apple-iphone-15-128-6-gb-ram-5g-apple-turkiye-garantili-p-195949036040',
     mediamarkt: 'https://www.mediamarkt.com.tr/tr/product/_apple-iphone-15-128-gb-akilli-telefon-siyah-mtp03tua-1232435.html',
     migros: 'https://www.migros.com.tr/apple-iphone-15-128-gb-midnight-cep-telefonu-p-255f0d0',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-15-128-gb-cep-telefonu-siyah_p-26043586',
   },
   'iphone-15-128gb-blue': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-15-128-gb-mavi-p-HBCV00004X9ZCK',
@@ -196,6 +203,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
     pazarama: 'https://www.pazarama.com/apple-iphone-15-128-6-gb-ram-5g-apple-turkiye-garantili-p-195949036583',
     mediamarkt: 'https://www.mediamarkt.com.tr/tr/product/_apple-iphone-15-128-gb-akilli-telefon-mavi-mtp43tua-1232436.html',
     migros: 'https://www.migros.com.tr/apple-iphone-15-128-gb-mavi-cep-telefonu-p-255f0d4',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-15-128-gb-cep-telefonu-mavi_p-26043586',
   },
   'iphone-15-128gb-green': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-15-128-gb-p-HBCV00004X9ZCL',
@@ -226,6 +234,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
     amazon: 'https://www.amazon.com.tr/dp/B0CHXRNHC4',
     mediamarkt: 'https://www.mediamarkt.com.tr/tr/product/_apple-iphone-15-256-gb-akilli-telefon-siyah-mtp63tua-1232440.html',
     migros: 'https://www.migros.com.tr/apple-iphone-15-256-gb-siyah-cep-telefonu-p-255f8f0',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-15-256-gb-cep-telefonu-siyah_p-26043587',
   },
   'iphone-15-256gb-blue': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-15-256-gb-mavi-p-HBCV00004X9ZMK',
@@ -234,12 +243,14 @@ export const PRODUCT_URLS: ProductUrlMap = {
     amazon: 'https://www.amazon.com.tr/dp/B0CHX43FKD',
     mediamarkt: 'https://www.mediamarkt.com.tr/tr/product/_apple-iphone-15-256-gb-akilli-telefon-mavi-mtp93tua-1232441.html',
     migros: 'https://www.migros.com.tr/apple-iphone-15-256-gb-mavi-cep-telefonu-p-255f8f1',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-15-256-gb-cep-telefonu-mavi_p-26043587',
   },
   'iphone-15-256gb-pink': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-15-256-gb-pembe-p-HBCV00004X9ZMI',
     trendyol: 'https://www.trendyol.com/apple/iphone-15-256-gb-pembe-p-762254854',
     n11: 'https://www.n11.com/urun/apple-iphone-15-256-gb-apple-turkiye-garantili-43821352',
     amazon: 'https://www.amazon.com.tr/dp/B0CHX9D18W',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-15-256-gb-cep-telefonu-pembe_p-26043587',
   },
   'iphone-15-256gb-green': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-15-256-gb-yesil-p-HBCV00004X9ZML',
@@ -248,6 +259,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
   'iphone-15-256gb-yellow': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-15-256-gb-sari-p-HBCV00004X9ZMJ',
     n11: 'https://www.n11.com/urun/apple-iphone-15-256-gb-apple-turkiye-garantili-43821352',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-15-256-gb-cep-telefonu-sari_p-26043587',
   },
 
   // ═══════════════════════════════════════════════════════
@@ -277,6 +289,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
     pazarama: 'https://www.pazarama.com/apple-iphone-16-128-gb-siyah-p-195949821943',
     mediamarkt: 'https://www.mediamarkt.com.tr/tr/product/_apple-iphone-16-128gb-akilli-telefon-siyah-mye73tua-1239553.html',
     migros: 'https://www.migros.com.tr/apple-iphone-16-128-gb-siyah-cep-telefonu-p-255f0d9',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-16-128-gb-cep-telefonu-siyah_p-26053252',
   },
   'iphone-16-128gb-white': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-128gb-beyaz-p-HBCV00006Y4HFL',
@@ -286,6 +299,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
     pazarama: 'https://www.pazarama.com/apple-iphone-16-128-gb-beyaz-p-195949822124',
     mediamarkt: 'https://www.mediamarkt.com.tr/tr/product/_apple-iphone-16-128gb-akilli-telefon-beyaz-mye93tua-1239557.html',
     migros: 'https://www.migros.com.tr/apple-iphone-16-128-gb-white-p-255f0db',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-16-128-gb-cep-telefonu-beyaz_p-26053252',
   },
   'iphone-16-128gb-pink': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-128gb-pembe-p-HBCV00006Y4HU3',
@@ -303,6 +317,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
     pazarama: 'https://www.pazarama.com/apple-iphone-16-128-gb-teal-p-195949822667',
     mediamarkt: 'https://www.mediamarkt.com.tr/tr/product/_apple-iphone-16-128gb-akilli-telefon-teal-myed3tua-1239565.html',
     migros: 'https://www.migros.com.tr/apple-iphone-16-128-gb-teal-cep-telefonu-p-255f3e8',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-16-128-gb-cep-telefonu-deniz-mavisi_p-26053252',
   },
   'iphone-16-128gb-ultramarine': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-128gb-lacivert-tas-p-HBCV00006Y4HFN',
@@ -312,6 +327,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
     pazarama: 'https://www.pazarama.com/apple-iphone-16-128-gb-ultramarine-p-195949822483',
     mediamarkt: 'https://www.mediamarkt.com.tr/tr/product/_apple-iphone-16-128gb-akilli-telefon-ultramarine-myec3tua-1239562.html',
     migros: 'https://www.migros.com.tr/apple-iphone-16-128-gb-ultramarine-p-255f0d7',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-16-128-gb-cep-telefonu-laciverttas_p-26053252',
   },
 
   // ═══════════════════════════════════════════════════════
@@ -350,6 +366,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
   },
   'iphone-16-512gb-ultramarine': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-512gb-lacivert-tas-p-HBCV00006Y4K82',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-16-512-gb-cep-telefonu-laciverttas_p-26065439',
   },
 
   // ═══════════════════════════════════════════════════════
@@ -363,6 +380,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
     pazarama: 'https://www.pazarama.com/apple-mg6j4tua-iphone-17-256gb-akilli-telefon-siyah-p-0195950643541',
     mediamarkt: 'https://www.mediamarkt.com.tr/tr/product/_apple-mg6j4tua-iphone-17-256gb-akilli-telefon-siyah-1249221.html',
     migros: 'https://www.migros.com.tr/apple-iphone-17-256-gb-siyah-cep-telefonu-p-255faed',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-17-256-gb-cep-telefonu-siyah_p-26064633',
   },
   'iphone-17-256gb-white': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-256-gb-beyaz-p-HBCV00009Z3YJ1',
@@ -370,6 +388,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
     n11: 'https://www.n11.com/urun/apple-iphone-17-256-gb-apple-turkiye-garantili-100918382',
     pazarama: 'https://www.pazarama.com/apple-mg6k4tua-iphone-17-256gb-akilli-telefon-beyaz-p-0195950643749',
     mediamarkt: 'https://www.mediamarkt.com.tr/tr/product/_apple-mg6k4tua-iphone-17-256gb-akilli-telefon-beyaz-1249222.html',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-17-256-gb-cep-telefonu-beyaz_p-26064633',
   },
   'iphone-17-256gb-fog-blue': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-256-gb-sis-mavisi-p-HBCV00009Z40TF',
@@ -378,6 +397,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
     pazarama: 'https://www.pazarama.com/apple-iphone-17-256gb-akilli-telefon-sis-mavisi-mg6l4tua-p-0195950643947',
     mediamarkt: 'https://www.mediamarkt.com.tr/tr/product/_apple-mg6l4tua-iphone-17-256gb-akilli-telefon-sis-mavisi-1249223.html',
     migros: 'https://www.migros.com.tr/apple-iphone-17-256-gb-mavi-cep-telefonu-p-255fabc',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-17-256-gb-cep-telefonu-sis-mavisi_p-26064633',
   },
   'iphone-17-256gb-lavender': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-256-gb-lavanta-p-HBCV00009Z3Y37',
@@ -386,6 +406,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
     amazon: 'https://www.amazon.com.tr/dp/B0FQFBYM12',
     pazarama: 'https://www.pazarama.com/apple-mg6m4tua-iphone-17-256gb-akilli-telefon-lavanta-p-0195950644142',
     mediamarkt: 'https://www.mediamarkt.com.tr/tr/product/_apple-mg6m4tua-iphone-17-256gb-akilli-telefon-lavanta-1249224.html',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-17-256-gb-cep-telefonu-lavanta_p-26064633',
   },
   'iphone-17-256gb-sage': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-256-gb-ada-cayi-p-HBCV00009Z3XZZ',
@@ -395,6 +416,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
     pazarama: 'https://www.pazarama.com/apple-mg6n4tua-iphone-17-256gb-akilli-telefon-adacayi-p-0195950644340',
     mediamarkt: 'https://www.mediamarkt.com.tr/tr/product/_apple-mg6n4tua-iphone-17-256gb-akilli-telefon-adacayi-1249225.html',
     migros: 'https://www.migros.com.tr/apple-iphone-17-256-gb-adacayi-cep-telefonu-p-255fae1',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-17-256-gb-cep-telefonu-yesil_p-26064633',
   },
 
   // ═══════════════════════════════════════════════════════
@@ -406,6 +428,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
     pazarama: 'https://www.pazarama.com/apple-mg6p4tua-iphone-17-512gb-akilli-telefon-siyah-p-0195950644548',
     mediamarkt: 'https://www.mediamarkt.com.tr/tr/product/_apple-mg6p4tua-iphone-17-512gb-akilli-telefon-siyah-1249226.html',
     migros: 'https://www.migros.com.tr/apple-iphone-17-512-gb-siyah-cep-telefonu-p-255f8d9',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-17-512-gb-cep-telefonu-siyah_p-26065082',
   },
   'iphone-17-512gb-white': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-512-gb-beyaz-p-HBCV00009Z3XDK',
@@ -413,6 +436,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
     n11: 'https://www.n11.com/urun/apple-iphone-17-512-gb-apple-turkiye-garantili-100697071',
     pazarama: 'https://www.pazarama.com/apple-mg6q4tua-iphone-17-512gb-akilli-telefon-beyaz-p-0195950644746',
     mediamarkt: 'https://www.mediamarkt.com.tr/tr/product/_apple-mg6q4tua-iphone-17-512gb-akilli-telefon-beyaz-1249227.html',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-17-512-gb-cep-telefonu-beyaz_p-26065082',
   },
   'iphone-17-512gb-fog-blue': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-512-gb-sis-mavisi-p-HBCV00009Z3YPJ',
@@ -420,6 +444,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
     pazarama: 'https://www.pazarama.com/apple-iphone-17-512gb-akilli-telefon-sis-mavisi-mg6t4tua-p-0195950644944',
     mediamarkt: 'https://www.mediamarkt.com.tr/tr/product/_apple-mg6t4tua-iphone-17-512gb-akilli-telefon-sis-mavisi-1249228.html',
     migros: 'https://www.migros.com.tr/apple-iphone-17-512-gb-mavi-cep-telefonu-p-255fabe',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-17-512-gb-cep-telefonu-sis-mavisi_p-26065082',
   },
   'iphone-17-512gb-lavender': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-512-gb-lavanta-p-HBCV00009Z3SG0',
@@ -428,6 +453,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
     pazarama: 'https://www.pazarama.com/apple-mg6u4tua-iphone-17-512gb-akilli-telefon-lavanta-p-0195950645149',
     mediamarkt: 'https://www.mediamarkt.com.tr/tr/product/_apple-mg6u4tua-iphone-17-512gb-akilli-telefon-lavanta-1249229.html',
     migros: 'https://www.migros.com.tr/apple-iphone-17-512-gb-lavanta-cep-telefonu-p-255fabf',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-17-512-gb-cep-telefonu-lavanta_p-26065082',
   },
   'iphone-17-512gb-sage': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-512-gb-ada-cayi-p-HBCV00009Z3XIN',
@@ -446,6 +472,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
     n11: 'https://www.n11.com/urun/apple-iphone-air-256-gb-apple-turkiye-garantili-100726529',
     pazarama: 'https://www.pazarama.com/iphone-air-256gb-space-black-mg2l4tua-p-195950622621',
     mediamarkt: 'https://www.mediamarkt.com.tr/tr/product/_apple-mg2l4tua-iphone-air-256gb-akilli-telefon-uzay-siyahi-1249231.html',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-air-256-gb-cep-telefonu-uzay-siyahi_p-26064634',
   },
   'iphone-17-air-256gb-white': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-air-256-gb-pamuk-beyazi-p-HBCV00009Z3YH5',
@@ -515,6 +542,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
     amazon: 'https://www.amazon.com.tr/dp/B0FQG1C99S',
     pazarama: 'https://www.pazarama.com/iphone-17-pro-256gb-deep-blue-mg8j4tua-p-195950627602',
     mediamarkt: 'https://www.mediamarkt.com.tr/tr/product/_apple-mg8j4tua-iphone-17-pro-256gb-akilli-telefon-derin-mavi-1249240.html',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-17-pro-256-gb-cep-telefonu-abis-_p-26066122',
   },
   'iphone-17-pro-256gb-silver': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-pro-256-gb-gumus-p-HBCV00009Z40DM',
@@ -529,6 +557,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
     n11: 'https://www.n11.com/urun/apple-iphone-17-pro-256-gb-apple-turkiye-garantili-100712128',
     amazon: 'https://www.amazon.com.tr/dp/B0FQFYN66J',
     mediamarkt: 'https://www.mediamarkt.com.tr/tr/product/_apple-mg8h4tua-iphone-17-pro-256gb-akilli-telefon-kozmik-turuncu-1249238.html',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-17-pro-256-gb-cep-telefonu-turuncu-_p-26066122',
   },
 
   // ═══════════════════════════════════════════════════════
@@ -546,12 +575,14 @@ export const PRODUCT_URLS: ProductUrlMap = {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-pro-512-gb-gumus-p-HBCV00009Z3XDN',
     n11: 'https://www.n11.com/urun/apple-iphone-17-pro-512-gb-apple-turkiye-garantili-100723400',
     mediamarkt: 'https://www.mediamarkt.com.tr/tr/product/_apple-mg8k4tua-iphone-17-pro-512gb-akilli-telefon-gumus-1249239.html',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-17-pro-512-gb-cep-telefonu-gumus_p-26065084',
   },
   'iphone-17-pro-512gb-cosmic-orange': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-pro-512-gb-kozmik-turuncu-p-HBCV00009Z3SG2',
     n11: 'https://www.n11.com/urun/apple-iphone-17-pro-512-gb-apple-turkiye-garantili-100723400',
     mediamarkt: 'https://www.mediamarkt.com.tr/tr/product/_apple-mg8m4tua-iphone-17-pro-512gb-akilli-telefon-kozmik-turuncu-1249243.html',
     migros: 'https://www.migros.com.tr/apple-iphone-17-pro-512-gb-turuncu-cep-telefonu-p-255f834',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-17-pro-512-gb-cep-telefonu-turuncu_p-26065084',
   },
 
   // ═══════════════════════════════════════════════════════
@@ -561,10 +592,12 @@ export const PRODUCT_URLS: ProductUrlMap = {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-pro-1-tb-abis-p-HBCV00009Z403Y',
     n11: 'https://www.n11.com/urun/apple-iphone-17-pro-1-tb-apple-turkiye-garantili-100728058',
     mediamarkt: 'https://www.mediamarkt.com.tr/tr/product/_apple-mg8r4tua-iphone-17-pro-1tb-akilli-telefon-derin-mavi-1249254.html',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-17-pro-1-tb-cep-telefonu-abis_p-26066033',
   },
   'iphone-17-pro-1tb-silver': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-pro-1-tb-gumus-p-HBCV00009Z3ZAB',
     n11: 'https://www.n11.com/urun/apple-iphone-17-pro-1-tb-apple-turkiye-garantili-100728058',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-17-pro-1-tb-cep-telefonu-gumus_p-26066033',
   },
   'iphone-17-pro-1tb-cosmic-orange': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-pro-1-tb-kozmik-turuncu-p-HBCV00009Z3Z03',
@@ -581,6 +614,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
     amazon: 'https://www.amazon.com.tr/dp/B0FQFVL6DK',
     pazarama: 'https://www.pazarama.com/apple-iphone-17-pro-max-256-gb-siyah-cep-telefonu-apple-turkiye-garantili-p-195950639254',
     mediamarkt: 'https://www.mediamarkt.com.tr/tr/product/_apple-mfyp4tua-iphone-17-pro-max-256gb-akilli-telefon-koyu-mavi-1249247.html',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-17-pro-max-256-gb-cep-telefonu-abis_p-26066404',
   },
   'iphone-17-pro-max-256gb-silver': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-pro-max-256-gb-gumus-p-HBCV00009Z3XIO',
@@ -589,6 +623,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
     amazon: 'https://www.amazon.com.tr/dp/B0FQG8NP4B',
     pazarama: 'https://www.pazarama.com/apple-iphone-17-pro-max-256-gb-gumus-cep-telefonu-apple-turkiye-garantili-p-195950638851',
     mediamarkt: 'https://www.mediamarkt.com.tr/tr/product/_apple-mfym4tua-iphone-17-pro-max-256gb-akilli-telefon-gumus-1249245.html',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-17-pro-max-256-gb-cep-telefonu-gumus_p-26066404',
   },
   'iphone-17-pro-max-256gb-cosmic-orange': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-pro-max-256-gb-kozmik-turuncu-p-HBCV00009Z3Z8C',
@@ -597,6 +632,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
     amazon: 'https://www.amazon.com.tr/dp/B0FQFLHC7F',
     pazarama: 'https://www.pazarama.com/apple-iphone-17-pro-max-256-gb-turuncu-cep-telefonu-apple-turkiye-garantili-p-195950639056',
     mediamarkt: 'https://www.mediamarkt.com.tr/tr/product/_apple-mfyn4tua-iphone-17-pro-max-256gb-akilli-telefon-kozmik-turuncu-1249246.html',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-17-pro-max-256-gb-cep-telefonu-kozmik-turuncu_p-26066404',
   },
 
   // ═══════════════════════════════════════════════════════
@@ -610,6 +646,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
     pazarama: 'https://www.pazarama.com/iphone-17-pro-max-512gb-deep-blue-mfyu4tua-p-195950639858',
     mediamarkt: 'https://www.mediamarkt.com.tr/tr/product/_apple-mfyu4tua-iphone-17-pro-max-512gb-akilli-telefon-koyu-mavi-1249257.html',
     migros: 'https://www.migros.com.tr/apple-iphone-17-pro-max-512-gb-lacivert-cep-telefonu-p-255f8db',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-17-pro-max-512-gb-cep-telefonu-lacivert_p-26066544',
   },
   'iphone-17-pro-max-512gb-silver': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-pro-max-512-gb-gumus-p-HBCV00009Z6WRA',
@@ -617,6 +654,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
     n11: 'https://www.n11.com/urun/apple-iphone-17-pro-max-512-gb-apple-turkiye-garantili-100822102',
     amazon: 'https://www.amazon.com.tr/dp/B0FQG26YH9',
     mediamarkt: 'https://www.mediamarkt.com.tr/tr/product/_apple-mfyq4tua-iphone-17-pro-max-512gb-akilli-telefon-gumus-1249255.html',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-17-pro-max-512-gb-cep-telefonu-gumus_p-26066544',
   },
   'iphone-17-pro-max-512gb-cosmic-orange': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-pro-max-512-gb-kozmik-turuncu-p-HBCV00009Z3XG8',
@@ -632,16 +670,19 @@ export const PRODUCT_URLS: ProductUrlMap = {
   'iphone-17-pro-max-1tb-obsidian': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-pro-max-1-tb-abis-p-HBCV00009Z3XG9',
     n11: 'https://www.n11.com/urun/apple-iphone-17-pro-max-1-tb-apple-turkiye-garantili-100822552',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-17-pro-max-1-tb-cep-telefonu-abis_p-26066034',
   },
   'iphone-17-pro-max-1tb-silver': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-pro-max-1-tb-gumus-p-HBCV00009Z3U2S',
     n11: 'https://www.n11.com/urun/apple-iphone-17-pro-max-1-tb-apple-turkiye-garantili-100822552',
     mediamarkt: 'https://www.mediamarkt.com.tr/tr/product/_apple-mfyv4tua-iphone-17-pro-max-1tb-akilli-telefon-gumus-1249258.html',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-17-pro-max-1-tb-cep-telefonu-gumus_p-26066034',
   },
   'iphone-17-pro-max-1tb-cosmic-orange': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-17-pro-max-1-tb-kozmik-turuncu-p-HBCV00009Z4112',
     trendyol: 'https://www.trendyol.com/apple/iphone-17-pro-max-1tb-kozmik-turuncu-p-985256869',
     n11: 'https://www.n11.com/urun/apple-iphone-17-pro-max-1-tb-apple-turkiye-garantili-100822552',
     mediamarkt: 'https://www.mediamarkt.com.tr/tr/product/_apple-mfyw4tua-iphone-17-pro-max-1tb-akilli-telefon-kozmik-turuncu-1249380.html',
+    a101: 'https://www.a101.com.tr/elektronik/apple-iphone-17-pro-max-1-tb-cep-telefonu-kozmik-turuncu_p-26066034',
   },
 };

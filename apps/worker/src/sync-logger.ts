@@ -63,7 +63,7 @@ export function logScrapeAttempt(data: {
   retailer: string;
   variant: string;
   strategy?: string;
-  status: 'success' | 'blocked' | 'rate_limited' | 'parse_fail' | 'server_error' | 'network_error' | 'not_found' | 'fallback_success' | 'fallback_fail' | 'skipped';
+  status: 'success' | 'blocked' | 'rate_limited' | 'parse_fail' | 'server_error' | 'network_error' | 'not_found' | 'fallback_success' | 'fallback_fail' | 'skipped' | 'skipped_blocked' | 'skipped_cooldown';
   httpStatus?: number;
   responseTimeMs?: number;
   price?: number;

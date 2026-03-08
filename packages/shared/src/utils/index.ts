@@ -220,3 +220,54 @@ export function parseTurkishPrice(text: string): number | null {
 
   return !isNaN(result) && result > 0 ? result : null;
 }
+
+// ─── Provider Health Status Derivation ───────────────────────────
+import type { ProviderStatus } from '../types';
+
+const PROVIDER_HEALTHY_WINDOW_MS = 15 * 60 * 1000; // 15 min
+const PROVIDER_WARNING_WINDOW_MS = 30 * 60 * 1000; // 30 min
+const PROVIDER_FAILURE_THRESHOLD = 5;
+
+/**
+ * Derive provider health status from DB fields.
+ * Shared between worker and web API to avoid logic duplication.
+ * The worker wraps this with additional in-memory cooldown awareness.
+ */
+export function deriveProviderStatus(retailer: {
+  lastSuccessAt: Date | null;
+  lastFailureAt: Date | null;
+  lastBlockedAt: Date | null;
+  consecutiveFailures: number;
+}): ProviderStatus {
+  const now = Date.now();
+
+  // Blocked takes priority
+  if (
+    retailer.lastBlockedAt &&
+    (!retailer.lastSuccessAt || retailer.lastBlockedAt > retailer.lastSuccessAt)
+  ) {
+    return 'blocked';
+  }
+
+  // Consecutive failure threshold
+  if (retailer.consecutiveFailures >= PROVIDER_FAILURE_THRESHOLD) {
+    return 'error';
+  }
+
+  // Recent success → healthy
+  if (retailer.lastSuccessAt && now - retailer.lastSuccessAt.getTime() < PROVIDER_HEALTHY_WINDOW_MS) {
+    return 'healthy';
+  }
+
+  // No recent success but within warning window
+  if (retailer.lastSuccessAt && now - retailer.lastSuccessAt.getTime() < PROVIDER_WARNING_WINDOW_MS) {
+    return 'warning';
+  }
+
+  // No success at all, no failures either — unknown/warning
+  if (!retailer.lastSuccessAt && retailer.consecutiveFailures === 0) {
+    return 'warning';
+  }
+
+  return 'error';
+}

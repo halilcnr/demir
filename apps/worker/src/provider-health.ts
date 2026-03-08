@@ -1,6 +1,5 @@
-import { prisma } from '@repo/shared';
-
-export type ProviderStatus = 'healthy' | 'warning' | 'blocked' | 'error' | 'cooldown';
+import { prisma, deriveProviderStatus } from '@repo/shared';
+import type { ProviderStatus } from '@repo/shared';
 
 export interface ProviderHealth {
   retailerSlug: string;
@@ -37,8 +36,12 @@ const PROVIDER_COOLDOWNS: Record<string, Partial<ProviderCooldownConfig>> = {
   amazon:      { blockCooldownMs: 10 * 60 * 1000, rateLimitCooldownMs: 5 * 60 * 1000, maxCooldownMs: 60 * 60 * 1000 },
   hepsiburada: { blockCooldownMs: 8 * 60 * 1000, maxCooldownMs: 45 * 60 * 1000 },
   trendyol:    { blockCooldownMs: 8 * 60 * 1000, maxCooldownMs: 45 * 60 * 1000 },
-  n11:         { blockCooldownMs: 5 * 60 * 1000 },
+  n11:         { blockCooldownMs: 10 * 60 * 1000, rateLimitCooldownMs: 5 * 60 * 1000, maxCooldownMs: 60 * 60 * 1000 },
   mediamarkt:  { blockCooldownMs: 5 * 60 * 1000 },
+  pazarama:    { blockCooldownMs: 5 * 60 * 1000 },
+  a101:        { blockCooldownMs: 5 * 60 * 1000 },
+  migros:      { blockCooldownMs: 5 * 60 * 1000 },
+  idefix:      { blockCooldownMs: 5 * 60 * 1000 },
 };
 
 function getCooldownConfig(slug: string): ProviderCooldownConfig {
@@ -167,10 +170,6 @@ export async function recordBlocked(retailerSlug: string): Promise<void> {
   });
 }
 
-const HEALTHY_WINDOW_MS = 15 * 60 * 1000; // 15 min
-const WARNING_WINDOW_MS = 30 * 60 * 1000; // 30 min
-const FAILURE_THRESHOLD = 5;
-
 /** Derive provider status from DB fields + in-memory cooldown state */
 export function deriveStatus(retailer: {
   slug?: string;
@@ -179,45 +178,11 @@ export function deriveStatus(retailer: {
   lastBlockedAt: Date | null;
   consecutiveFailures: number;
 }): ProviderStatus {
-  const now = Date.now();
-
-  // Check in-memory cooldown
+  // Check in-memory cooldown first (worker-only state)
   if (retailer.slug && isInCooldown(retailer.slug)) {
     return 'cooldown';
   }
-
-  // Blocked takes priority
-  if (
-    retailer.lastBlockedAt &&
-    (!retailer.lastSuccessAt || retailer.lastBlockedAt > retailer.lastSuccessAt)
-  ) {
-    return 'blocked';
-  }
-
-  // Consecutive failure threshold
-  if (retailer.consecutiveFailures >= FAILURE_THRESHOLD) {
-    return 'error';
-  }
-
-  // Recent success → healthy
-  if (retailer.lastSuccessAt && now - retailer.lastSuccessAt.getTime() < HEALTHY_WINDOW_MS) {
-    return 'healthy';
-  }
-
-  // No recent success but within warning window or never succeeded
-  if (
-    retailer.lastSuccessAt &&
-    now - retailer.lastSuccessAt.getTime() < WARNING_WINDOW_MS
-  ) {
-    return 'warning';
-  }
-
-  // No success at all, no failures either — just unknown/warning
-  if (!retailer.lastSuccessAt && retailer.consecutiveFailures === 0) {
-    return 'warning';
-  }
-
-  return 'error';
+  return deriveProviderStatus(retailer);
 }
 
 /** Get health for all retailers */

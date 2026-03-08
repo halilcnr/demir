@@ -90,6 +90,16 @@ export function ProviderHealthCard() {
                 <span className="text-[13px] font-medium text-text-primary">{p.name}</span>
               </div>
               <div className="flex items-center gap-3">
+                {p.listingCount != null && p.listingCount > 0 && (
+                  <span className="text-[11px] text-text-tertiary tabular-nums">
+                    {p.listingCount} ürün
+                  </span>
+                )}
+                {p.blockedCount > 0 && (
+                  <span className="text-[11px] text-rose-500 tabular-nums">
+                    {p.blockedCount}× engel
+                  </span>
+                )}
                 {p.lastSuccessAt && (
                   <span className="text-[11px] text-text-tertiary">
                     {formatRelativeDate(p.lastSuccessAt)}

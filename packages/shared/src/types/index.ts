@@ -298,6 +298,9 @@ export interface BestByStorageGroup {
   };
 }
 
+// ─── Provider Health Types ───────────────────────────────────────
+export type ProviderStatus = 'healthy' | 'warning' | 'blocked' | 'error' | 'cooldown';
+
 // ─── System Health Types ────────────────────────────────────────
 export type HealthStatus = 'healthy' | 'warning' | 'degraded' | 'error';
 
