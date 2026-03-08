@@ -95,14 +95,27 @@ const TURKISH_COLOR_MAP: Record<string, string> = {
   'ultramarine': 'ultramarine', 'lacivert taş': 'ultramarine',
 };
 
-const BROWSER_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-  'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8',
-  'Cache-Control': 'no-cache',
-  'Sec-Fetch-Dest': 'document',
-  'Sec-Fetch-Mode': 'navigate',
-};
+const USER_AGENTS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15',
+];
+
+function getBrowserHeaders(): Record<string, string> {
+  const ua = USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
+  return {
+    'User-Agent': ua,
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+    'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Referer': 'https://www.google.com.tr/',
+    'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1',
+    'Cache-Control': 'max-age=0',
+    'DNT': '1',
+  };
+}
 
 // ─── Utility Functions ──────────────────────────────────────────
 
@@ -164,7 +177,7 @@ async function fetchWithTimeout(url: string, timeoutMs = 15000): Promise<string 
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(url, {
-      headers: BROWSER_HEADERS,
+      headers: getBrowserHeaders(),
       signal: controller.signal,
       redirect: 'follow',
     });

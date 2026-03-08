@@ -274,7 +274,12 @@ export class HepsiburadaProvider extends BaseProvider {
             /"price"\s*:\s*"?(\d[\d.,]+)"?/,
             /"currentPrice"\s*:\s*"?(\d[\d.,]+)"?/,
             /"salePrice"\s*:\s*"?(\d[\d.,]+)"?/,
+            /"lowPrice"\s*:\s*"?(\d[\d.,]+)"?/,
+            /"highPrice"\s*:\s*"?(\d[\d.,]+)"?/,
+            /"discountedPrice"\s*:\s*"?(\d[\d.,]+)"?/,
+            /"sellingPrice"\s*:\s*"?(\d[\d.,]+)"?/,
             /data-price="(\d[\d.,]+)"/,
+            /price['"]\s*:\s*(\d{4,})/,
           ];
 
           let price: number | null = null;

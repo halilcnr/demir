@@ -272,43 +272,91 @@ export abstract class BaseProvider implements RetailerProvider {
       try {
         const text = $(scripts[i]).html();
         if (!text) continue;
-        const data = JSON.parse(text);
+        const raw = JSON.parse(text);
 
-        if (data['@type'] !== 'Product' && data['@type'] !== 'ProductGroup') continue;
+        // Collect candidate Product objects from various structures
+        const candidates: Record<string, unknown>[] = [];
 
-        const name: string = data.name || '';
-        if (!name) continue;
+        if (Array.isArray(raw)) {
+          // Array of LD objects
+          for (const item of raw) {
+            if (item?.['@type'] === 'Product' || item?.['@type'] === 'ProductGroup') {
+              candidates.push(item);
+            }
+          }
+        } else if (raw?.['@graph'] && Array.isArray(raw['@graph'])) {
+          // @graph wrapper (common pattern)
+          for (const item of raw['@graph']) {
+            if (item?.['@type'] === 'Product' || item?.['@type'] === 'ProductGroup') {
+              candidates.push(item);
+            }
+          }
+        } else if (raw?.['@type'] === 'Product' || raw?.['@type'] === 'ProductGroup') {
+          candidates.push(raw);
+        }
 
-        const offers = data.offers;
-        if (!offers) continue;
+        for (const data of candidates) {
+          const name: string = (data as any).name || '';
+          if (!name) continue;
 
-        let price: number | undefined;
-        let currency = 'TRY';
-        let inStock = true;
+          const offers = (data as any).offers;
+          if (!offers) continue;
 
-        if (Array.isArray(offers)) {
-          for (const offer of offers) {
+          let price: number | undefined;
+          let currency = 'TRY';
+          let inStock = true;
+
+          const extractFromOffer = (offer: Record<string, any>): boolean => {
+            // Handle AggregateOffer with lowPrice/highPrice
+            if (offer['@type'] === 'AggregateOffer') {
+              const lp = parseFloat(offer.lowPrice);
+              if (!isNaN(lp) && lp > 0) {
+                price = lp;
+                currency = offer.priceCurrency || currency;
+                inStock = offer.availability !== 'https://schema.org/OutOfStock';
+                return true;
+              }
+              const hp = parseFloat(offer.highPrice);
+              if (!isNaN(hp) && hp > 0) {
+                price = hp;
+                currency = offer.priceCurrency || currency;
+                return true;
+              }
+              // AggregateOffer may contain nested offers
+              if (offer.offers && Array.isArray(offer.offers)) {
+                for (const inner of offer.offers) {
+                  if (extractFromOffer(inner)) return true;
+                }
+              }
+              return false;
+            }
+            // Standard Offer
             const p = parseFloat(offer.price);
             if (!isNaN(p) && p > 0) {
               price = p;
               currency = offer.priceCurrency || currency;
               inStock = offer.availability !== 'https://schema.org/OutOfStock';
-              break;
+              return true;
             }
+            return false;
+          };
+
+          if (Array.isArray(offers)) {
+            for (const offer of offers) {
+              if (extractFromOffer(offer)) break;
+            }
+          } else {
+            extractFromOffer(offers);
           }
-        } else {
-          price = parseFloat(offers.price);
-          currency = offers.priceCurrency || currency;
-          inStock = offers.availability !== 'https://schema.org/OutOfStock';
+
+          if (!price || isNaN(price) || price <= 0) continue;
+
+          const image = typeof (data as any).image === 'string'
+            ? (data as any).image
+            : (data as any).image?.contentUrl?.[0] || (data as any).image?.url || undefined;
+
+          return { name, price, currency, inStock, image };
         }
-
-        if (!price || isNaN(price) || price <= 0) continue;
-
-        const image = typeof data.image === 'string'
-          ? data.image
-          : data.image?.contentUrl?.[0] || data.image?.url || undefined;
-
-        return { name, price, currency, inStock, image };
       } catch {
         // Invalid JSON, skip
       }
