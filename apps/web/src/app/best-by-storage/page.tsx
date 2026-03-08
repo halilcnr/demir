@@ -11,6 +11,8 @@ import {
   ChevronRight,
   Smartphone,
   Zap,
+  Award,
+  History,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -162,10 +164,18 @@ export default function BestByStoragePage() {
                   </div>
                 </div>
                 {group.cheapest && (
-                  <Badge variant="success" size="sm" className="gap-1">
-                    <Zap className="h-3 w-3" />
-                    En Ucuz Seçenek
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    {group.priceInsights.isBestIn30d && (
+                      <Badge variant="success" size="sm" className="gap-1">
+                        <Award className="h-3 w-3" />
+                        30 Günün En Ucuzu
+                      </Badge>
+                    )}
+                    <Badge variant="success" size="sm" className="gap-1">
+                      <Zap className="h-3 w-3" />
+                      En Ucuz Seçenek
+                    </Badge>
+                  </div>
                 )}
               </div>
 
@@ -219,7 +229,7 @@ export default function BestByStoragePage() {
 
               {/* Price Insights */}
               {group.priceInsights.averagePrice && (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-5">
                   <div className="rounded-lg bg-surface-secondary p-2.5">
                     <p className="text-[11px] text-text-tertiary">En Ucuz</p>
                     <p className="text-xs font-semibold text-text-primary">
@@ -247,6 +257,20 @@ export default function BestByStoragePage() {
                         ? formatPrice(group.priceInsights.averagePrice)
                         : '—'}
                     </p>
+                  </div>
+                  <div className="rounded-lg bg-surface-secondary p-2.5">
+                    <div className="flex items-center gap-1">
+                      <History className="h-3 w-3 text-text-tertiary" />
+                      <p className="text-[11px] text-text-tertiary">30 Gün En Düşük</p>
+                    </div>
+                    <p className={`text-xs font-semibold ${group.priceInsights.isBestIn30d ? 'text-emerald-600' : 'text-text-primary'}`}>
+                      {group.priceInsights.historicalLowest30d != null
+                        ? formatPrice(group.priceInsights.historicalLowest30d)
+                        : '—'}
+                    </p>
+                    {group.priceInsights.isBestIn30d && (
+                      <p className="text-[10px] text-emerald-600 mt-0.5">Şu an en iyi!</p>
+                    )}
                   </div>
                 </div>
               )}

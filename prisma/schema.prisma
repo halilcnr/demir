@@ -91,6 +91,10 @@ model Listing {
   lastSuccessAt       DateTime?
   lastFailureAt       DateTime?
   lastBlockedAt       DateTime?
+  // Parser / confidence
+  isVerified          Boolean   @default(false)
+  confidenceScore     Float?    // 0-1 parse confidence
+  parserHealth        String?   // ok, degraded, failing
   // Fallback discovery metadata
   discoverySource     String?   // "direct", "akakce", "cimri", "epey", "enuygun"
   discoveryConfidence Float?    // 0-1 match confidence
@@ -102,6 +106,7 @@ model Listing {
   variant         ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
   retailer        Retailer       @relation(fields: [retailerId], references: [id], onDelete: Cascade)
   priceSnapshots  PriceSnapshot[]
+  dealEvents      DealEvent[]
   alertEvents     AlertEvent[]
 
   @@unique([variantId, retailerId])
@@ -121,13 +126,17 @@ enum StockStatus {
 
 // ─── Fiyat Snapshot'ı ────────────────────────────────────────────
 model PriceSnapshot {
-  id            String   @id @default(cuid())
-  listingId     String
-  observedPrice Float
-  previousPrice Float?
-  changePercent Float?   // Yüzdesel değişim
-  changeAmount  Float?   // Tutar olarak değişim
-  observedAt    DateTime @default(now())
+  id              String   @id @default(cuid())
+  listingId       String
+  observedPrice   Float
+  previousPrice   Float?
+  currency        String   @default("TRY")
+  changePercent   Float?   // Yüzdesel değişim
+  changeAmount    Float?   // Tutar olarak değişim
+  source          String?  // "direct", "fallback", "manual"
+  strategyUsed    String?  // hangi scrape stratejisi kullanıldı
+  parseConfidence Float?   // 0-1 parse güvenilirliği
+  observedAt      DateTime @default(now())
 
   listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
 
@@ -135,6 +144,47 @@ model PriceSnapshot {
   @@index([observedAt])
   @@index([listingId, observedAt])
   @@index([changePercent])
+}
+
+// ─── Fırsat/Deal Olayları ────────────────────────────────────────
+model DealEvent {
+  id                  String        @id @default(cuid())
+  listingId           String
+  variantId           String
+  retailerId          String
+  eventType           DealEventType
+  oldPrice            Float?
+  newPrice            Float
+  dropAmount          Float?
+  dropPercent         Float?
+  basis               String?       // "30d_avg", "all_time_low", "cross_retailer", etc.
+  severity            String        @default("info")  // info, notable, significant, critical
+  isNewAllTimeLow     Boolean       @default(false)
+  isBelowAverage      Boolean       @default(false)
+  isSuspiciousDiscount Boolean      @default(false)
+  suspiciousReason    String?       // neden şüpheli
+  detectedAt          DateTime      @default(now())
+
+  listing  Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId])
+  @@index([variantId])
+  @@index([retailerId])
+  @@index([eventType])
+  @@index([detectedAt])
+  @@index([severity])
+}
+
+enum DealEventType {
+  PRICE_DROP
+  ALL_TIME_LOW
+  MONTHLY_LOW
+  WEEKLY_LOW
+  DAILY_LOW
+  BELOW_AVERAGE
+  CROSS_RETAILER_LOW
+  SUDDEN_DROP
+  SUSPICIOUS_DISCOUNT
 }
 
 // ─── Fiyat Alarm Kuralları ───────────────────────────────────────

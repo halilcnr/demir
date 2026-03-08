@@ -1,9 +1,12 @@
 import { prisma } from '@repo/shared';
 import type { DetectedDeal } from '@repo/shared';
+import { DEAL_THRESHOLDS } from '@repo/shared';
+import { computePriceIntelligence, detectSuspiciousDiscount } from './price-intelligence';
 
 interface ListingContext {
   listingId: string;
   variantId: string;
+  retailerId: string;
   currentPrice: number;
   previousPrice: number | null;
   lowestPrice: number | null;
@@ -12,16 +15,84 @@ interface ListingContext {
 }
 
 /**
- * Tek bir listing için deal analizi yapar.
- * Birden fazla deal tipi aynı anda tetiklenebilir; en yüksek skoru döner.
+ * Full deal analysis using historical price intelligence.
+ * Creates DealEvent records for meaningful events.
+ * Returns the best detected deal (highest score).
  */
 export async function detectDeal(ctx: ListingContext): Promise<DetectedDeal | null> {
   const candidates: DetectedDeal[] = [];
 
-  // 1) Önceki fiyata göre düşüş (PRICE_DROP)
+  // Get full price intelligence from history
+  const intel = await computePriceIntelligence(ctx.listingId, ctx.currentPrice, ctx.previousPrice);
+
+  // Check for suspicious discount
+  const suspicious = await detectSuspiciousDiscount(ctx.listingId, ctx.currentPrice, ctx.previousPrice);
+
+  // 1) ALL_TIME_LOW — new historical lowest
+  if (intel.isNewAllTimeLow && intel.historicalHighest) {
+    const drop = ((intel.historicalHighest - ctx.currentPrice) / intel.historicalHighest) * 100;
+    candidates.push({
+      listingId: ctx.listingId,
+      dealType: 'ALL_TIME_LOW',
+      score: Math.min(100, 65 + Math.round(drop / 2)),
+      reason: `Tüm zamanların en düşük fiyatı`,
+      currentPrice: ctx.currentPrice,
+      referencePrice: intel.historicalLowest ?? ctx.currentPrice,
+      dropPercent: drop,
+    });
+    await createDealEvent(ctx, 'ALL_TIME_LOW', intel.historicalLowest, '30d_avg', 'significant', true, intel.isBelowHistoricalAverage, suspicious);
+  }
+
+  // 2) BELOW_AVERAGE — below 30d average by threshold
+  if (intel.isBelowHistoricalAverage && intel.rollingAverage30d && intel.priceDropVsAverage) {
+    candidates.push({
+      listingId: ctx.listingId,
+      dealType: 'MONTHLY_LOW',
+      score: Math.min(100, 45 + Math.round(intel.priceDropVsAverage * 2)),
+      reason: `30 günlük ortalamadan %${intel.priceDropVsAverage.toFixed(1)} düşük`,
+      currentPrice: ctx.currentPrice,
+      referencePrice: intel.rollingAverage30d,
+      dropPercent: intel.priceDropVsAverage,
+    });
+    if (!intel.isNewAllTimeLow) {
+      await createDealEvent(ctx, 'BELOW_AVERAGE', intel.rollingAverage30d, '30d_avg', 'notable', false, true, suspicious);
+    }
+  }
+
+  // 3) MONTHLY_LOW — lowest in 30 days
+  if (intel.minPrice30d != null && ctx.currentPrice <= intel.minPrice30d && !intel.isNewAllTimeLow) {
+    candidates.push({
+      listingId: ctx.listingId,
+      dealType: 'MONTHLY_LOW',
+      score: 55,
+      reason: `Son 30 günün en düşük fiyatı`,
+      currentPrice: ctx.currentPrice,
+      referencePrice: intel.minPrice30d,
+      dropPercent: 0,
+    });
+    await createDealEvent(ctx, 'MONTHLY_LOW', intel.minPrice30d, 'min_30d', 'notable', false, intel.isBelowHistoricalAverage, suspicious);
+  }
+
+  // 4) WEEKLY_LOW — lowest in 7 days (only if not already monthly low)
+  if (intel.minPrice7d != null && ctx.currentPrice <= intel.minPrice7d && (intel.minPrice30d == null || ctx.currentPrice > intel.minPrice30d)) {
+    candidates.push({
+      listingId: ctx.listingId,
+      dealType: 'DAILY_LOW',
+      score: 40,
+      reason: `Son 7 günün en düşük fiyatı`,
+      currentPrice: ctx.currentPrice,
+      referencePrice: intel.minPrice7d,
+      dropPercent: 0,
+    });
+  }
+
+  // 5) PRICE_DROP — immediate drop from previous price
   if (ctx.previousPrice && ctx.currentPrice < ctx.previousPrice) {
     const drop = ((ctx.previousPrice - ctx.currentPrice) / ctx.previousPrice) * 100;
-    if (drop >= 2) {
+    if (drop >= DEAL_THRESHOLDS.MINOR_DROP_PERCENT) {
+      const severity = drop >= DEAL_THRESHOLDS.SIGNIFICANT_DROP_PERCENT ? 'significant'
+        : drop >= DEAL_THRESHOLDS.NOTABLE_DROP_PERCENT ? 'notable'
+        : 'info';
       candidates.push({
         listingId: ctx.listingId,
         dealType: 'PRICE_DROP',
@@ -31,70 +102,27 @@ export async function detectDeal(ctx: ListingContext): Promise<DetectedDeal | nu
         referencePrice: ctx.previousPrice,
         dropPercent: drop,
       });
+      await createDealEvent(ctx, 'PRICE_DROP', ctx.previousPrice, 'previous_price', severity, intel.isNewAllTimeLow, intel.isBelowHistoricalAverage, suspicious);
     }
   }
 
-  // 2) Tüm zamanların en düşüğü (ALL_TIME_LOW)
-  if (ctx.lowestPrice && ctx.currentPrice <= ctx.lowestPrice) {
-    const drop = ctx.highestPrice
-      ? ((ctx.highestPrice - ctx.currentPrice) / ctx.highestPrice) * 100
-      : 0;
-    candidates.push({
-      listingId: ctx.listingId,
-      dealType: 'ALL_TIME_LOW',
-      score: Math.min(100, 60 + Math.round(drop)),
-      reason: `Tüm zamanların en düşük fiyatı`,
-      currentPrice: ctx.currentPrice,
-      referencePrice: ctx.lowestPrice,
-      dropPercent: drop,
-    });
+  // 6) SUDDEN_DROP — 10%+ immediate drop
+  if (ctx.previousPrice && ctx.currentPrice < ctx.previousPrice) {
+    const drop = ((ctx.previousPrice - ctx.currentPrice) / ctx.previousPrice) * 100;
+    if (drop >= 10) {
+      candidates.push({
+        listingId: ctx.listingId,
+        dealType: 'SUDDEN_DROP',
+        score: Math.min(100, 70 + Math.round(drop)),
+        reason: `Ani %${drop.toFixed(1)} fiyat düşüşü tespit edildi`,
+        currentPrice: ctx.currentPrice,
+        referencePrice: ctx.previousPrice,
+        dropPercent: drop,
+      });
+    }
   }
 
-  // 3) Son 24 saatin en düşüğü (DAILY_LOW)
-  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const dailyMin = await prisma.priceSnapshot.aggregate({
-    where: {
-      listingId: ctx.listingId,
-      observedAt: { gte: oneDayAgo },
-    },
-    _min: { observedPrice: true },
-  });
-
-  if (dailyMin._min.observedPrice && ctx.currentPrice <= dailyMin._min.observedPrice) {
-    candidates.push({
-      listingId: ctx.listingId,
-      dealType: 'DAILY_LOW',
-      score: 40,
-      reason: `Son 24 saatin en düşük fiyatı`,
-      currentPrice: ctx.currentPrice,
-      referencePrice: dailyMin._min.observedPrice,
-      dropPercent: 0,
-    });
-  }
-
-  // 4) Son 30 günün en düşüğü (MONTHLY_LOW)
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const monthlyMin = await prisma.priceSnapshot.aggregate({
-    where: {
-      listingId: ctx.listingId,
-      observedAt: { gte: thirtyDaysAgo },
-    },
-    _min: { observedPrice: true },
-  });
-
-  if (monthlyMin._min.observedPrice && ctx.currentPrice <= monthlyMin._min.observedPrice) {
-    candidates.push({
-      listingId: ctx.listingId,
-      dealType: 'MONTHLY_LOW',
-      score: 55,
-      reason: `Son 30 günün en düşük fiyatı`,
-      currentPrice: ctx.currentPrice,
-      referencePrice: monthlyMin._min.observedPrice,
-      dropPercent: 0,
-    });
-  }
-
-  // 5) Aynı variant diğer retailer'lara göre en ucuz (CROSS_RETAILER_LOW)
+  // 7) CROSS_RETAILER_LOW — cheapest vs other retailers for same variant
   const otherListings = await prisma.listing.findMany({
     where: {
       variantId: ctx.variantId,
@@ -106,9 +134,7 @@ export async function detectDeal(ctx: ListingContext): Promise<DetectedDeal | nu
   });
 
   if (otherListings.length > 0) {
-    const minOther = Math.min(
-      ...otherListings.map((l) => l.currentPrice!).filter(Boolean)
-    );
+    const minOther = Math.min(...otherListings.map((l) => l.currentPrice!).filter(Boolean));
     if (ctx.currentPrice < minOther) {
       const diff = ((minOther - ctx.currentPrice) / minOther) * 100;
       if (diff >= 1) {
@@ -125,27 +151,78 @@ export async function detectDeal(ctx: ListingContext): Promise<DetectedDeal | nu
     }
   }
 
-  // 6) Ani büyük düşüş (SUDDEN_DROP) — %10'dan fazla tek seferde düşüş
-  if (ctx.previousPrice && ctx.currentPrice < ctx.previousPrice) {
-    const drop = ((ctx.previousPrice - ctx.currentPrice) / ctx.previousPrice) * 100;
-    if (drop >= 10) {
-      candidates.push({
-        listingId: ctx.listingId,
-        dealType: 'SUDDEN_DROP',
-        score: Math.min(100, 70 + Math.round(drop)),
-        reason: `Ani %${drop.toFixed(1)} fiyat düşüşü tespit edildi`,
-        currentPrice: ctx.currentPrice,
-        referencePrice: ctx.previousPrice,
-        dropPercent: drop,
-      });
-    }
+  // 8) SUSPICIOUS_DISCOUNT — flag if suspicious
+  if (suspicious.isSuspicious) {
+    await createDealEvent(ctx, 'SUSPICIOUS_DISCOUNT', ctx.previousPrice, 'spike_analysis', 'info', false, false, suspicious);
+  }
+
+  // 9) DAILY_LOW — 24h lowest
+  if (intel.minPrice24h != null && ctx.currentPrice <= intel.minPrice24h) {
+    candidates.push({
+      listingId: ctx.listingId,
+      dealType: 'DAILY_LOW',
+      score: 35,
+      reason: `Son 24 saatin en düşük fiyatı`,
+      currentPrice: ctx.currentPrice,
+      referencePrice: intel.minPrice24h,
+      dropPercent: 0,
+    });
   }
 
   if (candidates.length === 0) return null;
 
-  // En yüksek puanlı deal'i döndür
   candidates.sort((a, b) => b.score - a.score);
   return candidates[0];
+}
+
+/**
+ * Create a DealEvent record in the database.
+ * Deduplicates: won't create a duplicate event for the same listing + eventType within 1 hour.
+ */
+async function createDealEvent(
+  ctx: ListingContext,
+  eventType: string,
+  referencePrice: number | null | undefined,
+  basis: string,
+  severity: string,
+  isNewAllTimeLow: boolean,
+  isBelowAverage: boolean,
+  suspicious: { isSuspicious: boolean; reason: string | null },
+): Promise<void> {
+  // Deduplicate: check if same event type was created in last hour for this listing
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  const existing = await prisma.dealEvent.findFirst({
+    where: {
+      listingId: ctx.listingId,
+      eventType: eventType as never,
+      detectedAt: { gte: oneHourAgo },
+    },
+  });
+  if (existing) return;
+
+  const dropAmount = referencePrice != null ? referencePrice - ctx.currentPrice : null;
+  const dropPercent = referencePrice != null && referencePrice > 0
+    ? ((referencePrice - ctx.currentPrice) / referencePrice) * 100
+    : null;
+
+  await prisma.dealEvent.create({
+    data: {
+      listingId: ctx.listingId,
+      variantId: ctx.variantId,
+      retailerId: ctx.retailerId,
+      eventType: eventType as never,
+      oldPrice: referencePrice ?? ctx.previousPrice,
+      newPrice: ctx.currentPrice,
+      dropAmount: dropAmount != null ? Math.round(dropAmount) : null,
+      dropPercent: dropPercent != null ? Math.round(dropPercent * 10) / 10 : null,
+      basis,
+      severity,
+      isNewAllTimeLow,
+      isBelowAverage,
+      isSuspiciousDiscount: suspicious.isSuspicious,
+      suspiciousReason: suspicious.reason,
+    },
+  });
 }
 
 /**

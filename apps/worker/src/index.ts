@@ -1,7 +1,7 @@
 import { startScheduler } from './scheduler';
 import { createServer } from 'http';
 import { runSync } from './sync';
-import { getSyncLogs } from './sync-logger';
+import { getSyncLogs, getSyncProgress } from './sync-logger';
 
 console.log('=== iPhone Price Tracker Worker ===');
 console.log(`Ortam: ${process.env.NODE_ENV ?? 'development'}`);
@@ -29,6 +29,13 @@ const server = createServer(async (req, res) => {
     const url = new URL(req.url, `http://localhost:${PORT}`);
     const since = url.searchParams.get('since');
     const data = getSyncLogs(since ? parseInt(since, 10) : undefined);
+    res.writeHead(200);
+    res.end(JSON.stringify(data));
+    return;
+  }
+
+  if (req.method === 'GET' && req.url === '/sync-progress') {
+    const data = getSyncProgress();
     res.writeHead(200);
     res.end(JSON.stringify(data));
     return;

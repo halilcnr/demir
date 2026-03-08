@@ -102,6 +102,22 @@ export async function GET(request: Request) {
       const priceSpread = prices.length >= 2 ? prices[prices.length - 1] - prices[0] : null;
       const averagePrice = priceCount > 0 ? Math.round(totalPrice / priceCount) : null;
 
+      // Historical context: 30-day lowest for this family+storage
+      const variantIds = variants.map(v => v.id);
+      const d30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const listingIds = variants.flatMap(v => v.listings.map(l => l.id));
+
+      let historicalLowest30d: number | null = null;
+      if (listingIds.length > 0) {
+        const agg = await prisma.priceSnapshot.aggregate({
+          where: { listingId: { in: listingIds }, observedAt: { gte: d30 } },
+          _min: { observedPrice: true },
+        });
+        historicalLowest30d = agg._min.observedPrice;
+      }
+
+      const isBestIn30d = cheapest != null && historicalLowest30d != null && cheapest.price <= historicalLowest30d;
+
       groups.push({
         familyName: family.name,
         familySlug: family.slug,
@@ -116,6 +132,8 @@ export async function GET(request: Request) {
           priceSpread,
           averagePrice,
           cheapestColor: cheapest?.color ?? null,
+          historicalLowest30d,
+          isBestIn30d,
         },
       });
     }

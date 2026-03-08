@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@repo/shared';
 
-/** Variant detayı: listing'ler, fiyat aralığı, alert kuralları */
+/** Variant detayı: listing'ler, fiyat aralığı, tarihsel zekâ, alert kuralları */
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -35,6 +35,31 @@ export async function GET(
     .filter((l) => l.currentPrice !== null && l.stockStatus === 'IN_STOCK')
     .sort((a, b) => (a.currentPrice ?? Infinity) - (b.currentPrice ?? Infinity))[0];
 
+  // Get historical aggregate from PriceSnapshot across all listings for this variant
+  const listingIds = variant.listings.map(l => l.id);
+  const d30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const [allTimeAgg, avg30d, recentDealEvents] = await Promise.all([
+    prisma.priceSnapshot.aggregate({
+      where: { listingId: { in: listingIds } },
+      _min: { observedPrice: true },
+      _max: { observedPrice: true },
+      _avg: { observedPrice: true },
+      _count: true,
+    }),
+    prisma.priceSnapshot.aggregate({
+      where: { listingId: { in: listingIds }, observedAt: { gte: d30 } },
+      _avg: { observedPrice: true },
+    }),
+    prisma.dealEvent.findMany({
+      where: { variantId: id },
+      orderBy: { detectedAt: 'desc' },
+      take: 10,
+      include: {
+        listing: { include: { retailer: true } },
+      },
+    }),
+  ]);
+
   return NextResponse.json({
     id: variant.id,
     familyId: variant.familyId,
@@ -48,6 +73,12 @@ export async function GET(
     maxPrice: prices.length > 0 ? Math.max(...prices) : null,
     avgPrice: prices.length > 0 ? Math.round(prices.reduce((a, b) => a + b, 0) / prices.length) : null,
     bestRetailer: bestListing?.retailer.name ?? null,
+    // Historical intelligence
+    historicalLowest: allTimeAgg._min.observedPrice,
+    historicalHighest: allTimeAgg._max.observedPrice,
+    historicalAverage: allTimeAgg._avg.observedPrice ? Math.round(allTimeAgg._avg.observedPrice) : null,
+    average30d: avg30d._avg.observedPrice ? Math.round(avg30d._avg.observedPrice) : null,
+    snapshotCount: allTimeAgg._count,
     listings: variant.listings.map((l) => ({
       id: l.id,
       retailerName: l.retailer.name,
@@ -70,6 +101,21 @@ export async function GET(
       threshold: r.threshold,
       isActive: r.isActive,
       lastTriggered: r.lastTriggered?.toISOString() ?? null,
+    })),
+    dealEvents: recentDealEvents.map((d) => ({
+      id: d.id,
+      eventType: d.eventType,
+      oldPrice: d.oldPrice,
+      newPrice: d.newPrice,
+      dropAmount: d.dropAmount,
+      dropPercent: d.dropPercent,
+      severity: d.severity,
+      isNewAllTimeLow: d.isNewAllTimeLow,
+      isBelowAverage: d.isBelowAverage,
+      isSuspiciousDiscount: d.isSuspiciousDiscount,
+      suspiciousReason: d.suspiciousReason,
+      retailerName: d.listing.retailer.name,
+      detectedAt: d.detectedAt.toISOString(),
     })),
   });
 }

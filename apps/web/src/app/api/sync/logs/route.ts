@@ -1,6 +1,15 @@
 import { NextResponse } from 'next/server';
 
-const WORKER_URL = process.env.WORKER_URL ?? 'http://localhost:3001';
+function normalizeWorkerUrl(raw: string): string {
+  let url = raw.trim();
+  if (!url) return 'http://localhost:3001';
+  if (!/^https?:\/\//i.test(url)) {
+    url = `https://${url}`;
+  }
+  return url.replace(/\/+$/, '');
+}
+
+const WORKER_URL = normalizeWorkerUrl(process.env.WORKER_URL ?? 'http://localhost:3001');
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);

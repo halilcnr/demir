@@ -19,7 +19,7 @@ import {
   recordFailure,
   recordBlocked,
 } from './provider-health';
-import { clearSyncLogs, addSyncLog, finishSyncLogs } from './sync-logger';
+import { clearSyncLogs, addSyncLog, finishSyncLogs, updateSyncProgress } from './sync-logger';
 import { queryFallbackSources } from './discovery';
 
 /**
@@ -96,6 +96,21 @@ export async function runSync(retailerSlug?: string) {
     console.log(`[sync] ${variantGroups.size} varyant, ${allListings.length} listing bulundu`);
     addSyncLog({ type: 'info', message: `${variantGroups.size} varyant, ${allListings.length} listing bulundu` });
 
+    // Set up live progress tracking
+    updateSyncProgress({
+      running: true,
+      totalListings: allListings.length,
+      processedListings: 0,
+      successCount: 0,
+      failureCount: 0,
+      blockedCount: 0,
+      progress: 0,
+      currentRetailer: null,
+      currentVariant: null,
+      step: 'starting',
+      startedAt: new Date().toISOString(),
+    });
+
     // Process variant by variant (round-robin across providers)
     for (const [, listings] of variantGroups) {
       const variant = listings[0].variant;
@@ -108,6 +123,22 @@ export async function runSync(retailerSlug?: string) {
         const slug = listing.retailer.slug;
         const provider = providerMap.get(slug);
         if (!provider) continue;
+
+        // Update live progress
+        const processed = successCount + failureCount + blockedCount;
+        updateSyncProgress({
+          running: true,
+          totalListings: allListings.length,
+          processedListings: processed,
+          successCount,
+          failureCount,
+          blockedCount,
+          progress: allListings.length > 0 ? Math.round((processed / allListings.length) * 100) : 0,
+          currentRetailer: slug,
+          currentVariant: variantLabel,
+          step: 'scraping',
+          startedAt: new Date(startMs).toISOString(),
+        });
 
         // Skip if blocked this cycle
         if (isBlockedThisCycle(slug)) {
@@ -165,16 +196,21 @@ export async function runSync(retailerSlug?: string) {
                 listingId: listing.id,
                 observedPrice: result.price,
                 previousPrice,
+                currency: 'TRY',
                 changePercent: previousPrice
                   ? calculateChangePercent(previousPrice, result.price)
                   : null,
                 changeAmount: previousPrice ? result.price - previousPrice : null,
+                source: 'direct',
+                strategyUsed: (meta?.strategyUsed as string) ?? null,
+                parseConfidence: (meta?.parseConfidence as number) ?? null,
               },
             });
 
             const deal = await detectDeal({
               listingId: listing.id,
               variantId: listing.variantId,
+              retailerId: listing.retailerId,
               currentPrice: result.price,
               previousPrice,
               lowestPrice: listing.lowestPrice ?? result.price,
@@ -256,8 +292,10 @@ export async function runSync(retailerSlug?: string) {
                       listingId: listing.id,
                       observedPrice: retryResult.price,
                       previousPrice,
+                      currency: 'TRY',
                       changePercent: previousPrice ? calculateChangePercent(previousPrice, retryResult.price) : null,
                       changeAmount: previousPrice ? retryResult.price - previousPrice : null,
+                      source: 'fallback',
                     },
                   });
                   itemsMatched++;
@@ -400,6 +438,17 @@ export async function runSync(retailerSlug?: string) {
 
     const durationMs = Date.now() - startMs;
     finishSyncLogs();
+    updateSyncProgress({
+      running: false,
+      progress: 100,
+      step: 'completed',
+      processedListings: successCount + failureCount + blockedCount,
+      successCount,
+      failureCount,
+      blockedCount,
+      currentRetailer: null,
+      currentVariant: null,
+    });
 
     await prisma.syncJob.update({
       where: { id: syncJob.id },
@@ -544,6 +593,7 @@ async function upsertListing(
     lowestPrice: listing.lowestPrice,
     highestPrice: listing.highestPrice,
     retailerSlug: result.retailerSlug,
+    retailerId: listing.retailerId,
   });
 
   const isDeal = deal !== null && deal.score >= 30;

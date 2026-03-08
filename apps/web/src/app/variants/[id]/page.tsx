@@ -11,6 +11,10 @@ import {
   Bell,
   BarChart3,
   ShoppingBag,
+  History,
+  AlertTriangle,
+  Award,
+  Zap,
 } from 'lucide-react';
 
 import { Card, StatCard } from '@/components/ui/card';
@@ -141,6 +145,58 @@ export default function VariantDetailPage() {
           accentColor="#f59e0b"
         />
       </div>
+
+      {/* Historical Intelligence */}
+      {variant.snapshotCount > 0 && (
+        <Card className="relative overflow-hidden">
+          <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-violet-400 via-purple-400 to-transparent" />
+          <div className="flex items-center gap-2.5 mb-4">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-50">
+              <History className="h-4 w-4 text-violet-500" />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-text-primary">Tarihsel Fiyat Zekâsı</h2>
+              <p className="text-[11px] text-text-tertiary">{variant.snapshotCount} fiyat kaydı analizi</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="rounded-lg bg-surface-secondary p-3">
+              <p className="text-[11px] text-text-tertiary">Tüm Zamanların En Düşüğü</p>
+              <p className="text-sm font-bold text-emerald-600 tabular-nums">
+                {variant.historicalLowest != null ? formatPrice(variant.historicalLowest) : '—'}
+              </p>
+              {variant.minPrice != null && variant.historicalLowest != null && variant.minPrice <= variant.historicalLowest && (
+                <Badge variant="success" size="sm" className="mt-1">
+                  <Award className="h-3 w-3 mr-0.5" /> Şu an en düşükte!
+                </Badge>
+              )}
+            </div>
+            <div className="rounded-lg bg-surface-secondary p-3">
+              <p className="text-[11px] text-text-tertiary">Tüm Zamanların En Yükseği</p>
+              <p className="text-sm font-bold text-red-500 tabular-nums">
+                {variant.historicalHighest != null ? formatPrice(variant.historicalHighest) : '—'}
+              </p>
+            </div>
+            <div className="rounded-lg bg-surface-secondary p-3">
+              <p className="text-[11px] text-text-tertiary">Tarihsel Ortalama</p>
+              <p className="text-sm font-bold text-text-primary tabular-nums">
+                {variant.historicalAverage != null ? formatPrice(variant.historicalAverage) : '—'}
+              </p>
+              {variant.minPrice != null && variant.historicalAverage != null && variant.minPrice < variant.historicalAverage && (
+                <p className="text-[11px] text-emerald-600 mt-1">
+                  Ortalamadan {formatPrice(variant.historicalAverage - variant.minPrice)} düşük
+                </p>
+              )}
+            </div>
+            <div className="rounded-lg bg-surface-secondary p-3">
+              <p className="text-[11px] text-text-tertiary">30 Gün Ortalaması</p>
+              <p className="text-sm font-bold text-text-primary tabular-nums">
+                {variant.average30d != null ? formatPrice(variant.average30d) : '—'}
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Retailer Listings */}
       <Card>
@@ -294,6 +350,68 @@ export default function VariantDetailPage() {
             />
           </Card>
         </div>
+      )}
+
+      {/* Deal Events */}
+      {variant.dealEvents && variant.dealEvents.length > 0 && (
+        <Card className="relative overflow-hidden">
+          <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-amber-400 via-orange-400 to-transparent" />
+          <div className="flex items-center gap-2.5 mb-4">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-50">
+              <Zap className="h-4 w-4 text-amber-500" />
+            </div>
+            <h2 className="text-sm font-semibold text-text-primary">
+              Son Fırsat Olayları
+            </h2>
+          </div>
+          <div className="space-y-2">
+            {variant.dealEvents.map((event) => (
+              <div
+                key={event.id}
+                className={`flex items-center justify-between rounded-lg border p-3 transition-colors ${
+                  event.isSuspiciousDiscount
+                    ? 'border-amber-200 bg-amber-50/30'
+                    : event.isNewAllTimeLow
+                      ? 'border-emerald-200 bg-emerald-50/30'
+                      : 'border-border bg-surface hover:bg-surface-secondary'
+                }`}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="text-[13px] font-medium text-text-primary">
+                      {event.retailerName}
+                    </span>
+                    {event.isSuspiciousDiscount && (
+                      <Badge variant="warning" size="sm">
+                        <AlertTriangle className="h-3 w-3 mr-0.5" /> Şüpheli
+                      </Badge>
+                    )}
+                    {event.isNewAllTimeLow && (
+                      <Badge variant="success" size="sm">
+                        <Award className="h-3 w-3 mr-0.5" /> En Düşük
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px] text-text-tertiary">
+                    <span className="capitalize">{event.eventType.replace(/_/g, ' ').toLowerCase()}</span>
+                    <span>·</span>
+                    <span>{event.severity}</span>
+                    <span>·</span>
+                    <span>{formatRelativeDate(event.detectedAt)}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 ml-3">
+                  <span className="text-sm font-bold text-primary tabular-nums">
+                    {formatPrice(event.newPrice)}
+                  </span>
+                  {event.dropPercent != null && event.dropPercent > 0 && (
+                    <PriceChangeBadge changePercent={-event.dropPercent} />
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
       )}
     </div>
   );

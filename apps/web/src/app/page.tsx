@@ -11,6 +11,11 @@ import {
   ArrowRight,
   Flame,
   Sparkles,
+  Activity,
+  AlertTriangle,
+  CheckCircle2,
+  XCircle,
+  Shield,
 } from 'lucide-react';
 
 import { StatCard, Card } from '@/components/ui/card';
@@ -20,13 +25,24 @@ import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 import { ProviderHealthCard } from '@/components/provider-health-card';
 import { SystemHealthCard } from '@/components/system-health-card';
 import { formatPrice, formatRelativeDate } from '@repo/shared';
-import type { DashboardSummary } from '@repo/shared';
+import type { DashboardSummary, LiveSyncProgress, DealEventItem } from '@repo/shared';
 import Link from 'next/link';
 
 export default function DashboardPage() {
   const { data, isLoading, error, refetch } = useQuery<DashboardSummary>({
     queryKey: ['dashboard-summary'],
     queryFn: () => fetch('/api/dashboard/summary').then((r) => r.json()),
+  });
+
+  const { data: syncProgress } = useQuery<LiveSyncProgress>({
+    queryKey: ['sync-progress'],
+    queryFn: () => fetch('/api/sync/progress').then((r) => r.json()),
+    refetchInterval: (query) => query.state.data?.running ? 2000 : 10000,
+  });
+
+  const { data: dealEventsData } = useQuery<{ events: DealEventItem[] }>({
+    queryKey: ['recent-deal-events'],
+    queryFn: () => fetch('/api/deal-events?limit=8').then((r) => r.json()),
   });
 
   if (isLoading) return <DashboardSkeleton />;
@@ -74,6 +90,169 @@ export default function DashboardPage() {
 
       {/* System Health */}
       <SystemHealthCard />
+
+      {/* Live Sync Activity */}
+      {syncProgress && (
+        <Card className="relative overflow-hidden">
+          <div className={`absolute inset-x-0 top-0 h-[2px] ${syncProgress.running ? 'bg-gradient-to-r from-blue-400 via-cyan-400 to-transparent animate-pulse' : 'bg-gradient-to-r from-slate-300 to-transparent'}`} />
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2.5">
+              <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${syncProgress.running ? 'bg-blue-50' : 'bg-slate-50'}`}>
+                <Activity className={`h-4 w-4 ${syncProgress.running ? 'text-blue-500 animate-pulse' : 'text-slate-400'}`} />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-text-primary">
+                  Senkronizasyon Durumu
+                </h2>
+                <p className="text-[11px] text-text-tertiary">
+                  {syncProgress.running ? 'Aktif olarak çalışıyor...' : 'Boşta'}
+                </p>
+              </div>
+            </div>
+            {syncProgress.running && (
+              <Badge variant="info" size="sm" className="animate-pulse">
+                {syncProgress.step}
+              </Badge>
+            )}
+          </div>
+
+          {syncProgress.running ? (
+            <div className="space-y-3">
+              {/* Progress Bar */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs text-text-tertiary">İlerleme</span>
+                  <span className="text-xs font-semibold text-text-primary tabular-nums">
+                    %{Math.round(syncProgress.progress)}
+                  </span>
+                </div>
+                <div className="h-2 w-full rounded-full bg-surface-secondary overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-400 transition-all duration-500"
+                    style={{ width: `${Math.min(100, syncProgress.progress)}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Current Item */}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {syncProgress.currentRetailer && (
+                  <div className="rounded-lg bg-surface-secondary p-2.5">
+                    <p className="text-[11px] text-text-tertiary">Mağaza</p>
+                    <p className="text-xs font-semibold text-text-primary truncate">{syncProgress.currentRetailer}</p>
+                  </div>
+                )}
+                {syncProgress.currentVariant && (
+                  <div className="rounded-lg bg-surface-secondary p-2.5">
+                    <p className="text-[11px] text-text-tertiary">Varyant</p>
+                    <p className="text-xs font-semibold text-text-primary truncate">{syncProgress.currentVariant}</p>
+                  </div>
+                )}
+                <div className="rounded-lg bg-surface-secondary p-2.5">
+                  <p className="text-[11px] text-text-tertiary">İşlenen</p>
+                  <p className="text-xs font-semibold text-text-primary tabular-nums">
+                    {syncProgress.processedListings} / {syncProgress.totalListings}
+                  </p>
+                </div>
+                {syncProgress.estimatedRemainingMs != null && syncProgress.estimatedRemainingMs > 0 && (
+                  <div className="rounded-lg bg-surface-secondary p-2.5">
+                    <p className="text-[11px] text-text-tertiary">Kalan Süre</p>
+                    <p className="text-xs font-semibold text-text-primary tabular-nums">
+                      ~{Math.ceil(syncProgress.estimatedRemainingMs / 60000)} dk
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Counters */}
+              <div className="flex items-center gap-4 text-xs">
+                <span className="flex items-center gap-1 text-emerald-600">
+                  <CheckCircle2 className="h-3.5 w-3.5" /> {syncProgress.successCount} başarılı
+                </span>
+                <span className="flex items-center gap-1 text-red-500">
+                  <XCircle className="h-3.5 w-3.5" /> {syncProgress.failureCount} hatalı
+                </span>
+                <span className="flex items-center gap-1 text-amber-500">
+                  <Shield className="h-3.5 w-3.5" /> {syncProgress.blockedCount} engellendi
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 rounded-lg bg-surface-secondary p-3">
+              <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+              <p className="text-xs text-text-secondary">
+                {syncProgress.startedAt
+                  ? `Son senkronizasyon: ${formatRelativeDate(syncProgress.startedAt)} — ${syncProgress.successCount} başarılı, ${syncProgress.failureCount} hatalı`
+                  : 'Henüz senkronizasyon çalıştırılmadı'}
+              </p>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* Deal Intelligence Events */}
+      {dealEventsData && dealEventsData.events.length > 0 && (
+        <Card className="relative overflow-hidden">
+          <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-purple-400 via-pink-400 to-transparent" />
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-50">
+                <Zap className="h-4 w-4 text-purple-500" />
+              </div>
+              <h2 className="text-sm font-semibold text-text-primary">
+                Son Fırsat Olayları
+              </h2>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {dealEventsData.events.map((event) => (
+              <div
+                key={event.id}
+                className={`flex items-center justify-between rounded-lg border p-3 transition-colors ${
+                  event.isSuspiciousDiscount
+                    ? 'border-amber-200 bg-amber-50/30'
+                    : event.isNewAllTimeLow
+                      ? 'border-emerald-200 bg-emerald-50/30'
+                      : 'border-border bg-surface hover:bg-surface-secondary'
+                }`}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="text-[13px] font-medium text-text-primary truncate">
+                      {event.variantName ?? 'Bilinmeyen'}
+                    </span>
+                    {event.isSuspiciousDiscount && (
+                      <Badge variant="warning" size="sm">
+                        <AlertTriangle className="h-3 w-3 mr-0.5" /> Şüpheli
+                      </Badge>
+                    )}
+                    {event.isNewAllTimeLow && (
+                      <Badge variant="success" size="sm">Tüm Zamanların En Düşüğü</Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px] text-text-tertiary">
+                    <span>{event.retailerName}</span>
+                    <span>·</span>
+                    <span className="capitalize">{event.eventType.replace(/_/g, ' ').toLowerCase()}</span>
+                    <span>·</span>
+                    <span>{formatRelativeDate(event.detectedAt)}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 ml-3">
+                  {event.newPrice != null && (
+                    <span className="text-sm font-bold text-primary tabular-nums">
+                      {formatPrice(event.newPrice)}
+                    </span>
+                  )}
+                  {event.dropPercent != null && event.dropPercent > 0 && (
+                    <PriceChangeBadge changePercent={-event.dropPercent} />
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* Main Grid */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

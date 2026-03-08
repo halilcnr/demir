@@ -106,6 +106,29 @@ export interface VariantDetail {
   maxPrice: number | null;
   avgPrice: number | null;
   bestRetailer: string | null;
+  // Historical intelligence
+  historicalLowest: number | null;
+  historicalHighest: number | null;
+  historicalAverage: number | null;
+  average30d: number | null;
+  snapshotCount: number;
+  dealEvents: VariantDealEvent[];
+}
+
+export interface VariantDealEvent {
+  id: string;
+  eventType: string;
+  oldPrice: number | null;
+  newPrice: number;
+  dropAmount: number | null;
+  dropPercent: number | null;
+  severity: string;
+  isNewAllTimeLow: boolean;
+  isBelowAverage: boolean;
+  isSuspiciousDiscount: boolean;
+  suspiciousReason: string | null;
+  retailerName: string;
+  detectedAt: string;
 }
 
 export interface ListingWithRetailer {
@@ -270,6 +293,8 @@ export interface BestByStorageGroup {
     priceSpread: number | null;
     averagePrice: number | null;
     cheapestColor: string | null;
+    historicalLowest30d: number | null;
+    isBestIn30d: boolean;
   };
 }
 
@@ -289,3 +314,77 @@ export type TrustedRetailer = typeof TRUSTED_RETAILERS[number];
 
 export const DISCOVERY_SOURCES = ['enuygun', 'cimri', 'akakce', 'epey'] as const;
 export type DiscoverySource = typeof DISCOVERY_SOURCES[number];
+
+// ─── Price Intelligence Types ───────────────────────────────────
+export interface PriceIntelligence {
+  latestPrice: number | null;
+  previousPrice: number | null;
+  historicalLowest: number | null;
+  historicalHighest: number | null;
+  rollingAverage7d: number | null;
+  rollingAverage30d: number | null;
+  minPrice24h: number | null;
+  minPrice7d: number | null;
+  minPrice30d: number | null;
+  maxPrice30d: number | null;
+  priceDrop24h: number | null;
+  priceDrop7d: number | null;
+  priceDropVsAverage: number | null;
+  volatilityScore: number | null;
+  trendDirection: 'rising' | 'falling' | 'stable' | 'unknown';
+  lastMeaningfulDropPercent: number | null;
+  marketPosition: 'cheapest' | 'below_avg' | 'average' | 'above_avg' | 'expensive' | 'unknown';
+  isNewAllTimeLow: boolean;
+  isBelowHistoricalAverage: boolean;
+  isUnusualDrop: boolean;
+  snapshotCount: number;
+}
+
+export interface DealEventItem {
+  id: string;
+  listingId: string;
+  variantId: string;
+  retailerId: string;
+  eventType: string;
+  oldPrice: number | null;
+  newPrice: number;
+  dropAmount: number | null;
+  dropPercent: number | null;
+  basis: string | null;
+  severity: string;
+  isNewAllTimeLow: boolean;
+  isBelowAverage: boolean;
+  isSuspiciousDiscount: boolean;
+  suspiciousReason: string | null;
+  detectedAt: string;
+  // Joined
+  variantName?: string;
+  retailerName?: string;
+  familyName?: string;
+}
+
+// ─── Live Sync Progress Types ───────────────────────────────────
+export interface LiveSyncProgress {
+  running: boolean;
+  progress: number;
+  currentRetailer: string | null;
+  currentVariant: string | null;
+  successCount: number;
+  failureCount: number;
+  blockedCount: number;
+  totalListings: number;
+  processedListings: number;
+  step: string;
+  startedAt: string | null;
+  estimatedRemainingMs: number | null;
+}
+
+// ─── Deal Thresholds ────────────────────────────────────────────
+export const DEAL_THRESHOLDS = {
+  MINOR_DROP_PERCENT: 3,
+  NOTABLE_DROP_PERCENT: 5,
+  SIGNIFICANT_DROP_PERCENT: 8,
+  BELOW_AVG_PERCENT: 5,
+  SUSPICIOUS_SPIKE_PERCENT: 15,
+  SUSPICIOUS_WINDOW_HOURS: 48,
+} as const;
