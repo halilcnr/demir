@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { Zap, TrendingDown, ExternalLink } from 'lucide-react';
+import { Flame, TrendingDown, ExternalLink, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 
 import { Card } from '@/components/ui/card';
@@ -24,7 +24,7 @@ export default function DealsPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6 animate-float-in">
         <CardSkeleton />
         <CardSkeleton />
       </div>
@@ -35,163 +35,180 @@ export default function DealsPage() {
   if (!data) return <EmptyState description="Fırsat verisi yüklenemedi" />;
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-xl font-bold text-gray-900">Fırsatlar</h1>
+    <div className="space-y-6 animate-float-in">
+      <h1 className="text-lg font-semibold tracking-tight text-text-primary">Fırsatlar</h1>
 
       {/* Active Deals */}
       <Card>
-        <div className="flex items-center gap-2 mb-4">
-          <Zap className="h-5 w-5 text-amber-500" />
-          <h2 className="text-base font-semibold text-gray-900">
-            Aktif Fırsatlar ({data.deals.length})
-          </h2>
-        </div>
-
-        {data.deals.length === 0 ? (
-          <EmptyState description="Şu an aktif fırsat yok" />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">
-                    Ürün
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">
-                    Mağaza
-                  </th>
-                  <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">
-                    Fiyat
-                  </th>
-                  <th className="px-4 py-3 text-center text-xs font-medium uppercase text-gray-500">
-                    Fırsat Puanı
-                  </th>
-                  <th className="px-4 py-3 text-center text-xs font-medium uppercase text-gray-500">
-                    Son Görülme
-                  </th>
-                  <th className="px-4 py-3 text-center text-xs font-medium uppercase text-gray-500">
-                    İşlem
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {data.deals.map((deal) => (
-                  <tr key={deal.listingId} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3">
-                      <Link
-                        href={`/variants/${deal.variantId}`}
-                        className="font-medium text-gray-900 text-sm hover:text-blue-600"
-                      >
-                        {deal.variantName}
-                      </Link>
-                      <p className="text-xs text-gray-500">
-                        {deal.color} · {deal.storageGb} GB
-                      </p>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
-                      {deal.retailerName}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className="text-sm font-bold text-blue-600">
-                        {formatPrice(deal.currentPrice)}
-                      </span>
-                      {deal.previousPrice != null && (
-                        <p className="text-xs text-gray-400 line-through">
-                          {formatPrice(deal.previousPrice)}
-                        </p>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {deal.dealScore != null ? (
-                        <Badge
-                          variant={deal.dealScore >= 80 ? 'success' : deal.dealScore >= 50 ? 'warning' : 'default'}
-                        >
-                          {deal.dealScore}
-                        </Badge>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-center text-xs text-gray-500">
-                      {deal.lastSeenAt ? formatRelativeDate(deal.lastSeenAt) : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <a
-                        href={deal.productUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                      </a>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <div className="relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-amber-500 to-orange-500" />
+          <div className="flex items-center gap-3 mb-4 pt-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
+              <Flame className="h-4 w-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-text-primary">
+                Aktif Fırsatlar
+              </h2>
+              <p className="text-[11px] text-text-tertiary">{data.deals.length} fırsat bulundu</p>
+            </div>
           </div>
-        )}
+
+          {data.deals.length === 0 ? (
+            <EmptyState description="Şu an aktif fırsat yok" />
+          ) : (
+            <div className="overflow-x-auto -mx-5">
+              <table className="min-w-full">
+                <thead>
+                  <tr className="border-y border-border-light bg-surface-secondary">
+                    <th className="px-5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
+                      Ürün
+                    </th>
+                    <th className="px-5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
+                      Mağaza
+                    </th>
+                    <th className="px-5 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
+                      Fiyat
+                    </th>
+                    <th className="px-5 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
+                      Fırsat Puanı
+                    </th>
+                    <th className="px-5 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
+                      Son Görülme
+                    </th>
+                    <th className="px-5 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
+                      İşlem
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border-light">
+                  {data.deals.map((deal) => (
+                    <tr key={deal.listingId} className="group hover:bg-surface-secondary transition-colors">
+                      <td className="px-5 py-3">
+                        <Link
+                          href={`/variants/${deal.variantId}`}
+                          className="text-[13px] font-medium text-text-primary hover:text-primary transition-colors"
+                        >
+                          {deal.variantName}
+                        </Link>
+                        <p className="text-[11px] text-text-tertiary mt-0.5">
+                          {deal.color} · {deal.storageGb} GB
+                        </p>
+                      </td>
+                      <td className="px-5 py-3 text-[13px] text-text-secondary">
+                        {deal.retailerName}
+                      </td>
+                      <td className="px-5 py-3 text-right">
+                        <span className="text-[13px] font-bold text-primary tabular-nums">
+                          {formatPrice(deal.currentPrice)}
+                        </span>
+                        {deal.previousPrice != null && (
+                          <p className="text-[11px] text-text-tertiary line-through tabular-nums">
+                            {formatPrice(deal.previousPrice)}
+                          </p>
+                        )}
+                      </td>
+                      <td className="px-5 py-3 text-center">
+                        {deal.dealScore != null ? (
+                          <Badge
+                            variant={deal.dealScore >= 80 ? 'success' : deal.dealScore >= 50 ? 'warning' : 'default'}
+                            size="sm"
+                          >
+                            {deal.dealScore}
+                          </Badge>
+                        ) : (
+                          <span className="text-text-tertiary">—</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3 text-center text-[11px] text-text-tertiary">
+                        {deal.lastSeenAt ? formatRelativeDate(deal.lastSeenAt) : '—'}
+                      </td>
+                      <td className="px-5 py-3 text-center">
+                        <a
+                          href={deal.productUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center text-text-tertiary hover:text-primary transition-colors opacity-0 group-hover:opacity-100"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </Card>
 
       {/* Biggest Drops */}
       <Card>
-        <div className="flex items-center gap-2 mb-4">
-          <TrendingDown className="h-5 w-5 text-green-600" />
-          <h2 className="text-base font-semibold text-gray-900">
-            En Büyük Fiyat Düşüşleri
-          </h2>
-        </div>
-
-        {data.biggestDrops.length === 0 ? (
-          <EmptyState description="Son dönemde önemli fiyat düşüşü yok" />
-        ) : (
-          <div className="space-y-3">
-            {data.biggestDrops.map((drop) => (
-              <div
-                key={drop.listingId}
-                className="flex items-center justify-between rounded-lg border border-green-100 bg-green-50/30 p-4 hover:bg-green-50 transition-colors"
-              >
-                <div className="flex-1">
-                  <Link
-                    href={`/variants/${drop.variantId}`}
-                    className="font-medium text-gray-900 hover:text-blue-600"
-                  >
-                    {drop.variantName}
-                  </Link>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-sm text-gray-500">{drop.retailerName}</span>
-                    {drop.previousPrice != null && (
-                      <span className="text-sm text-gray-400 line-through">
-                        {formatPrice(drop.previousPrice)}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="text-right">
-                    <span className="text-lg font-bold text-green-700">
-                      {formatPrice(drop.currentPrice)}
-                    </span>
-                    {drop.changePercent != null && (
-                      <div className="mt-0.5">
-                        <PriceChangeBadge changePercent={drop.changePercent} />
-                      </div>
-                    )}
-                  </div>
-                  <a
-                    href={drop.productUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-gray-400 hover:text-blue-600"
-                    title="Siteye git"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                  </a>
-                </div>
-              </div>
-            ))}
+        <div className="relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-emerald-500 to-teal-500" />
+          <div className="flex items-center gap-3 mb-4 pt-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+              <TrendingDown className="h-4 w-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-text-primary">
+                En Büyük Fiyat Düşüşleri
+              </h2>
+              <p className="text-[11px] text-text-tertiary">{data.biggestDrops.length} düşüş tespit edildi</p>
+            </div>
           </div>
-        )}
+
+          {data.biggestDrops.length === 0 ? (
+            <EmptyState description="Son dönemde önemli fiyat düşüşü yok" />
+          ) : (
+            <div className="space-y-2">
+              {data.biggestDrops.map((drop) => (
+                <div
+                  key={drop.listingId}
+                  className="group flex items-center justify-between rounded-lg border border-border-light p-4 hover:border-emerald-200 hover:bg-emerald-50/30 transition-all"
+                >
+                  <div className="flex-1">
+                    <Link
+                      href={`/variants/${drop.variantId}`}
+                      className="text-[13px] font-medium text-text-primary hover:text-primary transition-colors"
+                    >
+                      {drop.variantName}
+                    </Link>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[11px] text-text-tertiary">{drop.retailerName}</span>
+                      {drop.previousPrice != null && (
+                        <span className="text-[11px] text-text-tertiary line-through tabular-nums">
+                          {formatPrice(drop.previousPrice)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <span className="text-sm font-bold text-emerald-600 tabular-nums">
+                        {formatPrice(drop.currentPrice)}
+                      </span>
+                      {drop.changePercent != null && (
+                        <div className="mt-0.5">
+                          <PriceChangeBadge changePercent={drop.changePercent} />
+                        </div>
+                      )}
+                    </div>
+                    <a
+                      href={drop.productUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-text-tertiary hover:text-primary transition-colors opacity-0 group-hover:opacity-100"
+                      title="Siteye git"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </Card>
     </div>
   );

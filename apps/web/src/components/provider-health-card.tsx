@@ -36,13 +36,15 @@ export function ProviderHealthCard() {
   if (isLoading || !data) {
     return (
       <Card>
-        <div className="flex items-center gap-2 mb-4">
-          <Activity className="h-5 w-5 text-gray-500" />
-          <h3 className="text-sm font-semibold text-gray-700">Sağlayıcı Durumu</h3>
+        <div className="flex items-center gap-2.5 mb-4">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-50">
+            <Activity className="h-4 w-4 text-text-tertiary" />
+          </div>
+          <h3 className="text-sm font-semibold text-text-primary">Sağlayıcı Durumu</h3>
         </div>
-        <div className="animate-pulse space-y-3">
+        <div className="space-y-2">
           {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="h-8 rounded bg-gray-100" />
+            <div key={i} className="h-10 rounded-lg skeleton" />
           ))}
         </div>
       </Card>
@@ -51,37 +53,47 @@ export function ProviderHealthCard() {
 
   return (
     <Card>
-      <div className="flex items-center gap-2 mb-4">
-        <Activity className="h-5 w-5 text-gray-500" />
-        <h3 className="text-sm font-semibold text-gray-700">Sağlayıcı Durumu</h3>
+      <div className="flex items-center gap-2.5 mb-5">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-50">
+          <Activity className="h-4 w-4 text-text-secondary" />
+        </div>
+        <div>
+          <h3 className="text-sm font-semibold text-text-primary">Sağlayıcı Durumu</h3>
+          <p className="text-[11px] text-text-tertiary">5 sağlayıcı takipte</p>
+        </div>
       </div>
-      <div className="space-y-3">
+      <div className="space-y-1.5">
         {data.providers.map((p) => {
           const cfg = statusConfig[p.status] ?? statusConfig.warning;
           return (
             <div
               key={p.slug}
-              className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2"
+              className="group flex items-center justify-between rounded-lg border border-border px-3.5 py-2.5 hover:bg-surface-secondary transition-colors"
             >
               <div className="flex items-center gap-3">
-                <div
-                  className={`h-2 w-2 rounded-full ${
-                    p.status === 'healthy'
-                      ? 'bg-green-500'
-                      : p.status === 'warning'
-                        ? 'bg-amber-500'
-                        : 'bg-red-500'
-                  }`}
-                />
-                <span className="text-sm font-medium text-gray-800">{p.name}</span>
+                <div className="relative">
+                  <div
+                    className={`h-2 w-2 rounded-full ${
+                      p.status === 'healthy'
+                        ? 'bg-emerald-500'
+                        : p.status === 'warning'
+                          ? 'bg-amber-500'
+                          : 'bg-rose-500'
+                    }`}
+                  />
+                  {p.status === 'healthy' && (
+                    <div className="absolute inset-0 h-2 w-2 rounded-full bg-emerald-500 animate-ping opacity-40" />
+                  )}
+                </div>
+                <span className="text-[13px] font-medium text-text-primary">{p.name}</span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
                 {p.lastSuccessAt && (
-                  <span className="text-xs text-gray-400">
+                  <span className="text-[11px] text-text-tertiary">
                     {formatRelativeDate(p.lastSuccessAt)}
                   </span>
                 )}
-                <Badge variant={cfg.variant}>{cfg.label}</Badge>
+                <Badge variant={cfg.variant} dot size="sm">{cfg.label}</Badge>
               </div>
             </div>
           );

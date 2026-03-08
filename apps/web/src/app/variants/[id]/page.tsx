@@ -9,6 +9,8 @@ import {
   TrendingDown,
   TrendingUp,
   Bell,
+  BarChart3,
+  ShoppingBag,
 } from 'lucide-react';
 
 import { Card, StatCard } from '@/components/ui/card';
@@ -51,7 +53,7 @@ export default function VariantDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6 animate-float-in">
         <CardSkeleton />
         <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -71,23 +73,23 @@ export default function VariantDetailPage() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-float-in">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <Link
             href="/variants"
-            className="mb-2 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
+            className="mb-3 inline-flex items-center gap-1.5 text-xs font-medium text-text-tertiary hover:text-text-secondary transition-colors"
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="h-3.5 w-3.5" />
             Varyantlara Dön
           </Link>
-          <h1 className="text-xl font-bold text-gray-900">
+          <h1 className="text-xl font-bold tracking-tight text-text-primary">
             {variant.familyName} — {variant.storageGb >= 1024 ? `${variant.storageGb / 1024} TB` : `${variant.storageGb} GB`}{' '}
             {variant.color}
           </h1>
           {variant.normalizedName && (
-            <p className="text-sm text-gray-500 mt-1">{variant.normalizedName}</p>
+            <p className="text-[13px] text-text-tertiary mt-1">{variant.normalizedName}</p>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -98,14 +100,14 @@ export default function VariantDetailPage() {
               rel="noopener noreferrer"
             >
               <Button variant="primary" size="sm">
-                <ExternalLink className="mr-1 h-4 w-4" />
+                <ExternalLink className="mr-1 h-3.5 w-3.5" />
                 En ucuza git
               </Button>
             </a>
           )}
           <Link href={`/alerts?variantId=${id}`}>
             <Button variant="outline" size="sm">
-              <Bell className="mr-1 h-4 w-4" />
+              <Bell className="mr-1 h-3.5 w-3.5" />
               Alarm Kur
             </Button>
           </Link>
@@ -117,62 +119,68 @@ export default function VariantDetailPage() {
         <StatCard
           title="En Düşük Fiyat"
           value={variant.minPrice != null ? formatPrice(variant.minPrice) : '—'}
-          icon={<TrendingDown className="h-5 w-5" />}
+          icon={<TrendingDown className="h-4 w-4" />}
+          accentColor="#10b981"
         />
         <StatCard
           title="En Yüksek Fiyat"
           value={variant.maxPrice != null ? formatPrice(variant.maxPrice) : '—'}
-          icon={<TrendingUp className="h-5 w-5" />}
+          icon={<TrendingUp className="h-4 w-4" />}
+          accentColor="#f43f5e"
         />
         <StatCard
           title="Ortalama Fiyat"
           value={variant.avgPrice != null ? formatPrice(variant.avgPrice) : '—'}
+          icon={<BarChart3 className="h-4 w-4" />}
+          accentColor="#6366f1"
         />
         <StatCard
           title="En İyi Mağaza"
           value={variant.bestRetailer ?? '—'}
+          icon={<ShoppingBag className="h-4 w-4" />}
+          accentColor="#f59e0b"
         />
       </div>
 
       {/* Retailer Listings */}
       <Card>
-        <h2 className="mb-4 text-base font-semibold text-gray-900">
+        <h2 className="mb-4 text-sm font-semibold text-text-primary">
           Mağaza Karşılaştırması
         </h2>
         {variant.listings.length === 0 ? (
           <EmptyState description="Bu varyant için henüz listing yok" />
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">
+            <table className="min-w-full divide-y divide-border">
+              <thead>
+                <tr className="bg-surface-secondary">
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
                     Mağaza
                   </th>
-                  <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">
+                  <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
                     Güncel Fiyat
                   </th>
-                  <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">
+                  <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
                     Önceki Fiyat
                   </th>
-                  <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">
+                  <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
                     Değişim
                   </th>
-                  <th className="px-4 py-3 text-center text-xs font-medium uppercase text-gray-500">
+                  <th className="px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
                     Stok
                   </th>
-                  <th className="px-4 py-3 text-center text-xs font-medium uppercase text-gray-500">
+                  <th className="px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
                     Fırsat
                   </th>
-                  <th className="px-4 py-3 text-center text-xs font-medium uppercase text-gray-500">
+                  <th className="px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
                     Son Görülme
                   </th>
-                  <th className="px-4 py-3 text-center text-xs font-medium uppercase text-gray-500">
+                  <th className="px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
                     İşlem
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-border-light">
                 {variant.listings.map((listing) => {
                   const change =
                     listing.currentPrice != null && listing.previousPrice != null
@@ -180,33 +188,33 @@ export default function VariantDetailPage() {
                       : null;
 
                   return (
-                    <tr key={listing.id} className="hover:bg-gray-50 transition-colors">
+                    <tr key={listing.id} className="group hover:bg-surface-secondary transition-colors">
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2.5">
                           <span
-                            className="h-2.5 w-2.5 rounded-full"
+                            className="h-2 w-2 rounded-full shrink-0"
                             style={{ backgroundColor: getRetailerColor(listing.retailerSlug) }}
                           />
-                          <span className="text-sm font-medium text-gray-900">
+                          <span className="text-[13px] font-medium text-text-primary">
                             {listing.retailerName}
                           </span>
                         </div>
                         {listing.sellerName && (
-                          <p className="text-xs text-gray-400 ml-[18px]">
+                          <p className="text-[11px] text-text-tertiary ml-[18px]">
                             Satıcı: {listing.sellerName}
                           </p>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right text-sm font-semibold text-gray-900">
+                      <td className="px-4 py-3 text-right text-[13px] font-semibold text-text-primary tabular-nums">
                         {listing.currentPrice != null ? formatPrice(listing.currentPrice) : '—'}
                       </td>
-                      <td className="px-4 py-3 text-right text-sm text-gray-500">
+                      <td className="px-4 py-3 text-right text-[13px] text-text-tertiary tabular-nums">
                         {listing.previousPrice != null
                           ? formatPrice(listing.previousPrice)
                           : '—'}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        {change != null ? <PriceChangeBadge changePercent={change} /> : '—'}
+                        {change != null ? <PriceChangeBadge changePercent={change} /> : <span className="text-[11px] text-text-tertiary">—</span>}
                       </td>
                       <td className="px-4 py-3 text-center">
                         <Badge
@@ -217,6 +225,7 @@ export default function VariantDetailPage() {
                                 ? 'warning'
                                 : 'danger'
                           }
+                          dot
                         >
                           {listing.stockStatus === 'IN_STOCK'
                             ? 'Stokta'
@@ -233,10 +242,10 @@ export default function VariantDetailPage() {
                             {listing.dealScore ? `Puan: ${listing.dealScore}` : 'Fırsat'}
                           </Badge>
                         ) : (
-                          <span className="text-xs text-gray-400">—</span>
+                          <span className="text-[11px] text-text-tertiary">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-center text-xs text-gray-500">
+                      <td className="px-4 py-3 text-center text-[11px] text-text-tertiary">
                         {listing.lastSeenAt
                           ? formatRelativeDate(listing.lastSeenAt)
                           : '—'}
@@ -246,10 +255,10 @@ export default function VariantDetailPage() {
                           href={listing.productUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center text-blue-600 hover:text-blue-800"
+                          className="inline-flex items-center text-text-tertiary hover:text-primary opacity-60 group-hover:opacity-100 transition-opacity"
                           title="Siteye git"
                         >
-                          <ExternalLink className="h-4 w-4" />
+                          <ExternalLink className="h-3.5 w-3.5" />
                         </a>
                       </td>
                     </tr>
@@ -265,13 +274,13 @@ export default function VariantDetailPage() {
       {historyData && historyData.flatHistory.length > 0 && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <Card>
-            <h2 className="mb-4 text-base font-semibold text-gray-900">
+            <h2 className="mb-4 text-sm font-semibold text-text-primary">
               Fiyat Geçmişi
             </h2>
             <PriceHistoryChart data={historyData.flatHistory} />
           </Card>
           <Card>
-            <h2 className="mb-4 text-base font-semibold text-gray-900">
+            <h2 className="mb-4 text-sm font-semibold text-text-primary">
               Mağaza Karşılaştırması
             </h2>
             <RetailerComparisonChart

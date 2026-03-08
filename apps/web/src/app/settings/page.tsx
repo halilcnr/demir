@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Settings as SettingsIcon, Info, Link, Plus, Loader2 } from 'lucide-react';
+import { Settings as SettingsIcon, Info, Link, Plus, Loader2, Database, Layers } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -57,141 +57,152 @@ function UrlManager() {
 
   return (
     <Card>
-      <div className="flex items-center gap-2 mb-3">
-        <Link className="h-5 w-5 text-purple-500" />
-        <h2 className="text-base font-semibold text-gray-900">
-          Ürün URL Yönetimi
-        </h2>
-      </div>
-      <p className="text-sm text-gray-500 mb-4">
-        URL&apos;si girilen ürünler doğrudan sayfadan fiyat çekilir (daha doğru).
-        URL&apos;si olmayanlar arama sistemiyle bulunur.
-      </p>
-
-      {/* Add URL Form */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-4 mb-4 p-3 bg-gray-50 rounded-lg">
-        <input
-          type="text"
-          value={variantSlug}
-          onChange={e => setVariantSlug(e.target.value)}
-          placeholder="Varyant slug (ör: iphone-16-pro-max-256gb-natural-titanium)"
-          className="col-span-1 sm:col-span-2 rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-        />
-        <select
-          value={retailerSlug}
-          onChange={e => setRetailerSlug(e.target.value)}
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-        >
-          <option value="hepsiburada">Hepsiburada</option>
-          <option value="trendyol">Trendyol</option>
-          <option value="n11">N11</option>
-          <option value="amazon">Amazon</option>
-        </select>
-        <div />
-        <input
-          type="url"
-          value={productUrl}
-          onChange={e => setProductUrl(e.target.value)}
-          placeholder="https://www.hepsiburada.com/apple-iphone-..."
-          className="col-span-1 sm:col-span-3 rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-        />
-        <button
-          onClick={() => addUrl.mutate()}
-          disabled={addUrl.isPending || !variantSlug || !productUrl}
-          className="flex items-center justify-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-        >
-          {addUrl.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-          Ekle
-        </button>
-      </div>
-      {addUrl.isError && (
-        <p className="text-sm text-red-600 mb-3">{(addUrl.error as Error).message}</p>
-      )}
-
-      {/* Existing URLs */}
-      {isLoading ? (
-        <p className="text-sm text-gray-400">Yükleniyor...</p>
-      ) : realUrls.length === 0 ? (
-        <p className="text-sm text-gray-400">Henüz manuel URL eklenmemiş.</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-200">
-                <th className="py-2 pr-3 text-left font-medium text-gray-600">Varyant</th>
-                <th className="py-2 pr-3 text-left font-medium text-gray-600">Mağaza</th>
-                <th className="py-2 pr-3 text-left font-medium text-gray-600">Fiyat</th>
-                <th className="py-2 text-left font-medium text-gray-600">URL</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {realUrls.map(u => (
-                <tr key={u.id}>
-                  <td className="py-2 pr-3 text-gray-800">{u.variant.normalizedName}</td>
-                  <td className="py-2 pr-3">
-                    <Badge variant="default">{u.retailer.name}</Badge>
-                  </td>
-                  <td className="py-2 pr-3 text-gray-700">
-                    {u.currentPrice ? `₺${u.currentPrice.toLocaleString('tr-TR')}` : '—'}
-                  </td>
-                  <td className="py-2 max-w-xs truncate">
-                    <a href={u.productUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-xs">
-                      {u.productUrl}
-                    </a>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="relative overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-violet-500 to-purple-500" />
+        <div className="flex items-center gap-3 mb-2 pt-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-50 text-violet-600">
+            <Link className="h-4 w-4" />
+          </div>
+          <div>
+            <h2 className="text-sm font-semibold text-text-primary">
+              Ürün URL Yönetimi
+            </h2>
+            <p className="text-[11px] text-text-tertiary">
+              Doğrudan sayfa URL&apos;si ile daha doğru fiyat takibi
+            </p>
+          </div>
         </div>
-      )}
+
+        {/* Add URL Form */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-4 mb-4 p-3 bg-surface-secondary rounded-lg border border-border-light mt-3">
+          <input
+            type="text"
+            value={variantSlug}
+            onChange={e => setVariantSlug(e.target.value)}
+            placeholder="Varyant slug (ör: iphone-16-pro-max-256gb-natural-titanium)"
+            className="col-span-1 sm:col-span-2 rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-text-primary focus:border-primary focus:ring-2 focus:ring-primary/30 outline-none transition-colors"
+          />
+          <select
+            value={retailerSlug}
+            onChange={e => setRetailerSlug(e.target.value)}
+            className="rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-text-primary focus:border-primary focus:ring-2 focus:ring-primary/30 outline-none transition-colors"
+          >
+            <option value="hepsiburada">Hepsiburada</option>
+            <option value="trendyol">Trendyol</option>
+            <option value="n11">N11</option>
+            <option value="amazon">Amazon</option>
+          </select>
+          <div />
+          <input
+            type="url"
+            value={productUrl}
+            onChange={e => setProductUrl(e.target.value)}
+            placeholder="https://www.hepsiburada.com/apple-iphone-..."
+            className="col-span-1 sm:col-span-3 rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-text-primary focus:border-primary focus:ring-2 focus:ring-primary/30 outline-none transition-colors"
+          />
+          <button
+            onClick={() => addUrl.mutate()}
+            disabled={addUrl.isPending || !variantSlug || !productUrl}
+            className="flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-[13px] font-medium text-white hover:bg-primary-hover shadow-sm hover:shadow-md disabled:opacity-50 transition-all"
+          >
+            {addUrl.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+            Ekle
+          </button>
+        </div>
+        {addUrl.isError && (
+          <p className="text-[13px] text-rose-600 mb-3">{(addUrl.error as Error).message}</p>
+        )}
+
+        {/* Existing URLs */}
+        {isLoading ? (
+          <p className="text-[13px] text-text-tertiary">Yükleniyor...</p>
+        ) : realUrls.length === 0 ? (
+          <p className="text-[13px] text-text-tertiary">Henüz manuel URL eklenmemiş.</p>
+        ) : (
+          <div className="overflow-x-auto -mx-5">
+            <table className="min-w-full">
+              <thead>
+                <tr className="border-y border-border-light bg-surface-secondary">
+                  <th className="px-5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">Varyant</th>
+                  <th className="px-5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">Mağaza</th>
+                  <th className="px-5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">Fiyat</th>
+                  <th className="px-5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">URL</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border-light">
+                {realUrls.map(u => (
+                  <tr key={u.id} className="group hover:bg-surface-secondary transition-colors">
+                    <td className="px-5 py-3 text-[13px] text-text-primary">{u.variant.normalizedName}</td>
+                    <td className="px-5 py-3">
+                      <Badge variant="default" size="sm">{u.retailer.name}</Badge>
+                    </td>
+                    <td className="px-5 py-3 text-[13px] text-text-secondary tabular-nums">
+                      {u.currentPrice ? `₺${u.currentPrice.toLocaleString('tr-TR')}` : '—'}
+                    </td>
+                    <td className="px-5 py-3 max-w-xs truncate">
+                      <a href={u.productUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] text-primary hover:underline">
+                        {u.productUrl}
+                      </a>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </Card>
   );
 }
 
 export default function SettingsPage() {
   return (
-    <div className="space-y-6">
-      <h1 className="text-xl font-bold text-gray-900">Ayarlar</h1>
+    <div className="space-y-6 animate-float-in">
+      <h1 className="text-lg font-semibold tracking-tight text-text-primary">Ayarlar</h1>
 
       {/* URL Manager */}
       <UrlManager />
 
       {/* Architecture Info */}
       <Card>
-        <div className="flex items-center gap-2 mb-3">
-          <Info className="h-5 w-5 text-blue-500" />
-          <h2 className="text-base font-semibold text-gray-900">
-            Sistem Mimarisi
-          </h2>
-        </div>
-        <div className="space-y-3 text-sm text-gray-700">
-          <div className="flex items-start gap-3 rounded-lg border border-gray-100 p-3">
-            <Badge variant="info">Web</Badge>
-            <div>
-              <p className="font-medium">Frontend &amp; API — Vercel</p>
-              <p className="text-gray-500">
-                Next.js 15 App Router, React 19, TanStack Query ile dashboard ve API rotaları.
-              </p>
+        <div className="relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-cyan-500 to-sky-500" />
+          <div className="flex items-center gap-3 mb-4 pt-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-50 text-cyan-600">
+              <Info className="h-4 w-4" />
             </div>
+            <h2 className="text-sm font-semibold text-text-primary">
+              Sistem Mimarisi
+            </h2>
           </div>
-          <div className="flex items-start gap-3 rounded-lg border border-gray-100 p-3">
-            <Badge variant="warning">Worker</Badge>
-            <div>
-              <p className="font-medium">Scraping Servisi — Railway</p>
-              <p className="text-gray-500">
-                Periyodik olarak e-ticaret sitelerinden fiyat çeken TypeScript worker.
-                Varsayılan senkronizasyon aralığı: 6 saat.
-              </p>
+          <div className="space-y-2">
+            <div className="flex items-start gap-3 rounded-lg border border-border-light p-3 hover:border-border transition-colors">
+              <Badge variant="info" size="sm">Web</Badge>
+              <div>
+                <p className="text-[13px] font-medium text-text-primary">Frontend &amp; API — Vercel</p>
+                <p className="text-[11px] text-text-tertiary mt-0.5">
+                  Next.js 15 App Router, React 19, TanStack Query ile dashboard ve API rotaları.
+                </p>
+              </div>
             </div>
-          </div>
-          <div className="flex items-start gap-3 rounded-lg border border-gray-100 p-3">
-            <Badge variant="success">Veritabanı</Badge>
-            <div>
-              <p className="font-medium">PostgreSQL — Neon</p>
-              <p className="text-gray-500">
-                Prisma ORM ile yönetilen serverless PostgreSQL. Paylaşımlı schema.
-              </p>
+            <div className="flex items-start gap-3 rounded-lg border border-border-light p-3 hover:border-border transition-colors">
+              <Badge variant="warning" size="sm">Worker</Badge>
+              <div>
+                <p className="text-[13px] font-medium text-text-primary">Scraping Servisi — Railway</p>
+                <p className="text-[11px] text-text-tertiary mt-0.5">
+                  Periyodik olarak e-ticaret sitelerinden fiyat çeken TypeScript worker.
+                  Varsayılan senkronizasyon aralığı: 6 saat.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 rounded-lg border border-border-light p-3 hover:border-border transition-colors">
+              <Badge variant="success" size="sm">DB</Badge>
+              <div>
+                <p className="text-[13px] font-medium text-text-primary">PostgreSQL — Neon</p>
+                <p className="text-[11px] text-text-tertiary mt-0.5">
+                  Prisma ORM ile yönetilen serverless PostgreSQL. Paylaşımlı schema.
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -199,76 +210,89 @@ export default function SettingsPage() {
 
       {/* Environment Variables */}
       <Card>
-        <div className="flex items-center gap-2 mb-3">
-          <SettingsIcon className="h-5 w-5 text-gray-500" />
-          <h2 className="text-base font-semibold text-gray-900">
-            Ortam Değişkenleri
-          </h2>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-200">
-                <th className="py-2 pr-4 text-left font-medium text-gray-600">
-                  Değişken
-                </th>
-                <th className="py-2 pr-4 text-left font-medium text-gray-600">
-                  Açıklama
-                </th>
-                <th className="py-2 text-left font-medium text-gray-600">
-                  Servis
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {[
-                ['DATABASE_URL', 'Neon PostgreSQL bağlantı dizesi (pooled)', 'Web, Worker'],
-                ['DIRECT_URL', 'Neon PostgreSQL doğrudan bağlantı (migration)', 'Web, Worker'],
-                ['SYNC_INTERVAL_MS', 'Senkronizasyon aralığı (ms, varsayılan: 21600000)', 'Worker'],
-                ['USE_MOCK_PROVIDERS', '"true" ise mock veri üretir', 'Worker'],
-                ['NEXT_PUBLIC_APP_URL', 'Uygulamanın public URL\'si', 'Web'],
-              ].map(([name, desc, svc]) => (
-                <tr key={name}>
-                  <td className="py-2 pr-4">
-                    <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-mono text-gray-800">
-                      {name}
-                    </code>
-                  </td>
-                  <td className="py-2 pr-4 text-gray-600">{desc}</td>
-                  <td className="py-2">
-                    <Badge variant="default">{svc}</Badge>
-                  </td>
+        <div className="relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-slate-400 to-slate-500" />
+          <div className="flex items-center gap-3 mb-4 pt-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-surface-tertiary text-text-secondary">
+              <SettingsIcon className="h-4 w-4" />
+            </div>
+            <h2 className="text-sm font-semibold text-text-primary">
+              Ortam Değişkenleri
+            </h2>
+          </div>
+          <div className="overflow-x-auto -mx-5">
+            <table className="min-w-full">
+              <thead>
+                <tr className="border-y border-border-light bg-surface-secondary">
+                  <th className="px-5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
+                    Değişken
+                  </th>
+                  <th className="px-5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
+                    Açıklama
+                  </th>
+                  <th className="px-5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
+                    Servis
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-border-light">
+                {[
+                  ['DATABASE_URL', 'Neon PostgreSQL bağlantı dizesi (pooled)', 'Web, Worker'],
+                  ['DIRECT_URL', 'Neon PostgreSQL doğrudan bağlantı (migration)', 'Web, Worker'],
+                  ['SYNC_INTERVAL_MS', 'Senkronizasyon aralığı (ms, varsayılan: 21600000)', 'Worker'],
+                  ['USE_MOCK_PROVIDERS', '"true" ise mock veri üretir', 'Worker'],
+                  ['NEXT_PUBLIC_APP_URL', 'Uygulamanın public URL\'si', 'Web'],
+                ].map(([name, desc, svc]) => (
+                  <tr key={name} className="group hover:bg-surface-secondary transition-colors">
+                    <td className="px-5 py-3">
+                      <code className="rounded-md bg-surface-tertiary px-1.5 py-0.5 text-[11px] font-mono text-text-primary">
+                        {name}
+                      </code>
+                    </td>
+                    <td className="px-5 py-3 text-[13px] text-text-secondary">{desc}</td>
+                    <td className="px-5 py-3">
+                      <Badge variant="default" size="sm">{svc}</Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </Card>
 
       {/* Data Model Info */}
       <Card>
-        <h2 className="mb-3 text-base font-semibold text-gray-900">
-          Veri Modeli
-        </h2>
-        <div className="text-sm text-gray-700 space-y-1">
-          <p>
-            <strong>ProductFamily</strong> → iPhone modeli (ör. iPhone 15 Pro Max)
-          </p>
-          <p>
-            <strong>ProductVariant</strong> → Renk + depolama kombinasyonu (ör. 256GB Natural Titanium)
-          </p>
-          <p>
-            <strong>Listing</strong> → Bir mağazadaki bir varyantın kaydı (fiyat, stok, fırsat skoru)
-          </p>
-          <p>
-            <strong>PriceSnapshot</strong> → Her senkronizasyonda alınan fiyat kaydı (tarihçe)
-          </p>
-          <p>
-            <strong>AlertRule</strong> → Kullanıcının tanımladığı alarm kuralı
-          </p>
-          <p>
-            <strong>AlertEvent</strong> → Kural tetiklendiğinde oluşan bildirim
-          </p>
+        <div className="relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-emerald-500 to-teal-500" />
+          <div className="flex items-center gap-3 mb-4 pt-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+              <Database className="h-4 w-4" />
+            </div>
+            <h2 className="text-sm font-semibold text-text-primary">
+              Veri Modeli
+            </h2>
+          </div>
+          <div className="space-y-2">
+            {[
+              ['ProductFamily', 'iPhone modeli (ör. iPhone 15 Pro Max)'],
+              ['ProductVariant', 'Renk + depolama kombinasyonu (ör. 256GB Natural Titanium)'],
+              ['Listing', 'Bir mağazadaki bir varyantın kaydı (fiyat, stok, fırsat skoru)'],
+              ['PriceSnapshot', 'Her senkronizasyonda alınan fiyat kaydı (tarihçe)'],
+              ['AlertRule', 'Kullanıcının tanımladığı alarm kuralı'],
+              ['AlertEvent', 'Kural tetiklendiğinde oluşan bildirim'],
+            ].map(([name, desc]) => (
+              <div key={name} className="flex items-start gap-3 rounded-lg border border-border-light p-3 hover:border-border transition-colors">
+                <div className="flex h-6 w-6 items-center justify-center rounded bg-emerald-50 shrink-0">
+                  <Layers className="h-3 w-3 text-emerald-600" />
+                </div>
+                <div>
+                  <p className="text-[13px] font-medium text-text-primary">{name}</p>
+                  <p className="text-[11px] text-text-tertiary">{desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </Card>
     </div>

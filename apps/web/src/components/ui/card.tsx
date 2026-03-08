@@ -5,14 +5,16 @@ interface CardProps {
   children: ReactNode;
   className?: string;
   onClick?: () => void;
+  hover?: boolean;
 }
 
-export function Card({ children, className, onClick }: CardProps) {
+export function Card({ children, className, onClick, hover = !!onClick }: CardProps) {
   return (
     <div
       className={cn(
-        'rounded-xl border border-gray-200 bg-white p-5 shadow-sm',
-        onClick && 'cursor-pointer hover:shadow-md transition-shadow',
+        'rounded-xl border border-border bg-surface p-5 shadow-xs',
+        hover && 'cursor-pointer hover:shadow-md hover:border-border/80 hover:-translate-y-0.5 transition-all duration-200',
+        !hover && 'transition-shadow duration-200',
         className
       )}
       onClick={onClick}
@@ -29,32 +31,49 @@ interface StatCardProps {
   icon?: ReactNode;
   trend?: { value: number; label: string };
   className?: string;
+  accentColor?: string;
 }
 
-export function StatCard({ title, value, subtitle, icon, trend, className }: StatCardProps) {
+export function StatCard({ title, value, subtitle, icon, trend, className, accentColor }: StatCardProps) {
   return (
-    <Card className={className}>
+    <Card className={cn('relative overflow-hidden', className)}>
+      {/* Subtle gradient accent */}
+      {accentColor && (
+        <div
+          className="absolute inset-x-0 top-0 h-[2px]"
+          style={{ background: `linear-gradient(to right, ${accentColor}, transparent)` }}
+        />
+      )}
       <div className="flex items-start justify-between">
-        <div>
-          <p className="text-sm font-medium text-gray-500">{title}</p>
-          <p className="mt-1 text-2xl font-bold text-gray-900">{value}</p>
+        <div className="space-y-1">
+          <p className="text-xs font-medium uppercase tracking-wider text-text-tertiary">{title}</p>
+          <p className="text-2xl font-bold tracking-tight text-text-primary animate-count-up">
+            {value}
+          </p>
           {subtitle && (
-            <p className="mt-1 text-xs text-gray-400">{subtitle}</p>
+            <p className="text-xs text-text-tertiary">{subtitle}</p>
           )}
           {trend && (
-            <p
-              className={cn(
-                'mt-1 text-xs font-medium',
-                trend.value < 0 ? 'text-green-600' : trend.value > 0 ? 'text-red-600' : 'text-gray-500'
-              )}
-            >
-              {trend.value > 0 ? '+' : ''}
-              {trend.value.toFixed(1)}% {trend.label}
-            </p>
+            <div className="flex items-center gap-1">
+              <span
+                className={cn(
+                  'inline-flex items-center rounded-full px-1.5 py-0.5 text-[11px] font-semibold',
+                  trend.value < 0
+                    ? 'bg-emerald-50 text-emerald-600'
+                    : trend.value > 0
+                      ? 'bg-rose-50 text-rose-600'
+                      : 'bg-slate-50 text-slate-600'
+                )}
+              >
+                {trend.value > 0 ? '↑' : trend.value < 0 ? '↓' : '→'}{' '}
+                {Math.abs(trend.value).toFixed(1)}%
+              </span>
+              <span className="text-[11px] text-text-tertiary">{trend.label}</span>
+            </div>
           )}
         </div>
         {icon && (
-          <div className="rounded-lg bg-blue-50 p-2.5 text-blue-600">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-light text-primary">
             {icon}
           </div>
         )}

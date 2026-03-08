@@ -12,6 +12,7 @@ import {
   TrendingDown,
   RefreshCw,
   Settings,
+  Search,
 } from 'lucide-react';
 import { cn } from '@repo/shared';
 
@@ -36,35 +37,46 @@ export function Header() {
 
   return (
     <>
-      <header className="flex h-16 items-center justify-between border-b border-gray-200 bg-white px-4 md:px-6">
+      <header className="glass sticky top-0 z-30 flex h-14 items-center justify-between px-4 md:px-6">
         {/* Mobile menu toggle */}
         <button
-          className="md:hidden p-2 rounded-lg hover:bg-gray-100"
+          className="md:hidden rounded-lg p-2 text-text-secondary hover:bg-surface-secondary hover:text-text-primary"
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
         >
-          {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          {mobileMenuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
         </button>
 
-        {/* Page title */}
-        <h1 className="text-lg font-semibold text-gray-900">
-          {currentPage?.label ?? 'Dashboard'}
-        </h1>
+        {/* Page title + breadcrumb */}
+        <div className="flex items-center gap-2">
+          <h1 className="text-sm font-semibold text-text-primary tracking-tight">
+            {currentPage?.label ?? 'Dashboard'}
+          </h1>
+        </div>
 
         {/* Right side */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5">
+          {/* Search hint */}
+          <div className="hidden md:flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1.5 text-text-tertiary">
+            <Search className="h-3.5 w-3.5" />
+            <span className="text-xs">Ara...</span>
+            <kbd className="ml-4 hidden rounded border border-border bg-surface-secondary px-1.5 py-0.5 text-[10px] font-mono text-text-tertiary lg:inline">
+              ⌘K
+            </kbd>
+          </div>
+
           <Link
             href="/alerts"
-            className="relative rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+            className="relative rounded-lg p-2 text-text-secondary hover:bg-surface-secondary hover:text-text-primary"
           >
-            <Bell className="h-5 w-5" />
+            <Bell className="h-4 w-4" />
           </Link>
         </div>
       </header>
 
       {/* Mobile nav */}
       {mobileMenuOpen && (
-        <div className="border-b border-gray-200 bg-white px-4 py-3 md:hidden">
-          <nav className="space-y-1">
+        <div className="glass border-b border-border px-4 py-3 md:hidden animate-float-in">
+          <nav className="space-y-0.5">
             {navItems.map((item) => {
               const isActive =
                 pathname === item.href ||
@@ -75,13 +87,13 @@ export function Header() {
                   href={item.href}
                   onClick={() => setMobileMenuOpen(false)}
                   className={cn(
-                    'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium',
+                    'flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium',
                     isActive
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:bg-gray-50'
+                      ? 'bg-primary-light text-primary'
+                      : 'text-text-secondary hover:bg-surface-secondary'
                   )}
                 >
-                  <item.icon className="h-5 w-5" />
+                  <item.icon className="h-4 w-4" />
                   {item.label}
                 </Link>
               );

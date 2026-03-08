@@ -25,7 +25,7 @@ interface PriceHistoryChartProps {
 export function PriceHistoryChart({ data }: PriceHistoryChartProps) {
   if (!data || data.length === 0) {
     return (
-      <div className="flex h-64 items-center justify-center text-sm text-gray-400">
+      <div className="flex h-64 items-center justify-center text-[13px] text-text-tertiary">
         Fiyat geçmişi verisi bulunamadı
       </div>
     );
@@ -60,29 +60,36 @@ export function PriceHistoryChart({ data }: PriceHistoryChartProps) {
   return (
     <ResponsiveContainer width="100%" height={280}>
       <LineChart data={chartData}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
         <XAxis
           dataKey="date"
-          tick={{ fontSize: 11, fill: '#9ca3af' }}
+          tick={{ fontSize: 11, fill: '#94a3b8' }}
           tickLine={false}
-          axisLine={{ stroke: '#e5e7eb' }}
+          axisLine={false}
         />
         <YAxis
-          tick={{ fontSize: 11, fill: '#9ca3af' }}
+          tick={{ fontSize: 11, fill: '#94a3b8' }}
           tickLine={false}
-          axisLine={{ stroke: '#e5e7eb' }}
+          axisLine={false}
           tickFormatter={(v) => `${(v / 1000).toFixed(0)}K`}
         />
         <Tooltip
           formatter={(value: number, name: string) => [formatPrice(value), name]}
-          labelStyle={{ color: '#374151', fontWeight: 600 }}
+          labelStyle={{ color: '#1e293b', fontWeight: 600, fontSize: 12 }}
+          itemStyle={{ fontSize: 12 }}
           contentStyle={{
-            borderRadius: '8px',
-            border: '1px solid #e5e7eb',
-            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+            borderRadius: '10px',
+            border: '1px solid #e2e8f0',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)',
+            padding: '8px 12px',
+            background: '#ffffff',
           }}
         />
-        <Legend wrapperStyle={{ fontSize: 12 }} />
+        <Legend
+          wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
+          iconType="circle"
+          iconSize={8}
+        />
         {retailers.map((retailer) => {
           const slug = retailer.toLowerCase().replace(/\s+/g, '');
           return (
@@ -93,7 +100,7 @@ export function PriceHistoryChart({ data }: PriceHistoryChartProps) {
               stroke={getRetailerColor(slug)}
               strokeWidth={2}
               dot={false}
-              activeDot={{ r: 4 }}
+              activeDot={{ r: 4, strokeWidth: 2, stroke: '#fff' }}
             />
           );
         })}

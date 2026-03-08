@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Search, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Filter, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import Link from 'next/link';
 import { useState, useCallback, Suspense } from 'react';
 
@@ -57,24 +57,36 @@ function VariantsContent() {
 
   if (error) return <ErrorState onRetry={() => refetch()} />;
 
+  const hasFilters = !!(search || family || storage || color || isDeal);
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-5 animate-float-in">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h1 className="text-lg font-semibold tracking-tight text-text-primary">Varyantlar</h1>
+        {data && (
+          <span className="text-xs text-text-tertiary">
+            {data.total} ürün
+          </span>
+        )}
+      </div>
+
       {/* Filters */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <form
-          className="relative flex-1"
+          className="relative flex-1 max-w-md"
           onSubmit={(e) => {
             e.preventDefault();
             updateParams({ search: searchInput });
           }}
         >
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-tertiary" />
           <input
             type="text"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Varyant ara…"
-            className="w-full rounded-lg border border-gray-200 py-2 pl-10 pr-4 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            placeholder="Varyant ara..."
+            className="w-full rounded-lg border border-border bg-surface py-2 pl-9 pr-4 text-[13px] text-text-primary placeholder:text-text-tertiary outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-colors"
           />
         </form>
 
@@ -82,7 +94,7 @@ function VariantsContent() {
           <select
             value={sort}
             onChange={(e) => updateParams({ sort: e.target.value })}
-            className="rounded-lg border border-gray-200 py-2 px-3 text-sm outline-none"
+            className="rounded-lg border border-border bg-surface py-2 px-3 text-[13px] text-text-secondary outline-none focus:border-primary"
           >
             <option value="name">İsim</option>
             <option value="price_asc">Fiyat ↑</option>
@@ -94,7 +106,7 @@ function VariantsContent() {
           <select
             value={storage}
             onChange={(e) => updateParams({ storage: e.target.value })}
-            className="rounded-lg border border-gray-200 py-2 px-3 text-sm outline-none"
+            className="rounded-lg border border-border bg-surface py-2 px-3 text-[13px] text-text-secondary outline-none focus:border-primary"
           >
             <option value="">Tüm Depolama</option>
             <option value="128">128 GB</option>
@@ -106,22 +118,22 @@ function VariantsContent() {
           <select
             value={isDeal}
             onChange={(e) => updateParams({ isDeal: e.target.value })}
-            className="rounded-lg border border-gray-200 py-2 px-3 text-sm outline-none"
+            className="rounded-lg border border-border bg-surface py-2 px-3 text-[13px] text-text-secondary outline-none focus:border-primary"
           >
             <option value="">Tüm Ürünler</option>
             <option value="true">Sadece Fırsatlar</option>
           </select>
 
-          {(search || family || storage || color || isDeal) && (
+          {hasFilters && (
             <Button
               size="sm"
-              variant="outline"
+              variant="ghost"
               onClick={() => {
                 setSearchInput('');
                 router.push('/variants');
               }}
             >
-              <Filter className="h-3.5 w-3.5 mr-1" />
+              <X className="h-3 w-3 mr-1" />
               Temizle
             </Button>
           )}
@@ -129,34 +141,34 @@ function VariantsContent() {
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">
+      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+        <table className="min-w-full divide-y divide-border">
+          <thead>
+            <tr className="bg-surface-secondary">
+              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
                 Varyant
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">
+              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
                 Depolama
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">
+              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
                 Renk
               </th>
-              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">
+              <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
                 En Düşük Fiyat
               </th>
-              <th className="px-4 py-3 text-center text-xs font-medium uppercase text-gray-500">
+              <th className="px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
                 Mağazalar
               </th>
-              <th className="px-4 py-3 text-center text-xs font-medium uppercase text-gray-500">
+              <th className="px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
                 Durum
               </th>
-              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">
+              <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
                 Son Güncelleme
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-border-light">
             {isLoading ? (
               Array.from({ length: 10 }).map((_, i) => (
                 <TableRowSkeleton key={i} cols={7} />
@@ -169,35 +181,35 @@ function VariantsContent() {
               </tr>
             ) : (
               data.data.map((v) => (
-                <tr key={v.id} className="hover:bg-gray-50 transition-colors">
+                <tr key={v.id} className="group hover:bg-surface-secondary transition-colors">
                   <td className="px-4 py-3">
                     <Link
                       href={`/variants/${v.id}`}
-                      className="font-medium text-gray-900 hover:text-blue-600 text-sm"
+                      className="text-[13px] font-medium text-text-primary hover:text-primary"
                     >
                       {v.familyName} {v.storageGb}GB {v.color}
                     </Link>
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">
+                  <td className="px-4 py-3 text-[13px] text-text-secondary">
                     {v.storageGb >= 1024 ? `${v.storageGb / 1024} TB` : `${v.storageGb} GB`}
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{v.color}</td>
+                  <td className="px-4 py-3 text-[13px] text-text-secondary">{v.color}</td>
                   <td className="px-4 py-3 text-right">
-                    <span className="text-sm font-semibold text-gray-900">
+                    <span className="text-[13px] font-semibold text-text-primary tabular-nums">
                       {v.minPrice != null ? formatPrice(v.minPrice) : '—'}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-center">
-                    <span className="text-sm text-gray-600">{v.listingCount}</span>
+                    <span className="text-[13px] text-text-secondary tabular-nums">{v.listingCount}</span>
                   </td>
                   <td className="px-4 py-3 text-center">
                     {v.isDeal ? (
-                      <Badge variant="success">Fırsat</Badge>
+                      <Badge variant="success" dot>Fırsat</Badge>
                     ) : (
                       <Badge variant="default">Normal</Badge>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-right text-xs text-gray-500">
+                  <td className="px-4 py-3 text-right text-[11px] text-text-tertiary">
                     {v.lastSeenAt ? formatRelativeDate(v.lastSeenAt) : '—'}
                   </td>
                 </tr>
@@ -209,18 +221,18 @@ function VariantsContent() {
 
       {/* Pagination */}
       {data && data.totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-500">
-            Toplam {data.total} varyant, sayfa {data.page}/{data.totalPages}
+        <div className="flex items-center justify-between pt-1">
+          <p className="text-xs text-text-tertiary">
+            Sayfa {data.page}/{data.totalPages} · Toplam {data.total} varyant
           </p>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <Button
               size="sm"
               variant="outline"
               disabled={page <= 1}
               onClick={() => updateParams({ page: String(page - 1) })}
             >
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronLeft className="h-3.5 w-3.5" />
             </Button>
             <Button
               size="sm"
@@ -228,7 +240,7 @@ function VariantsContent() {
               disabled={page >= data.totalPages}
               onClick={() => updateParams({ page: String(page + 1) })}
             >
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight className="h-3.5 w-3.5" />
             </Button>
           </div>
         </div>
