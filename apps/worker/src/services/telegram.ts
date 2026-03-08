@@ -264,6 +264,104 @@ export async function sendTestMessage(): Promise<{ ok: boolean; sent?: number; e
   return { ok: false, sent: 0, error: result.failed > 0 ? `${result.failed} failed` : 'No active subscribers' };
 }
 
+// ─── Public: Send a custom text message to all subscribers ───────
+export async function sendCustomMessage(text: string): Promise<{ ok: boolean; sent?: number; error?: string }> {
+  if (!TELEGRAM_BOT_TOKEN) {
+    return { ok: false, error: 'TELEGRAM_BOT_TOKEN not set' };
+  }
+
+  const result = await broadcast(text);
+
+  await prisma.notificationLog.create({
+    data: {
+      messageType: 'TEST_MESSAGE',
+      status: result.sent > 0 ? 'SENT' : 'FAILED',
+      messageText: text,
+      sentTo: result.sent,
+      failedTo: result.failed,
+      errorMessage: result.sent === 0 ? (result.failed > 0 ? `${result.failed} failed` : 'No active subscribers') : null,
+    },
+  }).catch(() => {});
+
+  if (result.sent > 0) {
+    return { ok: true, sent: result.sent };
+  }
+  return { ok: false, sent: 0, error: result.failed > 0 ? `${result.failed} failed` : 'No active subscribers' };
+}
+
+// ─── Public: Send a listing price alert (test/manual) ────────────
+export async function sendListingAlert(listingId: string): Promise<{ ok: boolean; sent?: number; error?: string }> {
+  if (!TELEGRAM_BOT_TOKEN) {
+    return { ok: false, error: 'TELEGRAM_BOT_TOKEN not set' };
+  }
+
+  const listing = await prisma.listing.findUnique({
+    where: { id: listingId },
+    include: { variant: { include: { family: true } }, retailer: true },
+  });
+
+  if (!listing) {
+    return { ok: false, error: 'Listing not found' };
+  }
+
+  const variantLabel = `${listing.variant.family.name} ${listing.variant.color} ${listing.variant.storageGb}GB`;
+  const fmtPrice = (p: number) => p.toLocaleString('tr-TR', { maximumFractionDigits: 0 });
+
+  const lines: string[] = [
+    '📊 <b>Fiyat Bilgisi</b>',
+    '',
+    `📱 <b>${variantLabel}</b>`,
+    `🏪 ${listing.retailer.name}`,
+    '',
+  ];
+
+  if (listing.currentPrice) {
+    lines.push(`💰 Güncel: <b>${fmtPrice(listing.currentPrice)} TL</b>`);
+  }
+  if (listing.previousPrice) {
+    lines.push(`📉 Önceki: ${fmtPrice(listing.previousPrice)} TL`);
+  }
+  if (listing.lowestPrice) {
+    lines.push(`🏆 En düşük: ${fmtPrice(listing.lowestPrice)} TL`);
+  }
+  if (listing.highestPrice) {
+    lines.push(`📈 En yüksek: ${fmtPrice(listing.highestPrice)} TL`);
+  }
+
+  if (listing.currentPrice && listing.previousPrice && listing.currentPrice < listing.previousPrice) {
+    const drop = ((listing.previousPrice - listing.currentPrice) / listing.previousPrice * 100).toFixed(1);
+    lines.push('');
+    lines.push(`✅ %${drop} düşüş tespit edildi`);
+  }
+
+  lines.push('');
+  lines.push(`🔗 <a href="${listing.productUrl}">Ürüne Git</a>`);
+
+  const text = lines.join('\n');
+  const result = await broadcast(text);
+
+  await prisma.notificationLog.create({
+    data: {
+      messageType: 'TEST_MESSAGE',
+      status: result.sent > 0 ? 'SENT' : 'FAILED',
+      productName: variantLabel,
+      retailer: listing.retailer.name,
+      oldPrice: listing.previousPrice,
+      newPrice: listing.currentPrice,
+      messageText: text,
+      sentTo: result.sent,
+      failedTo: result.failed,
+      listingId: listing.id,
+      errorMessage: result.sent === 0 ? (result.failed > 0 ? `${result.failed} failed` : 'No active subscribers') : null,
+    },
+  }).catch(() => {});
+
+  if (result.sent > 0) {
+    return { ok: true, sent: result.sent };
+  }
+  return { ok: false, sent: 0, error: result.failed > 0 ? `${result.failed} failed` : 'No active subscribers' };
+}
+
 // ═══════════════════════════════════════════════════════════════════
 //  getUpdates Polling — /start ile abone ol, /stop ile çık
 // ═══════════════════════════════════════════════════════════════════
@@ -274,15 +372,19 @@ let pollTimer: ReturnType<typeof setInterval> | null = null;
 interface TelegramUpdate {
   update_id: number;
   message?: {
-    chat: { id: number; username?: string; first_name?: string };
+    chat: { id: number; type: string; username?: string; first_name?: string; title?: string };
     text?: string;
+  };
+  my_chat_member?: {
+    chat: { id: number; type: string; title?: string };
+    new_chat_member?: { status: string };
   };
 }
 
 async function processUpdates(): Promise<void> {
   if (!TELEGRAM_BOT_TOKEN) return;
 
-  const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?offset=${lastUpdateId + 1}&timeout=0&allowed_updates=["message"]`;
+  const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?offset=${lastUpdateId + 1}&timeout=0&allowed_updates=["message","my_chat_member"]`;
 
   try {
     const resp = await fetch(url);
@@ -293,26 +395,61 @@ async function processUpdates(): Promise<void> {
     for (const update of data.result) {
       lastUpdateId = update.update_id;
 
+      // ── Handle bot added to / removed from group ──
+      const memberUpdate = update.my_chat_member;
+      if (memberUpdate) {
+        const groupChatId = String(memberUpdate.chat.id);
+        const newStatus = memberUpdate.new_chat_member?.status;
+        const isGroup = memberUpdate.chat.type === 'group' || memberUpdate.chat.type === 'supergroup';
+
+        if (isGroup && (newStatus === 'member' || newStatus === 'administrator')) {
+          await prisma.telegramSubscriber.upsert({
+            where: { chatId: groupChatId },
+            create: { chatId: groupChatId, username: null, firstName: memberUpdate.chat.title ?? 'Grup', isActive: true },
+            update: { isActive: true, firstName: memberUpdate.chat.title ?? 'Grup' },
+          });
+          await sendToChat(groupChatId, [
+            '🎉 <b>Merhaba!</b>',
+            '',
+            'Bu grup artık iPhone fiyat düşüşü bildirimlerini alacak.',
+            'Fiyatlar düştüğünde otomatik olarak bilgilendirileceksiniz.',
+            '',
+            '🔕 Bildirimleri kapatmak için /stop yazın.',
+          ].join('\n'));
+          console.log(`[telegram] Bot added to group: ${groupChatId} (${memberUpdate.chat.title ?? 'unknown'})`);
+        } else if (isGroup && (newStatus === 'left' || newStatus === 'kicked')) {
+          await prisma.telegramSubscriber.updateMany({ where: { chatId: groupChatId }, data: { isActive: false } });
+          console.log(`[telegram] Bot removed from group: ${groupChatId}`);
+        }
+        continue;
+      }
+
+      // ── Handle text messages ──
       const msg = update.message;
       if (!msg?.text) continue;
 
       const chatId = String(msg.chat.id);
-      const command = msg.text.trim().toLowerCase();
+      const isGroup = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
+      const displayName = isGroup ? (msg.chat.title ?? 'Grup') : (msg.chat.first_name ?? null);
 
-      if (command === '/start') {
+      // Parse command: strip leading /, strip @botname suffix, lowercase
+      const raw = msg.text.trim().toLowerCase();
+      const command = raw.replace(/^\//, '').replace(/@\S+$/, '').trim();
+
+      if (command === 'start') {
         // Upsert subscriber
         await prisma.telegramSubscriber.upsert({
           where: { chatId },
           create: {
             chatId,
             username: msg.chat.username ?? null,
-            firstName: msg.chat.first_name ?? null,
+            firstName: displayName,
             isActive: true,
           },
           update: {
             isActive: true,
             username: msg.chat.username ?? null,
-            firstName: msg.chat.first_name ?? null,
+            firstName: displayName,
           },
         });
 
@@ -326,7 +463,7 @@ async function processUpdates(): Promise<void> {
         ].join('\n'));
 
         console.log(`[telegram] New subscriber: ${chatId} (@${msg.chat.username ?? 'unknown'})`);
-      } else if (command === '/stop') {
+      } else if (command === 'stop') {
         await prisma.telegramSubscriber.updateMany({
           where: { chatId },
           data: { isActive: false },
@@ -334,6 +471,17 @@ async function processUpdates(): Promise<void> {
 
         await sendToChat(chatId, '🔕 Bildirimler kapatıldı. Yeniden açmak için /start yazın.');
         console.log(`[telegram] Subscriber deactivated: ${chatId}`);
+      } else if (!isGroup) {
+        // Only reply to unknown messages in private chats (avoid noise in groups)
+        await sendToChat(chatId, [
+          '👋 Merhaba! Ben BakiBot.',
+          '',
+          '📱 iPhone fiyat düşüşlerini takip ediyorum.',
+          '',
+          '<b>Komutlar:</b>',
+          '/start — Bildirimlere abone ol',
+          '/stop — Aboneliği durdur',
+        ].join('\n'));
       }
     }
   } catch (err) {

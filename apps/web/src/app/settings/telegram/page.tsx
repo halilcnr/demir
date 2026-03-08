@@ -89,6 +89,22 @@ interface DailyStats {
   failed: number;
 }
 
+// ─── Helpers ─────────────────────────────────────────────────────
+
+function MutationFeedback({ data }: { data: { ok: boolean; sent?: number; error?: string } | undefined }) {
+  if (!data) return null;
+  return (
+    <div className={cn(
+      'mt-2 rounded-lg border p-2 text-xs',
+      data.ok
+        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+        : 'border-rose-200 bg-rose-50 text-rose-700'
+    )}>
+      {data.ok ? `✓ ${data.sent ?? ''} aboneye gönderildi` : `✗ Hata: ${data.error}`}
+    </div>
+  );
+}
+
 // ─── Page Component ──────────────────────────────────────────────
 
 export default function TelegramSettingsPage() {
@@ -98,6 +114,10 @@ export default function TelegramSettingsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+
+  const [customText, setCustomText] = useState('');
+  const [listingSearch, setListingSearch] = useState('');
+  const [selectedListingId, setSelectedListingId] = useState('');
 
   // ── Data Queries ──
   const { data: status, isLoading: statusLoading } = useQuery<TelegramStatus>({
@@ -134,6 +154,51 @@ export default function TelegramSettingsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['telegram-status'] });
       queryClient.invalidateQueries({ queryKey: ['telegram-history'] });
+    },
+  });
+
+  const customMsgMutation = useMutation({
+    mutationFn: (text: string) =>
+      fetch('/api/telegram/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      }).then(r => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['telegram-status'] });
+      queryClient.invalidateQueries({ queryKey: ['telegram-history'] });
+      setCustomText('');
+    },
+  });
+
+  const listingMutation = useMutation({
+    mutationFn: (listingId: string) =>
+      fetch('/api/telegram/send-listing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ listingId }),
+      }).then(r => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['telegram-status'] });
+      queryClient.invalidateQueries({ queryKey: ['telegram-history'] });
+    },
+  });
+
+  interface ListingOption {
+    id: string;
+    label: string;
+    retailer: string;
+    currentPrice: number | null;
+    previousPrice: number | null;
+    lowestPrice: number | null;
+  }
+
+  const { data: listingOptions } = useQuery<ListingOption[]>({
+    queryKey: ['telegram-listings', listingSearch],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (listingSearch) params.set('search', listingSearch);
+      return fetch(`/api/telegram/listings?${params}`).then(r => r.json());
     },
   });
 
@@ -242,34 +307,90 @@ export default function TelegramSettingsPage() {
         <Card>
           <div className="mb-4 flex items-center gap-2">
             <Send className="h-4 w-4 text-text-tertiary" />
-            <h2 className="text-sm font-semibold text-text-primary">Test Mesajı Gönder</h2>
+            <h2 className="text-sm font-semibold text-text-primary">Mesaj Gönder</h2>
           </div>
 
-          <p className="mb-4 text-sm text-text-secondary">
-            Tüm aktif abonelere test mesajı göndererek bot bağlantısını doğrulayın.
-          </p>
+          {/* Quick test */}
+          <div className="mb-5">
+            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-text-tertiary">Hızlı Test</p>
+            <Button
+              onClick={() => testMutation.mutate()}
+              loading={testMutation.isPending}
+              disabled={!status?.enabled || !status?.workerReachable}
+              size="sm"
+              icon={<Send className="h-3 w-3" />}
+            >
+              Bağlantı Testi
+            </Button>
+            <MutationFeedback data={testMutation.data} />
+          </div>
 
-          <Button
-            onClick={() => testMutation.mutate()}
-            loading={testMutation.isPending}
-            disabled={!status?.enabled || !status?.workerReachable}
-            icon={<Send className="h-3.5 w-3.5" />}
-          >
-            Test Mesajı Gönder
-          </Button>
+          <div className="mb-5 h-px bg-border" />
 
-          {testMutation.data && (
-            <div className={cn(
-              'mt-4 rounded-lg border p-3 text-sm',
-              testMutation.data.ok
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                : 'border-rose-200 bg-rose-50 text-rose-700'
-            )}>
-              {testMutation.data.ok
-                ? `✓ ${testMutation.data.sent} aboneye gönderildi`
-                : `✗ Hata: ${testMutation.data.error}`}
-            </div>
-          )}
+          {/* Custom message */}
+          <div className="mb-5">
+            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-text-tertiary">Özel Mesaj</p>
+            <textarea
+              value={customText}
+              onChange={e => setCustomText(e.target.value)}
+              placeholder="Abonelere göndermek istediğiniz mesajı yazın..."
+              rows={3}
+              className="mb-2 w-full resize-none rounded-lg border border-border bg-surface-secondary px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
+            />
+            <Button
+              onClick={() => customText.trim() && customMsgMutation.mutate(customText.trim())}
+              loading={customMsgMutation.isPending}
+              disabled={!status?.enabled || !status?.workerReachable || !customText.trim()}
+              size="sm"
+              icon={<Send className="h-3 w-3" />}
+            >
+              Mesajı Gönder
+            </Button>
+            <MutationFeedback data={customMsgMutation.data} />
+          </div>
+
+          <div className="mb-5 h-px bg-border" />
+
+          {/* Listing price alert */}
+          <div>
+            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-text-tertiary">Ürün Fiyat Bildirimi</p>
+            <input
+              type="text"
+              value={listingSearch}
+              onChange={e => setListingSearch(e.target.value)}
+              placeholder="Ürün veya mağaza ara..."
+              className="mb-2 w-full rounded-lg border border-border bg-surface-secondary px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
+            />
+            {listingOptions && listingOptions.length > 0 && (
+              <div className="mb-2 max-h-40 overflow-y-auto rounded-lg border border-border bg-surface-secondary">
+                {listingOptions.map(opt => (
+                  <button
+                    key={opt.id}
+                    onClick={() => setSelectedListingId(opt.id)}
+                    className={cn(
+                      'flex w-full items-center justify-between px-3 py-2 text-left text-xs transition-colors hover:bg-primary-light',
+                      selectedListingId === opt.id && 'bg-primary-light'
+                    )}
+                  >
+                    <span className="font-medium text-text-primary truncate mr-2">{opt.label}</span>
+                    {opt.currentPrice && (
+                      <span className="shrink-0 text-text-secondary">{formatPrice(opt.currentPrice)}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+            <Button
+              onClick={() => selectedListingId && listingMutation.mutate(selectedListingId)}
+              loading={listingMutation.isPending}
+              disabled={!status?.enabled || !status?.workerReachable || !selectedListingId}
+              size="sm"
+              icon={<Send className="h-3 w-3" />}
+            >
+              Fiyat Bilgisi Gönder
+            </Button>
+            <MutationFeedback data={listingMutation.data} />
+          </div>
 
           {(!status?.enabled || !status?.workerReachable) && (
             <p className="mt-3 text-xs text-text-tertiary">

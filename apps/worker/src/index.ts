@@ -2,7 +2,7 @@ import { startScheduler } from './scheduler';
 import { createServer } from 'http';
 import { runSync } from './sync';
 import { getSyncLogs, getSyncProgress } from './sync-logger';
-import { sendTestMessage, getTelegramStats, startTelegramPolling } from './services/telegram';
+import { sendTestMessage, getTelegramStats, startTelegramPolling, sendCustomMessage, sendListingAlert } from './services/telegram';
 
 console.log('=== iPhone Price Tracker Worker ===');
 console.log(`Ortam: ${process.env.NODE_ENV ?? 'development'}`);
@@ -131,6 +131,64 @@ const server = createServer(async (req, res) => {
     });
     res.writeHead(200);
     res.end(JSON.stringify(subscribers));
+    return;
+  }
+
+  // Send custom telegram message
+  if (req.method === 'POST' && req.url === '/send-custom-telegram') {
+    const authHeader = req.headers['authorization'] ?? '';
+    if (TRIGGER_SECRET && authHeader !== `Bearer ${TRIGGER_SECRET}`) {
+      res.writeHead(401);
+      res.end(JSON.stringify({ error: 'Unauthorized' }));
+      return;
+    }
+    let body = '';
+    req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+    req.on('end', async () => {
+      try {
+        const { text } = JSON.parse(body);
+        if (!text || typeof text !== 'string') {
+          res.writeHead(400);
+          res.end(JSON.stringify({ ok: false, error: 'text is required' }));
+          return;
+        }
+        const result = await sendCustomMessage(text);
+        res.writeHead(result.ok ? 200 : 500);
+        res.end(JSON.stringify(result));
+      } catch {
+        res.writeHead(400);
+        res.end(JSON.stringify({ ok: false, error: 'Invalid JSON body' }));
+      }
+    });
+    return;
+  }
+
+  // Send listing price alert
+  if (req.method === 'POST' && req.url === '/send-listing-telegram') {
+    const authHeader = req.headers['authorization'] ?? '';
+    if (TRIGGER_SECRET && authHeader !== `Bearer ${TRIGGER_SECRET}`) {
+      res.writeHead(401);
+      res.end(JSON.stringify({ error: 'Unauthorized' }));
+      return;
+    }
+    let body = '';
+    req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+    req.on('end', async () => {
+      try {
+        const { listingId } = JSON.parse(body);
+        if (!listingId || typeof listingId !== 'string') {
+          res.writeHead(400);
+          res.end(JSON.stringify({ ok: false, error: 'listingId is required' }));
+          return;
+        }
+        const result = await sendListingAlert(listingId);
+        res.writeHead(result.ok ? 200 : 500);
+        res.end(JSON.stringify(result));
+      } catch {
+        res.writeHead(400);
+        res.end(JSON.stringify({ ok: false, error: 'Invalid JSON body' }));
+      }
+    });
     return;
   }
 
