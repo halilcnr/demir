@@ -3,6 +3,7 @@ import { HepsiburadaProvider } from './hepsiburada';
 import { TrendyolProvider } from './trendyol';
 import { N11Provider } from './n11';
 import { AmazonProvider } from './amazon';
+import { PazaramaProvider } from './pazarama';
 import { MockProvider } from './mock';
 
 const USE_MOCK = process.env.USE_MOCK_PROVIDERS === 'true';
@@ -15,6 +16,7 @@ export function getProviders(): RetailerProvider[] {
       new MockProvider('trendyol', 'Trendyol'),
       new MockProvider('n11', 'N11'),
       new MockProvider('amazon', 'Amazon'),
+      new MockProvider('pazarama', 'Pazarama'),
     ];
   }
 
@@ -23,6 +25,7 @@ export function getProviders(): RetailerProvider[] {
     new TrendyolProvider(),
     new N11Provider(),
     new AmazonProvider(),
+    new PazaramaProvider(),
   ];
 }
 
@@ -32,4 +35,4 @@ export function getProvider(slug: string): RetailerProvider | null {
   return providers.find((p) => p.retailerSlug === slug) ?? null;
 }
 
-export { HepsiburadaProvider, TrendyolProvider, N11Provider, AmazonProvider, MockProvider };
+export { HepsiburadaProvider, TrendyolProvider, N11Provider, AmazonProvider, PazaramaProvider, MockProvider };

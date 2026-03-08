@@ -75,43 +75,43 @@ export async function runSync(retailerSlug?: string) {
       }
     }
 
-    // ── Aşama 2: Arama tabanlı keşif (URL'si olmayanlar için) ──
-    console.log('[sync] Aşama 2: Arama tabanlı keşif...');
-    const families = await prisma.productFamily.findMany({
-      where: { isActive: true },
-      select: { name: true },
-    });
-
-    for (const provider of providers) {
-      if (!provider) continue;
-
-      const retailer = await prisma.retailer.findUnique({
-        where: { slug: provider.retailerSlug },
-      });
-      if (!retailer || !retailer.isActive) continue;
-
-      const uniqueQueries = [...new Set(families.map((f) => f.name))];
-
-      for (const query of uniqueQueries) {
-        try {
-          const results = await provider.search(query);
-          itemsScanned += results.length;
-
-          for (const result of results) {
-            const matched = await upsertListing(result, retailer.id);
-            if (matched) {
-              itemsMatched++;
-              if (matched.isDeal) dealsFound++;
-            }
-          }
-
-          // Rate limiting
-          await new Promise((r) => setTimeout(r, 1500));
-        } catch (err) {
-          console.error(`[sync] ${provider.retailerSlug} - "${query}" hatası:`, err);
-        }
-      }
-    }
+    // ── Aşama 2: Arama tabanlı keşif (şu an devre dışı — park halinde) ──
+    // console.log('[sync] Aşama 2: Arama tabanlı keşif...');
+    // const families = await prisma.productFamily.findMany({
+    //   where: { isActive: true },
+    //   select: { name: true },
+    // });
+    //
+    // for (const provider of providers) {
+    //   if (!provider) continue;
+    //
+    //   const retailer = await prisma.retailer.findUnique({
+    //     where: { slug: provider.retailerSlug },
+    //   });
+    //   if (!retailer || !retailer.isActive) continue;
+    //
+    //   const uniqueQueries = [...new Set(families.map((f) => f.name))];
+    //
+    //   for (const query of uniqueQueries) {
+    //     try {
+    //       const results = await provider.search(query);
+    //       itemsScanned += results.length;
+    //
+    //       for (const result of results) {
+    //         const matched = await upsertListing(result, retailer.id);
+    //         if (matched) {
+    //           itemsMatched++;
+    //           if (matched.isDeal) dealsFound++;
+    //         }
+    //       }
+    //
+    //       // Rate limiting
+    //       await new Promise((r) => setTimeout(r, 1500));
+    //     } catch (err) {
+    //       console.error(`[sync] ${provider.retailerSlug} - "${query}" hatası:`, err);
+    //     }
+    //   }
+    // }
 
     await prisma.syncJob.update({
       where: { id: syncJob.id },
@@ -190,7 +190,9 @@ async function upsertListing(
         : result.price,
       sellerName: result.sellerName,
       stockStatus: result.stockStatus,
-      productUrl: result.productUrl,
+      productUrl: existing?.productUrl && !existing.productUrl.includes('/search?q=') && !existing.productUrl.includes('/ara?q=') && !existing.productUrl.includes('/sr?q=')
+        ? existing.productUrl
+        : result.productUrl,
       imageUrl: result.imageUrl,
       externalId: result.externalId,
       lastSeenAt: new Date(),

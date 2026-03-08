@@ -3,24 +3,25 @@ import { PRODUCT_URLS } from './product-urls';
 
 const prisma = new PrismaClient();
 
+// Şu an sadece iPhone 17 ailesi aktif (test için)
 const FAMILIES = [
-  { name: 'iPhone 13', sortOrder: 1, variants: { storages: [128, 256], colors: ['Midnight', 'Starlight', 'Blue', 'Pink', 'Green', 'Red'] } },
-  { name: 'iPhone 13 Mini', sortOrder: 2, variants: { storages: [128, 256], colors: ['Midnight', 'Starlight', 'Blue', 'Pink', 'Green', 'Red'] } },
-  { name: 'iPhone 14', sortOrder: 3, variants: { storages: [128, 256], colors: ['Midnight', 'Starlight', 'Blue', 'Purple', 'Red', 'Yellow'] } },
-  { name: 'iPhone 14 Plus', sortOrder: 4, variants: { storages: [128, 256], colors: ['Midnight', 'Starlight', 'Blue', 'Purple', 'Red', 'Yellow'] } },
-  { name: 'iPhone 14 Pro', sortOrder: 5, variants: { storages: [128, 256, 512, 1024], colors: ['Space Black', 'Silver', 'Gold', 'Deep Purple'] } },
-  { name: 'iPhone 14 Pro Max', sortOrder: 6, variants: { storages: [128, 256, 512, 1024], colors: ['Space Black', 'Silver', 'Gold', 'Deep Purple'] } },
-  { name: 'iPhone 15', sortOrder: 7, variants: { storages: [128, 256], colors: ['Black', 'Blue', 'Green', 'Yellow', 'Pink'] } },
-  { name: 'iPhone 15 Plus', sortOrder: 8, variants: { storages: [128, 256], colors: ['Black', 'Blue', 'Green', 'Yellow', 'Pink'] } },
-  { name: 'iPhone 15 Pro', sortOrder: 9, variants: { storages: [128, 256, 512, 1024], colors: ['Natural Titanium', 'Blue Titanium', 'White Titanium', 'Black Titanium'] } },
-  { name: 'iPhone 15 Pro Max', sortOrder: 10, variants: { storages: [256, 512, 1024], colors: ['Natural Titanium', 'Blue Titanium', 'White Titanium', 'Black Titanium'] } },
-  { name: 'iPhone 16', sortOrder: 11, variants: { storages: [128, 256, 512], colors: ['Black', 'White', 'Pink', 'Teal', 'Ultramarine'] } },
-  { name: 'iPhone 16 Plus', sortOrder: 12, variants: { storages: [128, 256, 512], colors: ['Black', 'White', 'Pink', 'Teal', 'Ultramarine'] } },
-  { name: 'iPhone 16 Pro', sortOrder: 13, variants: { storages: [128, 256, 512, 1024], colors: ['Natural Titanium', 'Blue Titanium', 'White Titanium', 'Black Titanium', 'Desert Titanium'] } },
-  { name: 'iPhone 16 Pro Max', sortOrder: 14, variants: { storages: [256, 512, 1024], colors: ['Natural Titanium', 'Blue Titanium', 'White Titanium', 'Black Titanium', 'Desert Titanium'] } },
-  { name: 'iPhone 17', sortOrder: 15, variants: { storages: [128, 256, 512], colors: ['Black', 'White', 'Green', 'Blue'] } },
-  { name: 'iPhone 17 Pro', sortOrder: 16, variants: { storages: [256, 512, 1024], colors: ['Natural Titanium', 'Dark Titanium', 'White Titanium', 'Desert Titanium'] } },
-  { name: 'iPhone 17 Pro Max', sortOrder: 17, variants: { storages: [256, 512, 1024], colors: ['Natural Titanium', 'Dark Titanium', 'White Titanium', 'Desert Titanium'] } },
+  // { name: 'iPhone 13', sortOrder: 1, variants: { storages: [128, 256], colors: ['Midnight', 'Starlight', 'Blue', 'Pink', 'Green', 'Red'] } },
+  // { name: 'iPhone 13 Mini', sortOrder: 2, variants: { storages: [128, 256], colors: ['Midnight', 'Starlight', 'Blue', 'Pink', 'Green', 'Red'] } },
+  // { name: 'iPhone 14', sortOrder: 3, variants: { storages: [128, 256], colors: ['Midnight', 'Starlight', 'Blue', 'Purple', 'Red', 'Yellow'] } },
+  // { name: 'iPhone 14 Plus', sortOrder: 4, variants: { storages: [128, 256], colors: ['Midnight', 'Starlight', 'Blue', 'Purple', 'Red', 'Yellow'] } },
+  // { name: 'iPhone 14 Pro', sortOrder: 5, variants: { storages: [128, 256, 512, 1024], colors: ['Space Black', 'Silver', 'Gold', 'Deep Purple'] } },
+  // { name: 'iPhone 14 Pro Max', sortOrder: 6, variants: { storages: [128, 256, 512, 1024], colors: ['Space Black', 'Silver', 'Gold', 'Deep Purple'] } },
+  // { name: 'iPhone 15', sortOrder: 7, variants: { storages: [128, 256], colors: ['Black', 'Blue', 'Green', 'Yellow', 'Pink'] } },
+  // { name: 'iPhone 15 Plus', sortOrder: 8, variants: { storages: [128, 256], colors: ['Black', 'Blue', 'Green', 'Yellow', 'Pink'] } },
+  // { name: 'iPhone 15 Pro', sortOrder: 9, variants: { storages: [128, 256, 512, 1024], colors: ['Natural Titanium', 'Blue Titanium', 'White Titanium', 'Black Titanium'] } },
+  // { name: 'iPhone 15 Pro Max', sortOrder: 10, variants: { storages: [256, 512, 1024], colors: ['Natural Titanium', 'Blue Titanium', 'White Titanium', 'Black Titanium'] } },
+  // { name: 'iPhone 16', sortOrder: 11, variants: { storages: [128, 256, 512], colors: ['Black', 'White', 'Pink', 'Teal', 'Ultramarine'] } },
+  // { name: 'iPhone 16 Plus', sortOrder: 12, variants: { storages: [128, 256, 512], colors: ['Black', 'White', 'Pink', 'Teal', 'Ultramarine'] } },
+  // { name: 'iPhone 16 Pro', sortOrder: 13, variants: { storages: [128, 256, 512, 1024], colors: ['Natural Titanium', 'Blue Titanium', 'White Titanium', 'Black Titanium', 'Desert Titanium'] } },
+  // { name: 'iPhone 16 Pro Max', sortOrder: 14, variants: { storages: [256, 512, 1024], colors: ['Natural Titanium', 'Blue Titanium', 'White Titanium', 'Black Titanium', 'Desert Titanium'] } },
+  { name: 'iPhone 17', sortOrder: 1, variants: { storages: [256, 512], colors: ['Black', 'White', 'Fog Blue', 'Lavender', 'Sage'] } },
+  { name: 'iPhone 17 Pro', sortOrder: 2, variants: { storages: [256, 512, 1024], colors: ['Obsidian', 'Silver', 'Cosmic Orange'] } },
+  { name: 'iPhone 17 Pro Max', sortOrder: 3, variants: { storages: [256, 512, 1024], colors: ['Obsidian', 'Silver', 'Cosmic Orange'] } },
 ];
 
 function slugify(text: string): string {
@@ -35,6 +36,18 @@ function storageLabel(gb: number): string {
 }
 
 async function main() {
+  // ─── Önce tüm verileri sıfırla ─────────────────────────
+  console.log('🗑️  Mevcut veriler siliniyor...');
+  await prisma.alertEvent.deleteMany();
+  await prisma.alertRule.deleteMany();
+  await prisma.priceSnapshot.deleteMany();
+  await prisma.listing.deleteMany();
+  await prisma.syncJob.deleteMany();
+  await prisma.productVariant.deleteMany();
+  await prisma.productFamily.deleteMany();
+  await prisma.retailer.deleteMany();
+  console.log('✅ Tüm veriler silindi, sıfırdan oluşturuluyor...');
+
   // ─── Retailer'lar ─────────────────────────────────────
   const retailers = await Promise.all([
     prisma.retailer.upsert({
@@ -56,6 +69,11 @@ async function main() {
       where: { slug: 'amazon' },
       update: {},
       create: { name: 'Amazon', slug: 'amazon', baseUrl: 'https://www.amazon.com.tr', logoUrl: '/retailers/amazon.svg' },
+    }),
+    prisma.retailer.upsert({
+      where: { slug: 'pazarama' },
+      update: {},
+      create: { name: 'Pazarama', slug: 'pazarama', baseUrl: 'https://www.pazarama.com', logoUrl: '/retailers/pazarama.svg' },
     }),
   ]);
   console.log(`✅ ${retailers.length} retailer oluşturuldu`);
@@ -137,82 +155,6 @@ async function main() {
     }
   }
   console.log(`✅ ${manualListingCount} manuel URL listing oluşturuldu`);
-
-  // ─── iPhone 17 Ailesi için Mock Listing + Fiyat Geçmişi ──
-  const PRICE_MAP: Record<string, number> = {
-    'iphone-17': 65000,
-    'iphone-17-pro': 85000,
-    'iphone-17-pro-max': 105000,
-  };
-  const STORAGE_MULT: Record<number, number> = { 128: 1, 256: 1.12, 512: 1.28, 1024: 1.45 };
-
-  const iphone17Families = await prisma.productFamily.findMany({
-    where: { slug: { in: ['iphone-17', 'iphone-17-pro', 'iphone-17-pro-max'] } },
-  });
-  const iphone17Variants = await prisma.productVariant.findMany({
-    where: { familyId: { in: iphone17Families.map(f => f.id) } },
-    include: { family: true },
-  });
-
-  let listingCount = 0;
-  for (const variant of iphone17Variants) {
-    const familySlug = variant.family.slug;
-    const base = PRICE_MAP[familySlug] ?? 70000;
-    const storageMult = STORAGE_MULT[variant.storageGb] ?? 1;
-
-    for (const retailer of retailers) {
-      const retailerOffset = (Math.random() - 0.5) * 4000;
-      const price = Math.round((base * storageMult + retailerOffset) / 100) * 100;
-      const previousPrice = price + Math.round(Math.random() * 5000 / 100) * 100;
-
-      const listing = await prisma.listing.upsert({
-        where: {
-          variantId_retailerId: {
-            variantId: variant.id,
-            retailerId: retailer.id,
-          },
-        },
-        update: { currentPrice: price, previousPrice, stockStatus: 'IN_STOCK', lastSeenAt: new Date() },
-        create: {
-          variantId: variant.id,
-          retailerId: retailer.id,
-          retailerProductTitle: `Apple ${variant.normalizedName}`,
-          productUrl: `${retailer.baseUrl}/search?q=${encodeURIComponent(variant.normalizedName)}`,
-          currentPrice: price,
-          previousPrice,
-          lowestPrice: price - 3000,
-          highestPrice: price + 6000,
-          sellerName: retailer.name,
-          stockStatus: 'IN_STOCK',
-          isDeal: Math.random() > 0.6,
-          dealScore: Math.random() > 0.6 ? Math.round(Math.random() * 60 + 40) : null,
-          lastSeenAt: new Date(),
-        },
-      });
-      listingCount++;
-
-      // Son 30 gün mock price snapshot — toplu insert
-      const snapshots = [];
-      for (let i = 30; i >= 0; i--) {
-        const date = new Date();
-        date.setDate(date.getDate() - i);
-        const variation = price + (Math.random() - 0.5) * 8000;
-        const dayPrice = Math.round(variation / 100) * 100;
-        const prev = i < 30 ? dayPrice + Math.round((Math.random() - 0.3) * 3000 / 100) * 100 : null;
-
-        snapshots.push({
-          listingId: listing.id,
-          observedPrice: dayPrice,
-          previousPrice: prev,
-          changePercent: prev ? ((dayPrice - prev) / prev) * 100 : null,
-          changeAmount: prev ? dayPrice - prev : null,
-          observedAt: date,
-        });
-      }
-      await prisma.priceSnapshot.createMany({ data: snapshots });
-    }
-  }
-  console.log(`✅ ${listingCount} iPhone 17 listing ve fiyat geçmişi oluşturuldu`);
 }
 
 main()
