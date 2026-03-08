@@ -57,21 +57,39 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    isSyncing = true;
-    res.writeHead(202);
-    res.end(JSON.stringify({ message: 'Sync triggered', startedAt: new Date().toISOString() }));
+    // Read body to get optional variantId
+    let body = '';
+    req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+    req.on('end', () => {
+      let variantId: string | undefined;
+      try {
+        const parsed = JSON.parse(body);
+        if (parsed.variantId && typeof parsed.variantId === 'string') {
+          variantId = parsed.variantId;
+        }
+      } catch {
+        // No body or invalid JSON — full sync
+      }
 
-    // Run sync in background (don't await in request handler)
-    runSync()
-      .then((result) => {
-        console.log(`[trigger] Manual sync completed: ${result.itemsScanned} scanned, ${result.itemsMatched} matched`);
-      })
-      .catch((err) => {
-        console.error('[trigger] Manual sync failed:', err);
-      })
-      .finally(() => {
-        isSyncing = false;
-      });
+      isSyncing = true;
+      res.writeHead(202);
+      res.end(JSON.stringify({
+        message: variantId ? 'Variant sync triggered' : 'Sync triggered',
+        variantId: variantId ?? null,
+        startedAt: new Date().toISOString(),
+      }));
+
+      runSync(undefined, variantId)
+        .then((result) => {
+          console.log(`[trigger] ${variantId ? 'Variant' : 'Manual'} sync completed: ${result.itemsScanned} scanned, ${result.itemsMatched} matched`);
+        })
+        .catch((err) => {
+          console.error(`[trigger] ${variantId ? 'Variant' : 'Manual'} sync failed:`, err);
+        })
+        .finally(() => {
+          isSyncing = false;
+        });
+    });
     return;
   }
 

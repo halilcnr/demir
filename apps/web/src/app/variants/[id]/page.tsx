@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useCallback, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
@@ -15,6 +16,8 @@ import {
   AlertTriangle,
   Award,
   Zap,
+  RefreshCw,
+  Check,
 } from 'lucide-react';
 
 import { Card, StatCard } from '@/components/ui/card';
@@ -54,6 +57,64 @@ export default function VariantDetailPage() {
     queryFn: () => fetch(`/api/products/${id}/history`).then((r) => r.json()),
     enabled: !!variant,
   });
+
+  // ── Variant sync state ──
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const handleVariantSync = useCallback(async () => {
+    setSyncStatus('syncing');
+    setSyncError(null);
+
+    try {
+      const res = await fetch(`/api/sync/variant/${id}`, { method: 'POST' });
+      const data = await res.json();
+
+      if (res.status === 409) {
+        setSyncError('Başka bir sync zaten çalışıyor');
+        setSyncStatus('error');
+        return;
+      }
+      if (!res.ok) {
+        setSyncError(data.error ?? 'Sync başlatılamadı');
+        setSyncStatus('error');
+        return;
+      }
+
+      // Poll for completion
+      pollRef.current = setInterval(async () => {
+        try {
+          const progressRes = await fetch('/api/sync/progress');
+          const progress = await progressRes.json();
+          if (!progress.running) {
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+            setSyncStatus('success');
+            refetch();
+            // Reset back to idle after 3s
+            setTimeout(() => setSyncStatus('idle'), 3000);
+          }
+        } catch {
+          // Keep polling
+        }
+      }, 2000);
+
+      // Safety timeout — stop polling after 2 minutes
+      setTimeout(() => {
+        if (pollRef.current) {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+          setSyncStatus('success');
+          refetch();
+          setTimeout(() => setSyncStatus('idle'), 3000);
+        }
+      }, 120_000);
+    } catch {
+      setSyncError('Worker ile bağlantı kurulamadı');
+      setSyncStatus('error');
+    }
+  }, [id, refetch]);
 
   if (isLoading) {
     return (
@@ -97,6 +158,34 @@ export default function VariantDetailPage() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant={syncStatus === 'success' ? 'outline' : syncStatus === 'error' ? 'danger' : 'secondary'}
+            size="sm"
+            onClick={handleVariantSync}
+            disabled={syncStatus === 'syncing'}
+          >
+            {syncStatus === 'syncing' ? (
+              <>
+                <RefreshCw className="mr-1 h-3.5 w-3.5 animate-spin" />
+                Güncelleniyor…
+              </>
+            ) : syncStatus === 'success' ? (
+              <>
+                <Check className="mr-1 h-3.5 w-3.5" />
+                Güncellendi
+              </>
+            ) : syncStatus === 'error' ? (
+              <>
+                <AlertTriangle className="mr-1 h-3.5 w-3.5" />
+                {syncError ?? 'Hata'}
+              </>
+            ) : (
+              <>
+                <RefreshCw className="mr-1 h-3.5 w-3.5" />
+                Bu Varyantı Güncelle
+              </>
+            )}
+          </Button>
           {bestListing && (
             <a
               href={bestListing.productUrl}

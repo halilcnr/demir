@@ -26,12 +26,14 @@ import { queryFallbackSourcesDetailed } from './discovery';
  * Tüm retailer'lardan veya belirli bir retailer'dan fiyat güncellemesi yapar.
  * Varyant bazlı round-robin: her varyant için tüm sağlayıcılara bakılır,
  * böylece aynı sağlayıcıya arka arkaya çok fazla istek gönderilmez.
+ *
+ * variantId verilirse sadece o varyantın listing'leri senkronize edilir.
  */
-export async function runSync(retailerSlug?: string) {
+export async function runSync(retailerSlug?: string, variantId?: string) {
   const startMs = Date.now();
   resetCycleState();
   clearSyncLogs();
-  addSyncLog({ type: 'info', message: 'Senkronizasyon başlatılıyor...' });
+  addSyncLog({ type: 'info', message: variantId ? 'Varyant senkronizasyonu başlatılıyor...' : 'Senkronizasyon başlatılıyor...' });
 
   const syncJob = await prisma.syncJob.create({
     data: {
@@ -70,6 +72,7 @@ export async function runSync(retailerSlug?: string) {
         isActive: true,
         productUrl: { not: '' },
         ...(retailerSlug ? { retailer: { slug: retailerSlug } } : {}),
+        ...(variantId ? { variantId } : {}),
         retailer: { isActive: true },
       },
       include: {
