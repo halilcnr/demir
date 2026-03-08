@@ -18,13 +18,12 @@ export function CardSkeleton() {
   );
 }
 
-export function TableRowSkeleton() {
+export function TableRowSkeleton({ cols = 4 }: { cols?: number }) {
   return (
     <tr>
-      <td className="px-4 py-3"><Skeleton className="h-4 w-32" /></td>
-      <td className="px-4 py-3"><Skeleton className="h-4 w-16" /></td>
-      <td className="px-4 py-3"><Skeleton className="h-4 w-20" /></td>
-      <td className="px-4 py-3"><Skeleton className="h-4 w-24" /></td>
+      {Array.from({ length: cols }).map((_, i) => (
+        <td key={i} className="px-4 py-3"><Skeleton className="h-4 w-24" /></td>
+      ))}
     </tr>
   );
 }
