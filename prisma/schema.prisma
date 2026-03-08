@@ -252,6 +252,19 @@ enum AlertChannel {
   WHATSAPP
 }
 
+// ─── Telegram Aboneleri ──────────────────────────────────────────
+model TelegramSubscriber {
+  id        String   @id @default(cuid())
+  chatId    String   @unique  // Telegram chat ID
+  username  String?           // @username
+  firstName String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+}
+
 // ─── Senkronizasyon İşleri ───────────────────────────────────────
 model SyncJob {
   id             String     @id @default(cuid())

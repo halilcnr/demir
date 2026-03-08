@@ -3,11 +3,11 @@ import { prisma } from '@repo/shared';
 // ─── Configuration ───────────────────────────────────────────────
 const TELEGRAM_ENABLED = process.env.TELEGRAM_ENABLED === 'true';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID ?? '';
 
 const MIN_DROP_PERCENT = 2;    // Minimum % düşüş (bildirim eşiği)
 const MIN_DROP_AMOUNT = 300;   // Minimum TL düşüş
 const COOLDOWN_MS = 4 * 60 * 60 * 1000; // Aynı listing için 4 saat bekleme
+const POLL_INTERVAL_MS = 30_000; // getUpdates polling interval
 
 // ─── Types ───────────────────────────────────────────────────────
 export interface PriceDropPayload {
@@ -26,17 +26,14 @@ export interface PriceDropPayload {
 let sentCount = 0;
 let failCount = 0;
 let skippedCount = 0;
+let subscriberCount = 0;
 
 export function getTelegramStats() {
-  return { sentCount, failCount, skippedCount, enabled: TELEGRAM_ENABLED };
+  return { sentCount, failCount, skippedCount, subscriberCount, enabled: TELEGRAM_ENABLED };
 }
 
-// ─── Core: Send raw message via Telegram Bot API ─────────────────
-async function sendTelegramMessage(text: string): Promise<{ ok: boolean; messageId?: number; error?: string }> {
-  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
-    return { ok: false, error: 'Bot token or chat ID not configured' };
-  }
-
+// ─── Core: Send message to a single chat ─────────────────────────
+async function sendToChat(chatId: string, text: string): Promise<{ ok: boolean; error?: string }> {
   const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
 
   try {
@@ -44,24 +41,60 @@ async function sendTelegramMessage(text: string): Promise<{ ok: boolean; message
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        chat_id: TELEGRAM_CHAT_ID,
+        chat_id: chatId,
         text,
         parse_mode: 'HTML',
         disable_web_page_preview: true,
       }),
     });
 
-    const data = await resp.json() as { ok: boolean; result?: { message_id: number }; description?: string };
+    const data = await resp.json() as { ok: boolean; description?: string };
 
     if (!data.ok) {
+      // If user blocked the bot, deactivate subscriber
+      if (resp.status === 403) {
+        await prisma.telegramSubscriber.updateMany({
+          where: { chatId },
+          data: { isActive: false },
+        }).catch(() => {});
+      }
       return { ok: false, error: data.description ?? `HTTP ${resp.status}` };
     }
 
-    return { ok: true, messageId: data.result?.message_id };
+    return { ok: true };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return { ok: false, error: msg };
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+// ─── Broadcast: send to ALL active subscribers ───────────────────
+async function broadcast(text: string): Promise<{ sent: number; failed: number }> {
+  const subscribers = await prisma.telegramSubscriber.findMany({
+    where: { isActive: true },
+    select: { chatId: true },
+  });
+
+  subscriberCount = subscribers.length;
+
+  if (subscribers.length === 0) {
+    console.log('[telegram] No active subscribers, skipping broadcast');
+    return { sent: 0, failed: 0 };
+  }
+
+  let sent = 0;
+  let failed = 0;
+
+  for (const sub of subscribers) {
+    const result = await sendToChat(sub.chatId, text);
+    if (result.ok) {
+      sent++;
+    } else {
+      failed++;
+      console.error(`[telegram] Failed to send to ${sub.chatId}: ${result.error}`);
+    }
+  }
+
+  return { sent, failed };
 }
 
 // ─── Build Turkish price drop message ────────────────────────────
@@ -102,7 +135,6 @@ function buildPriceDropMessage(payload: PriceDropPayload): string {
 async function shouldNotify(payload: PriceDropPayload): Promise<{ send: boolean; reason?: string }> {
   const { listingId, newPrice, oldPrice } = payload;
 
-  // Check minimum thresholds
   const dropAmount = oldPrice - newPrice;
   const dropPercent = ((dropAmount / oldPrice) * 100);
 
@@ -110,7 +142,6 @@ async function shouldNotify(payload: PriceDropPayload): Promise<{ send: boolean;
     return { send: false, reason: `Drop too small: ${dropAmount.toFixed(0)} TL (${dropPercent.toFixed(1)}%)` };
   }
 
-  // Check deduplication: was this exact price already notified?
   const listing = await prisma.listing.findUnique({
     where: { id: listingId },
     select: { lastNotifiedPrice: true, notificationSentAt: true },
@@ -120,7 +151,6 @@ async function shouldNotify(payload: PriceDropPayload): Promise<{ send: boolean;
     return { send: false, reason: `Already notified for this price (${newPrice} TL)` };
   }
 
-  // Cooldown: don't spam for same listing within window
   if (listing?.notificationSentAt) {
     const elapsed = Date.now() - listing.notificationSentAt.getTime();
     if (elapsed < COOLDOWN_MS) {
@@ -138,7 +168,6 @@ export async function notifyPriceDrop(payload: PriceDropPayload): Promise<void> 
     return;
   }
 
-  // Anti-spam check
   const check = await shouldNotify(payload);
   if (!check.send) {
     skippedCount++;
@@ -147,13 +176,12 @@ export async function notifyPriceDrop(payload: PriceDropPayload): Promise<void> 
   }
 
   const message = buildPriceDropMessage(payload);
-  const result = await sendTelegramMessage(message);
+  const result = await broadcast(message);
 
-  if (result.ok) {
+  if (result.sent > 0) {
     sentCount++;
-    console.log(`[telegram] ✓ Sent price drop alert for ${payload.retailerSlug} — ${payload.variantLabel} (${payload.newPrice} TL)`);
+    console.log(`[telegram] ✓ Broadcast price drop: ${payload.retailerSlug} — ${payload.variantLabel} (${payload.newPrice} TL) → ${result.sent} subscriber(s)`);
 
-    // Update listing notification tracking
     await prisma.listing.update({
       where: { id: payload.listingId },
       data: {
@@ -165,14 +193,14 @@ export async function notifyPriceDrop(payload: PriceDropPayload): Promise<void> 
     });
   } else {
     failCount++;
-    console.error(`[telegram] ✗ Failed to send alert: ${result.error}`);
+    console.error(`[telegram] ✗ Broadcast failed: ${result.failed} failure(s), 0 sent`);
   }
 }
 
-// ─── Public: Send a test message ─────────────────────────────────
-export async function sendTestMessage(): Promise<{ ok: boolean; error?: string }> {
-  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
-    return { ok: false, error: 'TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set' };
+// ─── Public: Send a test message to all subscribers ──────────────
+export async function sendTestMessage(): Promise<{ ok: boolean; sent?: number; error?: string }> {
+  if (!TELEGRAM_BOT_TOKEN) {
+    return { ok: false, error: 'TELEGRAM_BOT_TOKEN not set' };
   }
 
   const text = [
@@ -182,5 +210,109 @@ export async function sendTestMessage(): Promise<{ ok: boolean; error?: string }
     `⏰ ${new Date().toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })}`,
   ].join('\n');
 
-  return sendTelegramMessage(text);
+  const result = await broadcast(text);
+
+  if (result.sent > 0) {
+    return { ok: true, sent: result.sent };
+  }
+  return { ok: false, sent: 0, error: result.failed > 0 ? `${result.failed} failed` : 'No active subscribers' };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  getUpdates Polling — /start ile abone ol, /stop ile çık
+// ═══════════════════════════════════════════════════════════════════
+
+let lastUpdateId = 0;
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+interface TelegramUpdate {
+  update_id: number;
+  message?: {
+    chat: { id: number; username?: string; first_name?: string };
+    text?: string;
+  };
+}
+
+async function processUpdates(): Promise<void> {
+  if (!TELEGRAM_BOT_TOKEN) return;
+
+  const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?offset=${lastUpdateId + 1}&timeout=0&allowed_updates=["message"]`;
+
+  try {
+    const resp = await fetch(url);
+    const data = await resp.json() as { ok: boolean; result?: TelegramUpdate[] };
+
+    if (!data.ok || !data.result?.length) return;
+
+    for (const update of data.result) {
+      lastUpdateId = update.update_id;
+
+      const msg = update.message;
+      if (!msg?.text) continue;
+
+      const chatId = String(msg.chat.id);
+      const command = msg.text.trim().toLowerCase();
+
+      if (command === '/start') {
+        // Upsert subscriber
+        await prisma.telegramSubscriber.upsert({
+          where: { chatId },
+          create: {
+            chatId,
+            username: msg.chat.username ?? null,
+            firstName: msg.chat.first_name ?? null,
+            isActive: true,
+          },
+          update: {
+            isActive: true,
+            username: msg.chat.username ?? null,
+            firstName: msg.chat.first_name ?? null,
+          },
+        });
+
+        await sendToChat(chatId, [
+          '🎉 <b>Hoş geldiniz!</b>',
+          '',
+          'iPhone fiyat düşüşü bildirimlerine abone oldunuz.',
+          'Fiyatlar düştüğünde otomatik olarak bilgilendirileceksiniz.',
+          '',
+          '🔕 Bildirimleri kapatmak için /stop yazın.',
+        ].join('\n'));
+
+        console.log(`[telegram] New subscriber: ${chatId} (@${msg.chat.username ?? 'unknown'})`);
+      } else if (command === '/stop') {
+        await prisma.telegramSubscriber.updateMany({
+          where: { chatId },
+          data: { isActive: false },
+        });
+
+        await sendToChat(chatId, '🔕 Bildirimler kapatıldı. Yeniden açmak için /start yazın.');
+        console.log(`[telegram] Subscriber deactivated: ${chatId}`);
+      }
+    }
+  } catch (err) {
+    console.error('[telegram] Polling error:', err instanceof Error ? err.message : err);
+  }
+}
+
+/** Start polling for /start and /stop commands. Call once at worker boot. */
+export function startTelegramPolling(): void {
+  if (!TELEGRAM_ENABLED || !TELEGRAM_BOT_TOKEN) {
+    console.log('[telegram] Disabled or no token — polling not started');
+    return;
+  }
+
+  console.log('[telegram] Subscriber polling started');
+  // Run once immediately, then on interval
+  processUpdates().catch(() => {});
+  pollTimer = setInterval(() => {
+    processUpdates().catch(() => {});
+  }, POLL_INTERVAL_MS);
+}
+
+export function stopTelegramPolling(): void {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
 }

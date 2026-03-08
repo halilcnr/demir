@@ -2,7 +2,7 @@ import { startScheduler } from './scheduler';
 import { createServer } from 'http';
 import { runSync } from './sync';
 import { getSyncLogs, getSyncProgress } from './sync-logger';
-import { sendTestMessage, getTelegramStats } from './services/telegram';
+import { sendTestMessage, getTelegramStats, startTelegramPolling } from './services/telegram';
 
 console.log('=== iPhone Price Tracker Worker ===');
 console.log(`Ortam: ${process.env.NODE_ENV ?? 'development'}`);
@@ -122,6 +122,9 @@ const server = createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(`[worker] HTTP trigger listening on port ${PORT}`);
 });
+
+// Start Telegram subscriber polling (/start, /stop commands)
+startTelegramPolling();
 
 startScheduler().catch((err) => {
   console.error('[worker] Kritik hata:', err);
