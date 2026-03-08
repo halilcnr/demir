@@ -6,6 +6,7 @@
     "dev": "turbo dev",
     "build": "turbo build",
     "lint": "turbo lint",
+    "start": "pnpm --filter @repo/worker start",
     "dev:web": "turbo dev --filter=@repo/web",
     "dev:worker": "turbo dev --filter=@repo/worker",
     "build:web": "turbo build --filter=@repo/web",
