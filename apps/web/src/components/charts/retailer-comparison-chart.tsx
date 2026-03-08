@@ -11,10 +11,12 @@ import {
   Cell,
 } from 'recharts';
 
+import { getRetailerColor } from '@repo/shared';
+
 interface RetailerComparisonData {
   retailer: string;
+  retailerSlug: string;
   price: number;
-  color: string;
 }
 
 interface RetailerComparisonChartProps {
@@ -66,7 +68,7 @@ export function RetailerComparisonChart({ data }: RetailerComparisonChartProps) 
         />
         <Bar dataKey="price" radius={[0, 4, 4, 0]} barSize={28}>
           {data.map((entry, index) => (
-            <Cell key={`cell-${index}`} fill={entry.color} />
+            <Cell key={`cell-${index}`} fill={getRetailerColor(entry.retailerSlug)} />
           ))}
         </Bar>
       </BarChart>

@@ -20,7 +20,7 @@ export async function GET(
       listings: {
         include: {
           retailer: true,
-          snapshots: {
+          priceSnapshots: {
             where: { observedAt: { gte: since } },
             orderBy: { observedAt: 'asc' },
           },
@@ -36,7 +36,7 @@ export async function GET(
   const historyByRetailer = variant.listings.map((listing) => ({
     retailer: listing.retailer.name,
     retailerSlug: listing.retailer.slug,
-    data: listing.snapshots.map((s) => ({
+    data: listing.priceSnapshots.map((s) => ({
       date: s.observedAt.toISOString(),
       price: s.observedPrice,
       previousPrice: s.previousPrice,
@@ -46,7 +46,7 @@ export async function GET(
   }));
 
   const flatHistory = variant.listings.flatMap((listing) =>
-    listing.snapshots.map((s) => ({
+    listing.priceSnapshots.map((s) => ({
       date: s.observedAt.toISOString(),
       price: s.observedPrice,
       retailer: listing.retailer.name,
