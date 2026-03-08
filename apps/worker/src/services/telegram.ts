@@ -44,7 +44,6 @@ async function sendToChat(chatId: string, text: string): Promise<{ ok: boolean; 
         chat_id: chatId,
         text,
         parse_mode: 'HTML',
-        disable_web_page_preview: true,
       }),
     });
 
@@ -118,13 +117,9 @@ function buildPriceDropMessage(payload: PriceDropPayload): string {
   lines.push(`📱 <b>${variantLabel}</b>`);
   lines.push(`🏪 ${retailerName}`);
   lines.push('');
-  lines.push(`💰 <b>${fmtPrice(newPrice)} TL</b>  ←  <s>${fmtPrice(oldPrice)} TL</s>`);
-  lines.push(`📉 ${fmtPrice(dropAmount)} TL düşüş (%${dropPercent})`);
-
-  if (lowestPrice !== null && lowestPrice > 0) {
-    lines.push(`📊 Tarihsel en düşük: ${fmtPrice(lowestPrice)} TL`);
-  }
-
+  lines.push(`💰 <s>${fmtPrice(oldPrice)} TL</s>  →  <b>${fmtPrice(newPrice)} TL</b>`);
+  lines.push('');
+  lines.push(`📉 <b>%${dropPercent} düşüş</b> (${fmtPrice(dropAmount)} TL fark)`);
   lines.push('');
   lines.push(`🔗 <a href="${productUrl}">Ürüne Git</a>`);
 
@@ -315,23 +310,19 @@ export async function sendListingAlert(listingId: string): Promise<{ ok: boolean
     '',
   ];
 
-  if (listing.currentPrice) {
+  if (listing.currentPrice && listing.previousPrice) {
+    lines.push(`💰 <s>${fmtPrice(listing.previousPrice)} TL</s>  →  <b>${fmtPrice(listing.currentPrice)} TL</b>`);
+    const diff = listing.previousPrice - listing.currentPrice;
+    const pct = ((diff / listing.previousPrice) * 100).toFixed(1);
+    if (diff > 0) {
+      lines.push('');
+      lines.push(`📉 <b>%${pct} düşüş</b> (${fmtPrice(diff)} TL fark)`);
+    } else if (diff < 0) {
+      lines.push('');
+      lines.push(`📈 <b>%${(Math.abs(diff) / listing.previousPrice * 100).toFixed(1)} artış</b> (${fmtPrice(Math.abs(diff))} TL fark)`);
+    }
+  } else if (listing.currentPrice) {
     lines.push(`💰 Güncel: <b>${fmtPrice(listing.currentPrice)} TL</b>`);
-  }
-  if (listing.previousPrice) {
-    lines.push(`📉 Önceki: ${fmtPrice(listing.previousPrice)} TL`);
-  }
-  if (listing.lowestPrice) {
-    lines.push(`🏆 En düşük: ${fmtPrice(listing.lowestPrice)} TL`);
-  }
-  if (listing.highestPrice) {
-    lines.push(`📈 En yüksek: ${fmtPrice(listing.highestPrice)} TL`);
-  }
-
-  if (listing.currentPrice && listing.previousPrice && listing.currentPrice < listing.previousPrice) {
-    const drop = ((listing.previousPrice - listing.currentPrice) / listing.previousPrice * 100).toFixed(1);
-    lines.push('');
-    lines.push(`✅ %${drop} düşüş tespit edildi`);
   }
 
   lines.push('');
