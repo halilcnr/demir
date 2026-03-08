@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Search, Filter, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, X, Smartphone, SlidersHorizontal } from 'lucide-react';
 import Link from 'next/link';
 import { useState, useCallback, Suspense } from 'react';
 
@@ -12,6 +12,17 @@ import { TableRowSkeleton } from '@/components/ui/skeleton';
 import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 import { formatPrice, formatRelativeDate } from '@repo/shared';
 import type { PaginatedResponse, VariantListItem } from '@repo/shared';
+
+const MODEL_FILTERS = [
+  { label: 'Tümü', value: '' },
+  { label: 'iPhone 13', value: 'iPhone 13' },
+  { label: 'iPhone 14', value: 'iPhone 14' },
+  { label: 'iPhone 15', value: 'iPhone 15' },
+  { label: 'iPhone 16', value: 'iPhone 16' },
+  { label: 'iPhone 17', value: 'iPhone 17' },
+  { label: '17 Pro', value: 'iPhone 17 Pro' },
+  { label: '17 Pro Max', value: 'iPhone 17 Pro Max' },
+] as const;
 
 function VariantsContent() {
   const router = useRouter();
@@ -63,15 +74,58 @@ function VariantsContent() {
     <div className="space-y-5 animate-float-in">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold tracking-tight text-text-primary">Varyantlar</h1>
-        {data && (
-          <span className="text-xs text-text-tertiary">
-            {data.total} ürün
-          </span>
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+            <Smartphone className="h-4 w-4 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-lg font-semibold tracking-tight text-text-primary">Varyantlar</h1>
+            {data && (
+              <p className="text-[11px] text-text-tertiary -mt-0.5">
+                {data.total} ürün{family ? ` · ${family}` : ''}
+              </p>
+            )}
+          </div>
+        </div>
+        {hasFilters && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              setSearchInput('');
+              router.push('/variants');
+            }}
+            className="text-text-tertiary hover:text-danger"
+          >
+            <X className="h-3 w-3 mr-1" />
+            Filtreleri Temizle
+          </Button>
         )}
       </div>
 
-      {/* Filters */}
+      {/* Model Filter Chips */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide -mx-1 px-1">
+        {MODEL_FILTERS.map((m) => {
+          const isActive = family === m.value;
+          return (
+            <button
+              key={m.value}
+              onClick={() => updateParams({ family: m.value })}
+              className={`
+                shrink-0 rounded-full px-3.5 py-1.5 text-[12px] font-medium transition-all duration-200
+                ${isActive
+                  ? 'bg-primary text-white shadow-sm shadow-primary/25'
+                  : 'bg-surface-secondary text-text-secondary hover:bg-surface-secondary/80 hover:text-text-primary border border-transparent hover:border-border'
+                }
+              `}
+            >
+              {m.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Search & Filters Row */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <form
           className="relative flex-1 max-w-md"
@@ -91,6 +145,10 @@ function VariantsContent() {
         </form>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1 text-text-tertiary">
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+          </div>
+
           <select
             value={sort}
             onChange={(e) => updateParams({ sort: e.target.value })}
@@ -123,20 +181,6 @@ function VariantsContent() {
             <option value="">Tüm Ürünler</option>
             <option value="true">Sadece Fırsatlar</option>
           </select>
-
-          {hasFilters && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                setSearchInput('');
-                router.push('/variants');
-              }}
-            >
-              <X className="h-3 w-3 mr-1" />
-              Temizle
-            </Button>
-          )}
         </div>
       </div>
 

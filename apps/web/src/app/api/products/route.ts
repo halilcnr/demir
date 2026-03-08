@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
       { family: { name: { contains: search, mode: 'insensitive' } } },
     ];
   }
-  if (family) where.family = { name: { contains: family, mode: 'insensitive' } };
+  if (family) where.family = { name: family };
   if (storage) where.storageGb = parseInt(storage, 10) || undefined;
   if (color) where.color = { contains: color, mode: 'insensitive' };
 
