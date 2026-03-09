@@ -2,6 +2,7 @@ import { startScheduler, getSchedulerState } from './scheduler';
 import { createServer } from 'http';
 import { runSync } from './sync';
 import { getSyncLogs, getSyncProgress } from './sync-logger';
+import { getAllProviderHealth, getDiscoverySourceHealth } from './provider-health';
 import { sendTestMessage, getTelegramStats, startTelegramPolling, sendCustomMessage, sendListingAlert } from './services/telegram';
 
 const startedAt = new Date().toISOString();
@@ -59,6 +60,15 @@ const server = createServer(async (req, res) => {
     const data = getSyncProgress();
     res.writeHead(200);
     res.end(JSON.stringify(data));
+    return;
+  }
+
+  // Provider + discovery source health
+  if (req.method === 'GET' && req.url === '/provider-health') {
+    const providers = getAllProviderHealth();
+    const discoverySources = getDiscoverySourceHealth();
+    res.writeHead(200);
+    res.end(JSON.stringify({ providers, discoverySources }));
     return;
   }
 

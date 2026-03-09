@@ -12,6 +12,83 @@ export interface ProviderHealth {
   cooldownUntil: Date | null;
 }
 
+// ─── Discovery Source Health (in-memory per-cycle) ──────────────
+
+export interface DiscoverySourceHealth {
+  slug: string;
+  lastSuccessAt: Date | null;
+  lastFailureAt: Date | null;
+  lastBlockedAt: Date | null;
+  blockedCount: number;
+  consecutiveFailures: number;
+  blockedThisCycle: boolean;
+  cooldownUntil: number | null; // timestamp
+}
+
+const discoverySourceState = new Map<string, DiscoverySourceHealth>();
+const DISCOVERY_SOURCES = ['akakce', 'cimri', 'enuygun', 'epey'] as const;
+
+function getOrCreateDiscoverySource(slug: string): DiscoverySourceHealth {
+  if (!discoverySourceState.has(slug)) {
+    discoverySourceState.set(slug, {
+      slug,
+      lastSuccessAt: null,
+      lastFailureAt: null,
+      lastBlockedAt: null,
+      blockedCount: 0,
+      consecutiveFailures: 0,
+      blockedThisCycle: false,
+      cooldownUntil: null,
+    });
+  }
+  return discoverySourceState.get(slug)!;
+}
+
+export function recordDiscoverySuccess(slug: string): void {
+  const s = getOrCreateDiscoverySource(slug);
+  s.lastSuccessAt = new Date();
+  s.consecutiveFailures = 0;
+  s.blockedThisCycle = false;
+  s.cooldownUntil = null;
+}
+
+export function recordDiscoveryFailure(slug: string): void {
+  const s = getOrCreateDiscoverySource(slug);
+  s.lastFailureAt = new Date();
+  s.consecutiveFailures++;
+}
+
+export function recordDiscoveryBlocked(slug: string): void {
+  const s = getOrCreateDiscoverySource(slug);
+  s.lastBlockedAt = new Date();
+  s.blockedCount++;
+  s.consecutiveFailures++;
+  s.blockedThisCycle = true;
+  // 10 min cooldown for blocked discovery sources
+  s.cooldownUntil = Date.now() + 10 * 60 * 1000;
+}
+
+export function isDiscoverySourceAvailable(slug: string): boolean {
+  const s = discoverySourceState.get(slug);
+  if (!s) return true;
+  if (s.blockedThisCycle) return false;
+  if (s.cooldownUntil && Date.now() < s.cooldownUntil) return false;
+  return true;
+}
+
+export function getDiscoverySourceHealth(): DiscoverySourceHealth[] {
+  // Ensure all sources exist
+  for (const src of DISCOVERY_SOURCES) getOrCreateDiscoverySource(src);
+  return [...discoverySourceState.values()];
+}
+
+export function resetDiscoverySourceState(): void {
+  for (const s of discoverySourceState.values()) {
+    s.blockedThisCycle = false;
+    // Keep cooldownUntil across cycles (time-based)
+  }
+}
+
 // ── Per-provider cooldown configuration ──
 export interface ProviderCooldownConfig {
   /** Initial cooldown after first block (ms) */
@@ -129,6 +206,7 @@ export function resetCycleState(): void {
   blockedThisCycle.clear();
   cooldownUntilMap.clear();
   cycleFailureCounts.clear();
+  resetDiscoverySourceState();
 }
 
 /** Record a successful scrape for a retailer */

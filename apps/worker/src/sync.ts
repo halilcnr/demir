@@ -21,7 +21,8 @@ import {
   recordFailure,
   recordBlocked,
 } from './provider-health';
-import { clearSyncLogs, addSyncLog, finishSyncLogs, updateSyncProgress, logScrapeAttempt } from './sync-logger';
+import { clearSyncLogs, addSyncLog, finishSyncLogs, updateSyncProgress, logScrapeAttempt, logDiscoveryAttempt } from './sync-logger';
+import type { ScrapeStatus } from './sync-logger';
 import { queryFallbackSourcesDetailed } from './discovery';
 import { notifyPriceDrop } from './services/telegram';
 
@@ -276,9 +277,10 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
 
             const stratUsed = (meta?.strategyUsed as string) ?? 'unknown';
             const respTime = (meta?.responseTimeMs as number) ?? 0;
-            console.log(`[sync] ✓ ${slug} — ${result.rawTitle} → ${result.price} TL (${stratUsed}, ${respTime}ms)`);
+            const confidence = (meta?.parseConfidence as 'high' | 'medium' | 'low') ?? undefined;
+            console.log(`[sync] ✓ ${slug} — ${result.rawTitle} → ${result.price} TL (${stratUsed}, ${respTime}ms, ${confidence ?? 'n/a'})`);
             addSyncLog({ type: 'success', retailer: slug, variant: variantLabel, message: `${slug} → ${result.price.toLocaleString('tr-TR')} TL`, price: result.price, strategy: stratUsed, responseTimeMs: respTime });
-            logScrapeAttempt({ retailer: slug, variant: variantLabel, strategy: stratUsed, status: 'success', responseTimeMs: respTime, price: result.price });
+            logScrapeAttempt({ retailer: slug, variant: variantLabel, strategy: stratUsed, status: 'success', responseTimeMs: respTime, price: result.price, confidence });
           } else {
             console.warn(`[sync] ✗ ${slug} — scrape returned null for ${listing.productUrl}`);
             addSyncLog({ type: 'warn', retailer: slug, variant: variantLabel, message: `${slug} — direkt veri alınamadı, fallback deneniyor...` });
@@ -460,6 +462,7 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
               data: { isActive: false, lastFailureAt: new Date() },
             });
             failureCount++;
+            logScrapeAttempt({ retailer: slug, variant: variantLabel, status: 'invalid_listing', error: err.message });
             continue;
           }
 
@@ -467,7 +470,8 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
             console.error(`[sync] ${slug} parse/strategy failed — ${listing.productUrl}`);
             failureCount++;
             await recordFailure(slug);
-            logScrapeAttempt({ retailer: slug, variant: variantLabel, status: 'parse_fail', error: err.message });
+            const errStatus: ScrapeStatus = err instanceof StrategyExhaustedError ? 'retry_exhausted' : 'parse_fail';
+            logScrapeAttempt({ retailer: slug, variant: variantLabel, status: errStatus, error: err.message });
             await prisma.listing.update({
               where: { id: listing.id },
               data: { lastFailureAt: new Date() },

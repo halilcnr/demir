@@ -20,6 +20,21 @@ interface ProviderInfo {
   lastListingSeenAt: string | null;
 }
 
+interface DiscoverySourceInfo {
+  source: string;
+  successCount: number;
+  failureCount: number;
+  blockedCount: number;
+  lastSuccess: string | null;
+  lastFailure: string | null;
+  cooldownUntil: string | null;
+}
+
+interface HealthData {
+  providers: ProviderInfo[];
+  discoverySources: Record<string, DiscoverySourceInfo> | null;
+}
+
 const statusConfig: Record<string, { label: string; variant: 'success' | 'warning' | 'danger' | 'default' }> = {
   healthy: { label: 'Sağlıklı', variant: 'success' },
   warning: { label: 'Uyarı', variant: 'warning' },
@@ -29,7 +44,7 @@ const statusConfig: Record<string, { label: string; variant: 'success' | 'warnin
 };
 
 export function ProviderHealthCard() {
-  const { data, isLoading } = useQuery<{ providers: ProviderInfo[] }>({
+  const { data, isLoading } = useQuery<HealthData>({
     queryKey: ['provider-health'],
     queryFn: () => fetch('/api/health/providers').then((r) => r.json()),
     refetchInterval: 60_000,
@@ -111,6 +126,39 @@ export function ProviderHealthCard() {
           );
         })}
       </div>
+
+      {data.discoverySources && Object.keys(data.discoverySources).length > 0 && (
+        <div className="mt-5 pt-4 border-t border-border">
+          <p className="text-[11px] font-medium text-text-tertiary mb-2">Keşif Kaynakları</p>
+          <div className="space-y-1">
+            {Object.values(data.discoverySources).map((ds) => {
+              const inCooldown = ds.cooldownUntil && new Date(ds.cooldownUntil) > new Date();
+              const isBlocked = ds.blockedCount > 0;
+              return (
+                <div
+                  key={ds.source}
+                  className="flex items-center justify-between rounded-md px-3 py-1.5 text-[12px]"
+                >
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={`h-1.5 w-1.5 rounded-full ${
+                        inCooldown ? 'bg-amber-500' : isBlocked ? 'bg-rose-400' : ds.successCount > 0 ? 'bg-emerald-400' : 'bg-slate-300'
+                      }`}
+                    />
+                    <span className="text-text-secondary capitalize">{ds.source}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px] text-text-tertiary tabular-nums">
+                    {ds.successCount > 0 && <span className="text-emerald-600">{ds.successCount}✓</span>}
+                    {ds.failureCount > 0 && <span className="text-amber-600">{ds.failureCount}✗</span>}
+                    {ds.blockedCount > 0 && <span className="text-rose-500">{ds.blockedCount}× engel</span>}
+                    {inCooldown && <Badge variant="warning" size="sm">Soğuma</Badge>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

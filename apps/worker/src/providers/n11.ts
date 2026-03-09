@@ -7,7 +7,7 @@ export class N11Provider extends BaseProvider {
   retailerSlug = 'n11';
   retailerName = 'N11';
 
-  protected pacing = { baseDelayMs: 1500, jitterMs: 1000, concurrencyLimit: 1 };
+  protected pacing = { baseDelayMs: 2200, jitterMs: 1500, concurrencyLimit: 1 };
 
   protected getStrategies(): ScrapeStrategy[] {
     return [

@@ -1,6 +1,13 @@
 import * as cheerio from 'cheerio';
 import { TRUSTED_RETAILERS, parseTurkishPrice } from '@repo/shared';
 import type { TrustedRetailer } from '@repo/shared';
+import {
+  isDiscoverySourceAvailable,
+  recordDiscoverySuccess,
+  recordDiscoveryFailure,
+  recordDiscoveryBlocked,
+} from './provider-health';
+import { logDiscoveryAttempt } from './sync-logger';
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -186,7 +193,14 @@ function extractRedirectTarget(href: string, baseUrl: string): string {
   return href.startsWith('http') ? href : '';
 }
 
-async function fetchWithTimeout(url: string, timeoutMs = 15000): Promise<string | null> {
+interface FetchResult {
+  html: string | null;
+  status: number | null;
+  blocked: boolean;
+  error?: string;
+}
+
+async function fetchWithTimeout(url: string, timeoutMs = 15000): Promise<FetchResult> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -196,14 +210,16 @@ async function fetchWithTimeout(url: string, timeoutMs = 15000): Promise<string 
       redirect: 'follow',
     });
     if (!res.ok) {
+      const blocked = res.status === 403 || res.status === 429;
       console.warn(`[discovery] HTTP ${res.status} for ${url}`);
-      return null;
+      return { html: null, status: res.status, blocked };
     }
-    return await res.text();
+    const html = await res.text();
+    return { html, status: res.status, blocked: false };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(`[discovery] Fetch error for ${url}: ${msg}`);
-    return null;
+    return { html: null, status: null, blocked: false, error: msg };
   } finally {
     clearTimeout(timeoutId);
   }
@@ -373,18 +389,21 @@ async function queryAkakce(
   const searchUrl = `https://www.akakce.com/arama/?q=${encodeURIComponent(searchQuery)}`;
   console.log(`[discovery:akakce] Searching: ${searchUrl}`);
 
-  const html = await fetchWithTimeout(searchUrl);
-  if (!html) {
-    errors.push({
-      type: 'fallback_search_failed',
-      source: 'akakce',
-      message: `Failed to fetch search page`,
-      timestamp: new Date().toISOString(),
-    });
+  const fetchResult = await fetchWithTimeout(searchUrl);
+  if (fetchResult.blocked) {
+    recordDiscoveryBlocked('akakce');
+    logDiscoveryAttempt({ source: 'akakce', status: 'blocked', httpStatus: fetchResult.status ?? undefined });
+    errors.push({ type: 'fallback_search_failed', source: 'akakce', message: `Blocked (HTTP ${fetchResult.status})`, timestamp: new Date().toISOString() });
+    return { results, errors };
+  }
+  if (!fetchResult.html) {
+    recordDiscoveryFailure('akakce');
+    logDiscoveryAttempt({ source: 'akakce', status: 'failed', httpStatus: fetchResult.status ?? undefined });
+    errors.push({ type: 'fallback_search_failed', source: 'akakce', message: `Failed to fetch search page`, timestamp: new Date().toISOString() });
     return { results, errors };
   }
 
-  const $ = cheerio.load(html);
+  const $ = cheerio.load(fetchResult.html);
 
   // Strategy 1: Product listing items on search results
   // Akakçe search results typically have product cards with names, prices and store links
@@ -544,18 +563,21 @@ async function queryCimri(
   const searchUrl = `https://www.cimri.com/arama?q=${encodeURIComponent(searchQuery)}`;
   console.log(`[discovery:cimri] Searching: ${searchUrl}`);
 
-  const html = await fetchWithTimeout(searchUrl);
-  if (!html) {
-    errors.push({
-      type: 'fallback_search_failed',
-      source: 'cimri',
-      message: `Failed to fetch search page`,
-      timestamp: new Date().toISOString(),
-    });
+  const fetchResult = await fetchWithTimeout(searchUrl);
+  if (fetchResult.blocked) {
+    recordDiscoveryBlocked('cimri');
+    logDiscoveryAttempt({ source: 'cimri', status: 'blocked', httpStatus: fetchResult.status ?? undefined });
+    errors.push({ type: 'fallback_search_failed', source: 'cimri', message: `Blocked (HTTP ${fetchResult.status})`, timestamp: new Date().toISOString() });
+    return { results, errors };
+  }
+  if (!fetchResult.html) {
+    recordDiscoveryFailure('cimri');
+    logDiscoveryAttempt({ source: 'cimri', status: 'failed', httpStatus: fetchResult.status ?? undefined });
+    errors.push({ type: 'fallback_search_failed', source: 'cimri', message: `Failed to fetch search page`, timestamp: new Date().toISOString() });
     return { results, errors };
   }
 
-  const $ = cheerio.load(html);
+  const $ = cheerio.load(fetchResult.html);
 
   // Strategy 1: Product cards with retailer info
   $('[class*="ProductCard"], [data-testid*="product"], .product-card, article, [class*="product-item"]').each((_, el) => {
@@ -699,13 +721,21 @@ async function queryEnuygun(
   const searchUrl = `https://www.enuygun.com/arama/?q=${encodeURIComponent(searchQuery)}`;
   console.log(`[discovery:enuygun] Searching: ${searchUrl}`);
 
-  const html = await fetchWithTimeout(searchUrl);
-  if (!html) {
+  const fetchResult = await fetchWithTimeout(searchUrl);
+  if (fetchResult.blocked) {
+    recordDiscoveryBlocked('enuygun');
+    logDiscoveryAttempt({ source: 'enuygun', status: 'blocked', httpStatus: fetchResult.status ?? undefined });
+    errors.push({ type: 'fallback_search_failed', source: 'enuygun', message: `Blocked (HTTP ${fetchResult.status})`, timestamp: new Date().toISOString() });
+    return { results, errors };
+  }
+  if (!fetchResult.html) {
+    recordDiscoveryFailure('enuygun');
+    logDiscoveryAttempt({ source: 'enuygun', status: 'failed', httpStatus: fetchResult.status ?? undefined });
     errors.push({ type: 'fallback_search_failed', source: 'enuygun', message: 'Failed to fetch search page', timestamp: new Date().toISOString() });
     return { results, errors };
   }
 
-  const $ = cheerio.load(html);
+  const $ = cheerio.load(fetchResult.html);
 
   $('[class*="ProductCard"], [class*="product-card"], article, [class*="product-item"], li[class*="product"]').each((_, el) => {
     try {
@@ -809,13 +839,21 @@ async function queryEpey(
   const searchUrl = `https://www.epey.com/ara/${encodeURIComponent(searchQuery.replace(/\s+/g, '+'))}`;
   console.log(`[discovery:epey] Searching: ${searchUrl}`);
 
-  const html = await fetchWithTimeout(searchUrl);
-  if (!html) {
+  const fetchResult = await fetchWithTimeout(searchUrl);
+  if (fetchResult.blocked) {
+    recordDiscoveryBlocked('epey');
+    logDiscoveryAttempt({ source: 'epey', status: 'blocked', httpStatus: fetchResult.status ?? undefined });
+    errors.push({ type: 'fallback_search_failed', source: 'epey', message: `Blocked (HTTP ${fetchResult.status})`, timestamp: new Date().toISOString() });
+    return { results, errors };
+  }
+  if (!fetchResult.html) {
+    recordDiscoveryFailure('epey');
+    logDiscoveryAttempt({ source: 'epey', status: 'failed', httpStatus: fetchResult.status ?? undefined });
     errors.push({ type: 'fallback_search_failed', source: 'epey', message: 'Failed to fetch search page', timestamp: new Date().toISOString() });
     return { results, errors };
   }
 
-  const $ = cheerio.load(html);
+  const $ = cheerio.load(fetchResult.html);
 
   // Epey shows product cards with seller offer links
   $('[class*="product"], article, li[class*="item"], .listele .row, [class*="compare-item"]').each((_, el) => {
@@ -939,29 +977,51 @@ export async function queryFallbackSourcesDetailed(
 
   console.log(`[discovery] Querying fallback sources for: ${searchQuery}`);
 
-  // Query all 4 discovery sources in parallel
-  const [akakceResult, cimriResult, enuygunResult, epeyResult] = await Promise.allSettled([
-    queryAkakce(searchQuery, familyName, storageGb, color),
-    queryCimri(searchQuery, familyName, storageGb, color),
-    queryEnuygun(searchQuery, familyName, storageGb, color),
-    queryEpey(searchQuery, familyName, storageGb, color),
-  ]);
+  // Build the list of sources to query, skipping any that are blocked/in cooldown
+  type SourceEntry = { name: string; fn: () => Promise<{ results: DiscoveryResult[]; errors: DiscoveryError[] }> };
+  const sources: SourceEntry[] = [
+    { name: 'akakce', fn: () => queryAkakce(searchQuery, familyName, storageGb, color) },
+    { name: 'cimri', fn: () => queryCimri(searchQuery, familyName, storageGb, color) },
+    { name: 'enuygun', fn: () => queryEnuygun(searchQuery, familyName, storageGb, color) },
+    { name: 'epey', fn: () => queryEpey(searchQuery, familyName, storageGb, color) },
+  ];
 
   const allResults: DiscoveryResult[] = [];
   const allErrors: DiscoveryError[] = [];
   const sourcesQueried: string[] = [];
 
-  for (const [name, result] of [
-    ['akakce', akakceResult],
-    ['cimri', cimriResult],
-    ['enuygun', enuygunResult],
-    ['epey', epeyResult],
-  ] as const) {
+  const activeSources = sources.filter(s => {
+    if (!isDiscoverySourceAvailable(s.name)) {
+      console.log(`[discovery] Skipping ${s.name} — blocked/cooldown`);
+      allErrors.push({
+        type: 'fallback_search_failed',
+        source: s.name,
+        message: 'Skipped: source in cooldown',
+        timestamp: new Date().toISOString(),
+      });
+      return false;
+    }
+    return true;
+  });
+
+  // Query available sources in parallel
+  const settled = await Promise.allSettled(activeSources.map(s => s.fn()));
+
+  for (let i = 0; i < activeSources.length; i++) {
+    const name = activeSources[i].name;
+    const result = settled[i];
     sourcesQueried.push(name);
     if (result.status === 'fulfilled') {
+      const hasResults = result.value.results.length > 0;
+      if (hasResults) {
+        recordDiscoverySuccess(name);
+        logDiscoveryAttempt({ source: name, status: 'success', candidateCount: result.value.results.length });
+      }
       allResults.push(...result.value.results);
       allErrors.push(...result.value.errors);
     } else {
+      recordDiscoveryFailure(name);
+      logDiscoveryAttempt({ source: name, status: 'failed', error: result.reason?.message ?? String(result.reason) });
       console.warn(`[discovery] ${name} failed:`, result.reason?.message ?? result.reason);
       allErrors.push({
         type: 'fallback_search_failed',

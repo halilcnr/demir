@@ -7,7 +7,7 @@ export class PazaramaProvider extends BaseProvider {
   retailerSlug = 'pazarama';
   retailerName = 'Pazarama';
 
-  protected pacing = { baseDelayMs: 1500, jitterMs: 1000, concurrencyLimit: 1 };
+  protected pacing = { baseDelayMs: 2000, jitterMs: 1200, concurrencyLimit: 1 };
 
   protected getStrategies(): ScrapeStrategy[] {
     return [
