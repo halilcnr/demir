@@ -96,7 +96,7 @@ export async function processTasksUntilDone(syncJobId: string): Promise<{
     await recoverStaleTasks();
 
     let emptyRounds = 0;
-    const MAX_EMPTY_ROUNDS = 3; // Give up after 3 consecutive empty claims
+    const MAX_EMPTY_ROUNDS = 8; // Higher threshold for distributed safety with 5+ workers
 
     while (emptyRounds < MAX_EMPTY_ROUNDS) {
       // Claim a batch of tasks

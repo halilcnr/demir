@@ -11,9 +11,9 @@ import { resetAllConcurrency } from './distributed-rate-limiter';
 const STARTUP_DELAY_MS = parseInt(process.env.STARTUP_DELAY_MS ?? '5000', 10);
 
 // Leader lock — only one worker generates tasks per cycle
-const taskGenLock = new DistributedLock('task-generator', 120_000);
+export const taskGenLock = new DistributedLock('task-generator', 120_000);
 // Cleanup lock — one-time stale recovery
-const cleanupLock = new DistributedLock('sync-cleanup', 30_000);
+export const cleanupLock = new DistributedLock('sync-cleanup', 30_000);
 
 async function randomInterval(): Promise<number> {
   const config = await getWorkerConfig();

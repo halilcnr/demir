@@ -1,4 +1,4 @@
-import { startScheduler, getSchedulerState } from './scheduler';
+import { startScheduler, getSchedulerState, taskGenLock, cleanupLock } from './scheduler';
 import { createServer } from 'http';
 import { runSync } from './sync';
 import { getSyncLogs, getSyncProgress } from './sync-logger';
@@ -7,9 +7,9 @@ import { sendTestMessage, getTelegramStats, startTelegramPolling, sendCustomMess
 import { getWorkerConfig, invalidateConfigCache, MODE_PRESETS } from './worker-config';
 import { getAllProviderLiveMetrics, computeGlobalRiskScore, getRiskLevel, persistMetricsToDB } from './metrics-collector';
 import { getQueueDepth, getActiveRequests, estimateCycleDuration } from './provider-queue';
-import { WORKER_ID, startWorkerIdentity, stopWorkerIdentity, getClusterWorkers, getOnlineWorkerCount } from './worker-identity';
+import { WORKER_ID, startWorkerIdentity, stopWorkerIdentity, getClusterWorkers, getOnlineWorkerCount, cleanupDeadWorkers } from './worker-identity';
 import { initRateLimits, resetAllConcurrency } from './distributed-rate-limiter';
-import { getTaskQueueStats } from './task-queue';
+import { getTaskQueueStats, cleanupOldTasks } from './task-queue';
 import { getTaskWorkerState } from './task-worker';
 
 const startedAt = new Date().toISOString();
@@ -366,6 +366,12 @@ setInterval(() => {
   persistMetricsToDB().catch(() => {});
 }, 60_000);
 
+// Periodic housekeeping — dead workers + old tasks (every 10 min)
+setInterval(() => {
+  cleanupDeadWorkers().catch(() => {});
+  cleanupOldTasks().catch(() => {});
+}, 10 * 60_000);
+
 // Initialize distributed worker identity + rate limits, then start scheduler
 (async () => {
   try {
@@ -381,14 +387,22 @@ setInterval(() => {
   }
 })();
 
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  console.log('[worker] SIGTERM received — shutting down...');
-  await stopWorkerIdentity();
+// Graceful shutdown with lock release + timeout
+async function gracefulShutdown(signal: string) {
+  console.log(`[worker] ${signal} received — shutting down...`);
+  const forceExit = setTimeout(() => {
+    console.error('[worker] Shutdown timeout — forcing exit');
+    process.exit(1);
+  }, 10_000);
+  try {
+    await Promise.allSettled([
+      taskGenLock.release(),
+      cleanupLock.release(),
+      stopWorkerIdentity(),
+    ]);
+  } catch { /* swallow */ }
+  clearTimeout(forceExit);
   process.exit(0);
-});
-process.on('SIGINT', async () => {
-  console.log('[worker] SIGINT received — shutting down...');
-  await stopWorkerIdentity();
-  process.exit(0);
-});
+}
+process.on('SIGTERM', () => { gracefulShutdown('SIGTERM'); });
+process.on('SIGINT', () => { gracefulShutdown('SIGINT'); });
