@@ -1,4 +1,5 @@
 import { prisma } from '@repo/shared';
+import { DistributedLock, INSTANCE_ID } from '../distributed-lock';
 
 // ─── Configuration ───────────────────────────────────────────────
 const TELEGRAM_ENABLED = process.env.TELEGRAM_ENABLED === 'true';
@@ -9,6 +10,8 @@ const ENV_MIN_DROP_PERCENT = parseFloat(process.env.NOTIFY_DROP_PERCENT ?? '1');
 const ENV_MIN_DROP_AMOUNT = parseFloat(process.env.NOTIFY_DROP_AMOUNT ?? '100');
 const ENV_COOLDOWN_MS = parseInt(process.env.NOTIFY_COOLDOWN_MS ?? String(4 * 60 * 60 * 1000), 10);
 const POLL_INTERVAL_MS = 30_000; // getUpdates polling interval
+
+const telegramPollLock = new DistributedLock('telegram-poll', 60_000);
 
 // ─── DB Settings Cache ───────────────────────────────────────────
 interface CachedSettings {
@@ -242,6 +245,40 @@ export async function notifyPriceDrop(payload: PriceDropPayload): Promise<void> 
     return;
   }
 
+  // ── Atomic claim: prevent duplicate sends across replicas ──
+  // Only proceed if we successfully mark this listing as "notification claimed"
+  // The WHERE clause ensures only one replica wins the race.
+  const cooldownMs = (await getNotifySettings()).notifyCooldownMinutes * 60_000;
+  const cooldownThreshold = new Date(Date.now() - cooldownMs);
+
+  const claimed = await prisma.listing.updateMany({
+    where: {
+      id: payload.listingId,
+      OR: [
+        { lastNotifiedPrice: { not: payload.newPrice } },
+        { lastNotifiedPrice: null },
+      ],
+      AND: [
+        {
+          OR: [
+            { notificationSentAt: null },
+            { notificationSentAt: { lt: cooldownThreshold } },
+          ],
+        },
+      ],
+    },
+    data: {
+      lastNotifiedPrice: payload.newPrice,
+      notificationSentAt: new Date(),
+    },
+  });
+
+  if (claimed.count === 0) {
+    skippedCount++;
+    console.log(`[telegram] Skipped ${payload.retailerSlug} ${payload.variantLabel}: already claimed by another replica`);
+    return;
+  }
+
   const message = buildPriceDropMessage(payload);
   const result = await broadcast(message);
 
@@ -266,16 +303,6 @@ export async function notifyPriceDrop(payload: PriceDropPayload): Promise<void> 
         listingId: payload.listingId,
       },
     }).catch(() => {});
-
-    await prisma.listing.update({
-      where: { id: payload.listingId },
-      data: {
-        lastNotifiedPrice: payload.newPrice,
-        notificationSentAt: new Date(),
-      },
-    }).catch((err) => {
-      console.error('[telegram] Failed to update notification tracking:', err instanceof Error ? err.message : err);
-    });
   } else {
     failCount++;
     console.error(`[telegram] ✗ Broadcast failed: ${result.failed} failure(s), 0 sent`);
@@ -552,18 +579,27 @@ async function processUpdates(): Promise<void> {
   }
 }
 
-/** Start polling for /start and /stop commands. Call once at worker boot. */
+/** Start polling for /start and /stop commands. Only one replica polls at a time. */
 export function startTelegramPolling(): void {
   if (!TELEGRAM_ENABLED || !TELEGRAM_BOT_TOKEN) {
     console.log('[telegram] Disabled or no token — polling not started');
     return;
   }
 
-  console.log('[telegram] Subscriber polling started');
+  console.log(`[telegram] Attempting to start subscriber polling (instance ${INSTANCE_ID.slice(0, 8)})`);
+
+  async function pollCycle() {
+    // Only poll if we hold the telegram lock
+    const acquired = await telegramPollLock.tryAcquire();
+    if (acquired) {
+      await processUpdates().catch(() => {});
+    }
+  }
+
   // Run once immediately, then on interval
-  processUpdates().catch(() => {});
+  pollCycle();
   pollTimer = setInterval(() => {
-    processUpdates().catch(() => {});
+    pollCycle();
   }, POLL_INTERVAL_MS);
 }
 

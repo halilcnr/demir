@@ -7,6 +7,7 @@ import { sendTestMessage, getTelegramStats, startTelegramPolling, sendCustomMess
 import { getWorkerConfig, invalidateConfigCache, MODE_PRESETS } from './worker-config';
 import { getAllProviderLiveMetrics, computeGlobalRiskScore, getRiskLevel, persistMetricsToDB } from './metrics-collector';
 import { getQueueDepth, getActiveRequests, estimateCycleDuration } from './provider-queue';
+import { INSTANCE_ID } from './distributed-lock';
 
 const startedAt = new Date().toISOString();
 console.log('=== iPhone Price Tracker Worker ===');
@@ -30,6 +31,8 @@ const server = createServer(async (req, res) => {
     res.writeHead(200);
     res.end(JSON.stringify({
       ok: true,
+      instanceId: INSTANCE_ID.slice(0, 8),
+      isLeader: scheduler.isLeader,
       syncing: isSyncing || scheduler.syncRunning,
       startedAt,
       uptime: Math.round((Date.now() - new Date(startedAt).getTime()) / 1000),
@@ -87,7 +90,18 @@ const server = createServer(async (req, res) => {
 
     if (isSyncing) {
       res.writeHead(409);
-      res.end(JSON.stringify({ error: 'Sync already in progress' }));
+      res.end(JSON.stringify({ error: 'Sync already in progress on this instance' }));
+      return;
+    }
+
+    // Cross-replica guard: check if any sync job is running in DB
+    const { prisma: db } = await import('@repo/shared');
+    const runningJob = await db.syncJob.findFirst({
+      where: { status: 'RUNNING', startedAt: { gt: new Date(Date.now() - 30 * 60 * 1000) } },
+    });
+    if (runningJob) {
+      res.writeHead(409);
+      res.end(JSON.stringify({ error: 'Sync already running on another replica', jobId: runningJob.id }));
       return;
     }
 

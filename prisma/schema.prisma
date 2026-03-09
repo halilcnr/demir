@@ -442,3 +442,12 @@ model ProviderMetrics {
   @@index([healthScore])
   @@index([riskScore])
 }
+
+// ─── Distributed Lock (leader election) ─────────────────────────
+model DistributedLock {
+  id          String   @id              // e.g. "scheduler", "telegram-poll"
+  holder      String                    // instance UUID holding the lock
+  acquiredAt  DateTime @default(now())
+  expiresAt   DateTime                  // auto-expire if holder crashes
+  renewedAt   DateTime @default(now())
+}
