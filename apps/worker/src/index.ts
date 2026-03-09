@@ -94,17 +94,6 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    // Cross-replica guard: check if any sync job is running in DB
-    const { prisma: db } = await import('@repo/shared');
-    const runningJob = await db.syncJob.findFirst({
-      where: { status: 'RUNNING', startedAt: { gt: new Date(Date.now() - 30 * 60 * 1000) } },
-    });
-    if (runningJob) {
-      res.writeHead(409);
-      res.end(JSON.stringify({ error: 'Sync already running on another replica', jobId: runningJob.id }));
-      return;
-    }
-
     // Read body to get optional variantId
     let body = '';
     req.on('data', (chunk: Buffer) => { body += chunk.toString(); });

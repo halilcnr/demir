@@ -27,6 +27,33 @@ import { queryFallbackSourcesDetailed } from './discovery';
 import { notifyPriceDrop } from './services/telegram';
 import { recordMetricEvent, recordCircuitSuccess, recordCircuitFailure, isCircuitOpen, incrementProviderCounter } from './metrics-collector';
 import { getAdaptiveDelay } from './provider-queue';
+import { INSTANCE_ID } from './distributed-lock';
+
+/**
+ * Atomic listing claim window (ms).
+ * A listing claimed within this window won't be re-claimed by another replica.
+ * This enables true parallel work distribution across replicas.
+ */
+const CLAIM_WINDOW_MS = 3 * 60 * 1000; // 3 minutes
+
+/**
+ * Atomically claim a listing for this replica.
+ * Returns true if claimed, false if another replica already has it.
+ */
+async function claimListing(listingId: string): Promise<boolean> {
+  const threshold = new Date(Date.now() - CLAIM_WINDOW_MS);
+  const result = await prisma.listing.updateMany({
+    where: {
+      id: listingId,
+      OR: [
+        { lastCheckedAt: null },
+        { lastCheckedAt: { lt: threshold } },
+      ],
+    },
+    data: { lastCheckedAt: new Date() },
+  });
+  return result.count > 0;
+}
 
 /**
  * Tüm retailer'lardan veya belirli bir retailer'dan fiyat güncellemesi yapar.
@@ -149,6 +176,12 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
           startedAt: new Date(startMs).toISOString(),
         });
 
+        // Atomic claim: skip if another replica already handles this listing
+        if (!(await claimListing(listing.id))) {
+          logScrapeAttempt({ retailer: slug, variant: variantLabel, status: 'skipped_blocked', error: 'claimed by another replica' });
+          continue;
+        }
+
         // Skip if blocked this cycle
         if (isBlockedThisCycle(slug)) {
           addSyncLog({ type: 'warn', retailer: slug, variant: variantLabel, message: `${slug} engellendi, atlanıyor` });
@@ -175,12 +208,6 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
           if (listing.productUrl.includes('/search?q=') || listing.productUrl.includes('/ara?q=') || listing.productUrl.includes('/arama?q=') || listing.productUrl.includes('/s?k=') || listing.productUrl.includes('/sr?q=')) {
             continue;
           }
-
-          // Mark as checked
-          await prisma.listing.update({
-            where: { id: listing.id },
-            data: { lastCheckedAt: new Date() },
-          });
 
           const result = await provider.scrapeProductPage(listing.productUrl);
           itemsScanned++;
