@@ -64,7 +64,7 @@ export function normalizeIPhoneModel(
   const lower = title.toLowerCase();
 
   // iPhone model pattern: iPhone XX (Pro|Pro Max|Plus|Mini)?
-  const modelMatch = lower.match(/iphone\s*(\d{2,3})\s*(pro\s*max|pro|plus|mini)?/);
+  const modelMatch = lower.match(/iphone\s*(\d{2,3})\s*(pro\s*max|pro|plus|mini|air)?/);
   if (!modelMatch) return null;
 
   const number = modelMatch[1];

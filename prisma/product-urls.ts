@@ -396,26 +396,82 @@ export const PRODUCT_URLS: ProductUrlMap = {
   // ═══════════════════════════════════════════════════════
   //  iPhone 16 Pro — 128 GB
   // ═══════════════════════════════════════════════════════
-  'iphone-16-pro-128gb-natural-titanium': {},
-  'iphone-16-pro-128gb-black-titanium': {},
-  'iphone-16-pro-128gb-white-titanium': {},
-  'iphone-16-pro-128gb-desert-titanium': {},
+  'iphone-16-pro-128gb-natural-titanium': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-pro-128gb-naturel-titanyum-p-HBCV00006Y4HBL',
+    trendyol: 'https://www.trendyol.com/apple/iphone-16-pro-128gb-naturel-titanyum-p-857296098',
+    n11: 'https://www.n11.com/urun/apple-iphone-16-pro-128-gb-apple-turkiye-garantili-59257799',
+    amazon: 'https://www.amazon.com.tr/dp/B0DGJQXCTP',
+    pazarama: 'https://www.pazarama.com/apple-iphone-16-pro-128-gb-naturel-titanyum-p-195949771750',
+  },
+  'iphone-16-pro-128gb-black-titanium': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-pro-128gb-siyah-p-HBCV00006Y4HBH',
+    trendyol: 'https://www.trendyol.com/apple/iphone-16-pro-128gb-siyah-titanyum-p-857296083',
+    n11: 'https://www.n11.com/urun/apple-iphone-16-pro-128-gb-apple-turkiye-garantili-59257799',
+    amazon: 'https://www.amazon.com.tr/dp/B0DGJKMM4B',
+    pazarama: 'https://www.pazarama.com/apple-iphone-16-pro-128-gb-siyah-titanyum-p-195949771187',
+  },
+  'iphone-16-pro-128gb-white-titanium': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-pro-128gb-beyaz-p-HBCV00006Y4HBJ',
+    trendyol: 'https://www.trendyol.com/apple/iphone-16-pro-128gb-beyaz-titanyum-p-857296096',
+    n11: 'https://www.n11.com/urun/apple-iphone-16-pro-128-gb-apple-turkiye-garantili-59257799',
+    amazon: 'https://www.amazon.com.tr/dp/B0DGJ9QW7D',
+    pazarama: 'https://www.pazarama.com/apple-iphone-16-pro-128-gb-beyaz-titanyum-p-195949771378',
+  },
+  'iphone-16-pro-128gb-desert-titanium': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-pro-128gb-col-titanyum-p-HBCV00006Y4HGL',
+    trendyol: 'https://www.trendyol.com/apple/iphone-16-pro-128gb-col-titanyum-p-857296094',
+    n11: 'https://www.n11.com/urun/apple-iphone-16-pro-128-gb-apple-turkiye-garantili-59257799',
+    amazon: 'https://www.amazon.com.tr/dp/B0DGJFQTFN',
+    pazarama: 'https://www.pazarama.com/apple-iphone-16-pro-128-gb-col-titanyum-p-195949771569',
+  },
 
   // ═══════════════════════════════════════════════════════
   //  iPhone 16 Pro — 256 GB
   // ═══════════════════════════════════════════════════════
-  'iphone-16-pro-256gb-natural-titanium': {},
-  'iphone-16-pro-256gb-black-titanium': {},
-  'iphone-16-pro-256gb-white-titanium': {},
-  'iphone-16-pro-256gb-desert-titanium': {},
+  'iphone-16-pro-256gb-natural-titanium': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-pro-256gb-naturel-titanyum-p-HBCV00006Y4HBT',
+    trendyol: 'https://www.trendyol.com/apple/iphone-16-pro-256gb-naturel-titanyum-p-857296100',
+    n11: 'https://www.n11.com/urun/apple-iphone-16-pro-256-gb-apple-turkiye-garantili-59257800',
+    pazarama: 'https://www.pazarama.com/apple-iphone-16-pro-256-gb-naturel-titanyum-p-195949772511',
+  },
+  'iphone-16-pro-256gb-black-titanium': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-pro-256gb-siyah-p-HBCV00006Y4HBN',
+    trendyol: 'https://www.trendyol.com/apple/iphone-16-pro-256gb-siyah-titanyum-p-857296104',
+    amazon: 'https://www.amazon.com.tr/dp/B0DGJLK6RJ',
+    pazarama: 'https://www.pazarama.com/apple-iphone-16-pro-256-gb-siyah-titanyum-p-195949771941',
+  },
+  'iphone-16-pro-256gb-white-titanium': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-pro-256gb-beyaz-p-HBCV00006Y4HBP',
+    trendyol: 'https://www.trendyol.com/apple/iphone-16-pro-256gb-beyaz-titanyum-p-857296076',
+    amazon: 'https://www.amazon.com.tr/dp/B0DGJN2MV7',
+    pazarama: 'https://www.pazarama.com/apple-iphone-16-pro-256-gb-beyaz-titanyum-p-195949772139',
+  },
+  'iphone-16-pro-256gb-desert-titanium': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-pro-256gb-col-titanyum-p-HBCV00006Y4HBR',
+    trendyol: 'https://www.trendyol.com/apple/iphone-16-pro-256gb-col-titanyum-p-857296087',
+    amazon: 'https://www.amazon.com.tr/dp/B0DGJJPYGJ',
+    pazarama: 'https://www.pazarama.com/apple-iphone-16-pro-256-gb-col-titanyum-p-195949772320',
+  },
 
   // ═══════════════════════════════════════════════════════
   //  iPhone 16 Pro — 512 GB
   // ═══════════════════════════════════════════════════════
-  'iphone-16-pro-512gb-natural-titanium': {},
-  'iphone-16-pro-512gb-black-titanium': {},
-  'iphone-16-pro-512gb-white-titanium': {},
-  'iphone-16-pro-512gb-desert-titanium': {},
+  'iphone-16-pro-512gb-natural-titanium': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-pro-512gb-naturel-titanyum-p-HBCV00006Y4HGP',
+    trendyol: 'https://www.trendyol.com/apple/iphone-16-pro-512gb-naturel-titanyum-p-857296111',
+    pazarama: 'https://www.pazarama.com/apple-iphone-16-pro-512-gb-naturel-titanyum-p-195949773273',
+  },
+  'iphone-16-pro-512gb-black-titanium': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-pro-512gb-siyah-p-HBCV00006Y4HBV',
+    trendyol: 'https://www.trendyol.com/apple/iphone-16-pro-512gb-siyah-titanyum-p-857296089',
+  },
+  'iphone-16-pro-512gb-white-titanium': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-pro-512gb-beyaz-p-HBCV00006Y4HGN',
+    trendyol: 'https://www.trendyol.com/apple/iphone-16-pro-512gb-beyaz-titanyum-p-857296085',
+  },
+  'iphone-16-pro-512gb-desert-titanium': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-pro-512gb-col-titanyum-p-HBCV00006Y4HBX',
+  },
 
   // ═══════════════════════════════════════════════════════
   //  iPhone 16 Pro — 1 TB
@@ -423,31 +479,71 @@ export const PRODUCT_URLS: ProductUrlMap = {
   'iphone-16-pro-1tb-natural-titanium': {},
   'iphone-16-pro-1tb-black-titanium': {},
   'iphone-16-pro-1tb-white-titanium': {},
-  'iphone-16-pro-1tb-desert-titanium': {},
+  'iphone-16-pro-1tb-desert-titanium': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-pro-1-tb-col-beji-p-HBCV00006Y4HC1',
+    trendyol: 'https://www.trendyol.com/apple/iphone-16-pro-1tb-col-titanyum-p-857296107',
+  },
 
   // ═══════════════════════════════════════════════════════
   //  iPhone 16 Pro Max — 256 GB
   // ═══════════════════════════════════════════════════════
-  'iphone-16-pro-max-256gb-natural-titanium': {},
-  'iphone-16-pro-max-256gb-black-titanium': {},
-  'iphone-16-pro-max-256gb-white-titanium': {},
-  'iphone-16-pro-max-256gb-desert-titanium': {},
+  'iphone-16-pro-max-256gb-natural-titanium': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-pro-max-256gb-naturel-titanyum-p-HBCV00006Y4HC7',
+    trendyol: 'https://www.trendyol.com/apple/iphone-16-pro-max-256gb-naturel-titanyum-p-857296078',
+    pazarama: 'https://www.pazarama.com/apple-iphone-16-pro-max-256-gb-naturel-titanyum-p-195949806360',
+  },
+  'iphone-16-pro-max-256gb-black-titanium': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-pro-max-256gb-siyah-p-HBCV00006Y4HGT',
+    trendyol: 'https://www.trendyol.com/apple/iphone-16-pro-max-256gb-siyah-titanyum-p-857296077',
+    pazarama: 'https://www.pazarama.com/apple-iphone-16-pro-max-256-gb-siyah-titanyum-p-195949805790',
+  },
+  'iphone-16-pro-max-256gb-white-titanium': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-pro-max-256gb-beyaz-p-HBCV00006Y4HGV',
+    pazarama: 'https://www.pazarama.com/apple-iphone-16-pro-max-256-gb-beyaz-titanyum-p-195949805981',
+  },
+  'iphone-16-pro-max-256gb-desert-titanium': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-pro-max-256gb-col-titanyum-p-HBCV00006Y4HC5',
+    trendyol: 'https://www.trendyol.com/apple/iphone-16-pro-max-256gb-col-titanyum-p-857296109',
+    pazarama: 'https://www.pazarama.com/apple-iphone-16-pro-max-256-gb-col-titanyum-p-195949806179',
+  },
 
   // ═══════════════════════════════════════════════════════
   //  iPhone 16 Pro Max — 512 GB
   // ═══════════════════════════════════════════════════════
-  'iphone-16-pro-max-512gb-natural-titanium': {},
-  'iphone-16-pro-max-512gb-black-titanium': {},
-  'iphone-16-pro-max-512gb-white-titanium': {},
-  'iphone-16-pro-max-512gb-desert-titanium': {},
+  'iphone-16-pro-max-512gb-natural-titanium': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-pro-max-512gb-naturel-titanyum-p-HBCV00006Y4I9R',
+  },
+  'iphone-16-pro-max-512gb-black-titanium': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-pro-max-512gb-siyah-p-HBCV00006Y4HC9',
+    trendyol: 'https://www.trendyol.com/apple/iphone-16-pro-max-512gb-siyah-titanyum-p-857296090',
+    pazarama: 'https://www.pazarama.com/apple-iphone-16-pro-max-512-8-gb-ram-5g-apple-turkiye-garantili-p-195949806551',
+  },
+  'iphone-16-pro-max-512gb-white-titanium': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-pro-max-512gb-beyaz-p-HBCV00006Y4HCB',
+    trendyol: 'https://www.trendyol.com/apple/iphone-16-pro-max-512gb-beyaz-titanyum-p-857296091',
+    pazarama: 'https://www.pazarama.com/apple-iphone-16-pro-max-512-8-gb-ram-5g-apple-turkiye-garantili-p-195949806742',
+  },
+  'iphone-16-pro-max-512gb-desert-titanium': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-pro-max-512gb-col-titanyum-p-HBCV00006Y4I9P',
+    trendyol: 'https://www.trendyol.com/apple/iphone-16-pro-max-512gb-col-titanyum-p-857296093',
+    pazarama: 'https://www.pazarama.com/apple-iphone-16-pro-max-512-8-gb-ram-5g-apple-turkiye-garantili-p-195949806933',
+  },
 
   // ═══════════════════════════════════════════════════════
   //  iPhone 16 Pro Max — 1 TB
   // ═══════════════════════════════════════════════════════
-  'iphone-16-pro-max-1tb-natural-titanium': {},
-  'iphone-16-pro-max-1tb-black-titanium': {},
+  'iphone-16-pro-max-1tb-natural-titanium': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-pro-max-1-tb-naturel-titanyum-p-HBCV00006Y4I9Z',
+  },
+  'iphone-16-pro-max-1tb-black-titanium': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-pro-max-1-tb-siyah-p-HBCV00006Y4I9T',
+    trendyol: 'https://www.trendyol.com/apple/iphone-16-pro-max-1tb-siyah-titanyum-p-857296092',
+  },
   'iphone-16-pro-max-1tb-white-titanium': {},
-  'iphone-16-pro-max-1tb-desert-titanium': {},
+  'iphone-16-pro-max-1tb-desert-titanium': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-pro-max-1-tb-col-beji-p-HBCV00006Y4I9X',
+    trendyol: 'https://www.trendyol.com/apple/iphone-16-pro-max-1tb-col-titanyum-p-857296132',
+  },
 
   // ═══════════════════════════════════════════════════════
   //  iPhone 17 — 256 GB

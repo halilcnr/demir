@@ -22,6 +22,7 @@ const MODEL_FILTERS = [
   { label: '16 Pro', value: 'iPhone 16 Pro' },
   { label: '16 Pro Max', value: 'iPhone 16 Pro Max' },
   { label: 'iPhone 17', value: 'iPhone 17' },
+  { label: '17 Air', value: 'iPhone 17 Air' },
   { label: '17 Pro', value: 'iPhone 17 Pro' },
   { label: '17 Pro Max', value: 'iPhone 17 Pro Max' },
 ] as const;
