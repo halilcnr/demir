@@ -15,9 +15,14 @@ const TRIGGER_SECRET = process.env.SYNC_TRIGGER_SECRET ?? '';
 export async function GET() {
   try {
     // Fetch from worker and DB in parallel
-    const [workerStats, providerMetrics, config, lastJob, listingCount] = await Promise.all([
+    const [workerStats, clusterStatus, providerMetrics, config, lastJob, listingCount] = await Promise.all([
       fetch(`${WORKER_URL}/ops/stats`, {
         headers: TRIGGER_SECRET ? { 'Authorization': `Bearer ${TRIGGER_SECRET}` } : {},
+        signal: AbortSignal.timeout(5_000),
+      })
+        .then(r => r.ok ? r.json() : null)
+        .catch(() => null),
+      fetch(`${WORKER_URL}/cluster-status`, {
         signal: AbortSignal.timeout(5_000),
       })
         .then(r => r.ok ? r.json() : null)
@@ -67,6 +72,7 @@ export async function GET() {
         blockedCount: lastJob.blockedCount,
       } : null,
       totalListings: listingCount,
+      cluster: clusterStatus,
     });
   } catch (err) {
     return NextResponse.json(

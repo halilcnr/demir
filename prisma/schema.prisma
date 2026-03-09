@@ -319,6 +319,7 @@ model SyncJob {
   createdAt      DateTime   @default(now())
 
   retailer Retailer? @relation(fields: [retailerId], references: [id])
+  tasks    ScrapeTask[]
 
   @@index([status])
   @@index([createdAt])
@@ -450,4 +451,75 @@ model DistributedLock {
   acquiredAt  DateTime @default(now())
   expiresAt   DateTime                  // auto-expire if holder crashes
   renewedAt   DateTime @default(now())
+}
+
+// ─── Scrape Task Queue (distributed work items) ─────────────────
+model ScrapeTask {
+  id            String          @id @default(cuid())
+  syncJobId     String
+  listingId     String
+  retailerSlug  String
+  variantLabel  String
+  productUrl    String
+  priority      Int             @default(0)     // higher = dequeue first
+
+  status        ScrapeTaskStatus @default(PENDING)
+  lockedBy      String?                         // worker instance id
+  lockedAt      DateTime?
+  completedAt   DateTime?
+
+  // Result
+  resultPrice   Float?
+  resultStatus  String?                         // success, failure, blocked, skipped
+  errorMessage  String?
+  responseTimeMs Int?
+
+  createdAt     DateTime        @default(now())
+
+  syncJob       SyncJob         @relation(fields: [syncJobId], references: [id], onDelete: Cascade)
+
+  @@index([status, priority])
+  @@index([syncJobId])
+  @@index([retailerSlug, status])
+  @@index([lockedBy])
+  @@index([lockedAt])
+}
+
+enum ScrapeTaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
+// ─── Worker Heartbeat (cluster identity & monitoring) ────────────
+model WorkerHeartbeat {
+  id              String   @id              // worker instance UUID
+  hostname        String
+  startedAt       DateTime @default(now())
+  lastHeartbeatAt DateTime @default(now())
+  status          String   @default("idle") // idle, busy, stopping
+  currentTaskId   String?
+  tasksCompleted  Int      @default(0)
+  tasksFailed     Int      @default(0)
+  tasksSkipped    Int      @default(0)
+  avgTaskTimeMs   Float    @default(0)
+  concurrency     Int      @default(5)
+
+  @@index([lastHeartbeatAt])
+  @@index([status])
+}
+
+// ─── Provider Rate Limits (distributed throttling) ───────────────
+model ProviderRateLimit {
+  id                String   @id              // retailer slug
+  maxPerMinute      Int      @default(20)
+  currentCount      Int      @default(0)
+  windowStart       DateTime @default(now())
+  maxConcurrency    Int      @default(3)
+  currentConcurrency Int     @default(0)
+  updatedAt         DateTime @updatedAt
+
+  @@index([id])
 }

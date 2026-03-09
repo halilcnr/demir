@@ -7,7 +7,10 @@ import { sendTestMessage, getTelegramStats, startTelegramPolling, sendCustomMess
 import { getWorkerConfig, invalidateConfigCache, MODE_PRESETS } from './worker-config';
 import { getAllProviderLiveMetrics, computeGlobalRiskScore, getRiskLevel, persistMetricsToDB } from './metrics-collector';
 import { getQueueDepth, getActiveRequests, estimateCycleDuration } from './provider-queue';
-import { INSTANCE_ID } from './distributed-lock';
+import { WORKER_ID, startWorkerIdentity, stopWorkerIdentity, getClusterWorkers, getOnlineWorkerCount } from './worker-identity';
+import { initRateLimits, resetAllConcurrency } from './distributed-rate-limiter';
+import { getTaskQueueStats } from './task-queue';
+import { getTaskWorkerState } from './task-worker';
 
 const startedAt = new Date().toISOString();
 console.log('=== iPhone Price Tracker Worker ===');
@@ -31,7 +34,7 @@ const server = createServer(async (req, res) => {
     res.writeHead(200);
     res.end(JSON.stringify({
       ok: true,
-      instanceId: INSTANCE_ID.slice(0, 8),
+      instanceId: WORKER_ID.slice(0, 12),
       isLeader: scheduler.isLeader,
       syncing: isSyncing || scheduler.syncRunning,
       startedAt,
@@ -39,6 +42,27 @@ const server = createServer(async (req, res) => {
       cycleCount: scheduler.cycleCount,
       intervalMs: scheduler.intervalMs,
       lastSync: scheduler.lastSyncResult,
+    }));
+    return;
+  }
+
+  // Cluster status — all workers + task queue
+  if (req.method === 'GET' && req.url === '/cluster-status') {
+    const workers = await getClusterWorkers();
+    const onlineCount = workers.filter(w => w.isAlive).length;
+    const taskStats = await getTaskQueueStats();
+    const tw = getTaskWorkerState();
+    res.writeHead(200);
+    res.end(JSON.stringify({
+      workerId: WORKER_ID,
+      onlineWorkers: onlineCount,
+      workers,
+      taskQueue: taskStats,
+      thisWorker: {
+        isProcessing: tw.isProcessing,
+        currentSyncJobId: tw.currentSyncJobId,
+        concurrency: tw.concurrency,
+      },
     }));
     return;
   }
@@ -239,6 +263,9 @@ const server = createServer(async (req, res) => {
     const activeReqs = getActiveRequests();
     const totalListings = progress.totalListings || 0;
     const estimate = await estimateCycleDuration(totalListings, 2000);
+    const onlineWorkers = await getOnlineWorkerCount();
+    const taskStats = await getTaskQueueStats();
+    const tw = getTaskWorkerState();
 
     res.writeHead(200);
     res.end(JSON.stringify({
@@ -256,6 +283,16 @@ const server = createServer(async (req, res) => {
       estimate,
       modePresets: MODE_PRESETS,
       progress,
+      cluster: {
+        workerId: WORKER_ID,
+        onlineWorkers,
+        taskQueue: taskStats,
+        thisWorker: {
+          isProcessing: tw.isProcessing,
+          currentSyncJobId: tw.currentSyncJobId,
+          concurrency: tw.concurrency,
+        },
+      },
     }));
     return;
   }
@@ -329,7 +366,29 @@ setInterval(() => {
   persistMetricsToDB().catch(() => {});
 }, 60_000);
 
-startScheduler().catch((err) => {
-  console.error('[worker] Kritik hata:', err);
-  process.exit(1);
+// Initialize distributed worker identity + rate limits, then start scheduler
+(async () => {
+  try {
+    const config = await getWorkerConfig();
+    await startWorkerIdentity(config.globalConcurrency);
+    await initRateLimits();
+    await resetAllConcurrency();
+    console.log(`[worker] ✅ Worker identity registered: ${WORKER_ID}`);
+    await startScheduler();
+  } catch (err) {
+    console.error('[worker] Kritik hata:', err);
+    process.exit(1);
+  }
+})();
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('[worker] SIGTERM received — shutting down...');
+  await stopWorkerIdentity();
+  process.exit(0);
+});
+process.on('SIGINT', async () => {
+  console.log('[worker] SIGINT received — shutting down...');
+  await stopWorkerIdentity();
+  process.exit(0);
 });
