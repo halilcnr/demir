@@ -38,23 +38,25 @@ export class DistributedLock {
     const expiresAt = new Date(now.getTime() + this.ttlMs);
 
     try {
-      // Try to create the lock (first instance wins)
-      await prisma.distributedLock.create({
-        data: {
-          id: this.lockId,
-          holder: INSTANCE_ID,
-          acquiredAt: now,
-          expiresAt,
-          renewedAt: now,
-        },
-      });
-      return true;
-    } catch {
-      // Lock row exists — check if expired or ours
-    }
+      // Upsert: create if missing, otherwise only take over if expired or already ours
+      const existing = await prisma.distributedLock.findUnique({ where: { id: this.lockId } });
 
-    try {
-      // Try to take over an expired lock, or renew our own
+      if (!existing) {
+        // No lock row — create it (first instance wins)
+        await prisma.distributedLock.create({
+          data: {
+            id: this.lockId,
+            holder: INSTANCE_ID,
+            acquiredAt: now,
+            expiresAt,
+            renewedAt: now,
+          },
+        }).catch(() => {
+          // Race: another replica created it between findUnique and create — fall through
+        });
+      }
+
+      // Take over expired lock, or renew our own
       const result = await prisma.distributedLock.updateMany({
         where: {
           id: this.lockId,
