@@ -27,6 +27,8 @@ const MODEL_FAMILIES = [
   'iPhone 14',
   'iPhone 15',
   'iPhone 16',
+  'iPhone 16 Pro',
+  'iPhone 16 Pro Max',
   'iPhone 17',
   'iPhone 17 Air',
   'iPhone 17 Pro',

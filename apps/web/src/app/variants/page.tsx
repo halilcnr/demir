@@ -19,6 +19,8 @@ const MODEL_FILTERS = [
   { label: 'iPhone 14', value: 'iPhone 14' },
   { label: 'iPhone 15', value: 'iPhone 15' },
   { label: 'iPhone 16', value: 'iPhone 16' },
+  { label: '16 Pro', value: 'iPhone 16 Pro' },
+  { label: '16 Pro Max', value: 'iPhone 16 Pro Max' },
   { label: 'iPhone 17', value: 'iPhone 17' },
   { label: '17 Pro', value: 'iPhone 17 Pro' },
   { label: '17 Pro Max', value: 'iPhone 17 Pro Max' },
