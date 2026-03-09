@@ -4,6 +4,9 @@ import { runSync } from './sync';
 import { getSyncLogs, getSyncProgress } from './sync-logger';
 import { getAllProviderHealth, getDiscoverySourceHealth } from './provider-health';
 import { sendTestMessage, getTelegramStats, startTelegramPolling, sendCustomMessage, sendListingAlert } from './services/telegram';
+import { getWorkerConfig, invalidateConfigCache, MODE_PRESETS } from './worker-config';
+import { getAllProviderLiveMetrics, computeGlobalRiskScore, getRiskLevel, persistMetricsToDB } from './metrics-collector';
+import { getQueueDepth, getActiveRequests, estimateCycleDuration } from './provider-queue';
 
 const startedAt = new Date().toISOString();
 console.log('=== iPhone Price Tracker Worker ===');
@@ -222,6 +225,91 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // ─── Ops: full stats (metrics + config + queue) ──────────
+  if (req.method === 'GET' && req.url === '/ops/stats') {
+    const config = await getWorkerConfig();
+    const scheduler = getSchedulerState();
+    const metrics = getAllProviderLiveMetrics();
+    const globalRisk = computeGlobalRiskScore(metrics);
+    const progress = getSyncProgress();
+    const queueDepth = getQueueDepth();
+    const activeReqs = getActiveRequests();
+    const totalListings = progress.totalListings || 0;
+    const estimate = await estimateCycleDuration(totalListings, 2000);
+
+    res.writeHead(200);
+    res.end(JSON.stringify({
+      config,
+      scheduler: {
+        syncRunning: scheduler.syncRunning,
+        cycleCount: scheduler.cycleCount,
+        intervalMs: scheduler.intervalMs,
+        intervalRange: scheduler.intervalRange,
+        lastSync: scheduler.lastSyncResult,
+      },
+      metrics,
+      globalRisk: { score: globalRisk, level: getRiskLevel(globalRisk) },
+      queue: { depth: queueDepth, active: activeReqs },
+      estimate,
+      modePresets: MODE_PRESETS,
+      progress,
+    }));
+    return;
+  }
+
+  // ─── Ops: update config ─────────────────────────────────
+  if (req.method === 'PATCH' && req.url === '/ops/config') {
+    const authHeader = req.headers['authorization'] ?? '';
+    if (TRIGGER_SECRET && authHeader !== `Bearer ${TRIGGER_SECRET}`) {
+      res.writeHead(401);
+      res.end(JSON.stringify({ error: 'Unauthorized' }));
+      return;
+    }
+
+    let body = '';
+    req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+    req.on('end', async () => {
+      try {
+        const updates = JSON.parse(body);
+        const { prisma } = await import('@repo/shared');
+
+        // Validate fields
+        const allowed = [
+          'syncIntervalMinMs', 'syncIntervalMaxMs', 'requestDelayMinMs',
+          'requestDelayMaxMs', 'jitterPercent', 'globalConcurrency',
+          'providerConcurrency', 'maxRetries', 'cooldownMultiplier',
+          'blockCooldownMinutes', 'activeMode',
+        ];
+        const data: Record<string, unknown> = {};
+        for (const key of allowed) {
+          if (key in updates) data[key] = updates[key];
+        }
+
+        const result = await prisma.workerConfig.upsert({
+          where: { id: 'default' },
+          update: data,
+          create: { id: 'default', ...data },
+        });
+        invalidateConfigCache();
+        res.writeHead(200);
+        res.end(JSON.stringify({ ok: true, config: result }));
+      } catch (err) {
+        res.writeHead(400);
+        res.end(JSON.stringify({ ok: false, error: err instanceof Error ? err.message : 'Invalid request' }));
+      }
+    });
+    return;
+  }
+
+  // ─── Ops: activity log (recent structured events) ───────
+  if (req.method === 'GET' && req.url === '/ops/logs') {
+    const data = getSyncLogs();
+    const metrics = getAllProviderLiveMetrics();
+    res.writeHead(200);
+    res.end(JSON.stringify({ ...data, providerMetrics: metrics }));
+    return;
+  }
+
   res.writeHead(404);
   res.end(JSON.stringify({ error: 'Not found' }));
 });
@@ -232,6 +320,11 @@ server.listen(PORT, () => {
 
 // Start Telegram subscriber polling (/start, /stop commands)
 startTelegramPolling();
+
+// Periodically persist metrics to DB (every 60s)
+setInterval(() => {
+  persistMetricsToDB().catch(() => {});
+}, 60_000);
 
 startScheduler().catch((err) => {
   console.error('[worker] Kritik hata:', err);

@@ -364,3 +364,81 @@ model AppSettings {
 
   updatedAt             DateTime @updatedAt
 }
+
+// ─── Worker Konfigürasyonu (singleton — tek satır) ──────────────
+model WorkerConfig {
+  id                    String   @id @default("default")
+
+  // Sync interval
+  syncIntervalMinMs     Int      @default(60000)     // Min sync aralığı (ms)
+  syncIntervalMaxMs     Int      @default(3600000)   // Max sync aralığı (ms)
+
+  // Request pacing
+  requestDelayMinMs     Int      @default(1500)      // Min istek arası bekleme
+  requestDelayMaxMs     Int      @default(3000)      // Max istek arası bekleme
+  jitterPercent         Int      @default(30)        // Jitter yüzdesi (0-100)
+
+  // Concurrency
+  globalConcurrency     Int      @default(1)         // Aynı anda toplam istek
+  providerConcurrency   Int      @default(1)         // Provider başına eşzamanlılık
+
+  // Retry & cooldown
+  maxRetries            Int      @default(2)         // İstek başına max tekrar
+  cooldownMultiplier    Float    @default(1.5)       // Cooldown escalation çarpanı
+  blockCooldownMinutes  Int      @default(10)        // Bloklandıktan sonra bekleme (dk)
+
+  // Mode
+  activeMode            String   @default("balanced") // safe, balanced, aggressive, god
+
+  updatedAt             DateTime @updatedAt
+}
+
+// ─── Provider Metrikleri (provider başına) ───────────────────────
+model ProviderMetrics {
+  id                    String   @id @default(cuid())
+  retailerSlug          String   @unique
+  
+  // Success/failure
+  totalRequests         Int      @default(0)
+  successCount          Int      @default(0)
+  failureCount          Int      @default(0)
+  blockedCount          Int      @default(0)       // 403
+  rateLimitCount        Int      @default(0)       // 429
+  timeoutCount          Int      @default(0)
+
+  // Response times (ms)
+  avgResponseTimeMs     Float    @default(0)
+  p95ResponseTimeMs     Float    @default(0)
+  lastResponseTimeMs    Float    @default(0)
+
+  // Health scores (0-100)
+  healthScore           Float    @default(100)
+  riskScore             Float    @default(0)       // 0=safe, 100=very risky
+
+  // Circuit breaker
+  circuitState          String   @default("closed") // closed, open, half_open
+  circuitOpenedAt       DateTime?
+  consecutiveFailures   Int      @default(0)
+
+  // Rates (rolling window)
+  successRate5m         Float    @default(100)      // Son 5dk başarı oranı (%)
+  blockRate5m           Float    @default(0)        // Son 5dk blok oranı (%)
+  avgLatency5m          Float    @default(0)        // Son 5dk ortalama latency
+
+  // Timestamps
+  lastSuccessAt         DateTime?
+  lastFailureAt         DateTime?
+  lastBlockedAt         DateTime?
+  lastRateLimitAt       DateTime?
+
+  // Recommendations
+  recommendedDelayMs    Int      @default(2000)
+  recommendedConcurrency Int     @default(1)
+
+  updatedAt             DateTime @updatedAt
+  createdAt             DateTime @default(now())
+
+  @@index([retailerSlug])
+  @@index([healthScore])
+  @@index([riskScore])
+}

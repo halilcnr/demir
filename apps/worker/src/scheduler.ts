@@ -1,17 +1,17 @@
 import { runSync } from './sync';
 import { prisma } from '@repo/shared';
+import { getWorkerConfig } from './worker-config';
 
-const SYNC_MIN_MS = parseInt(process.env.SYNC_MIN_MS ?? '60000', 10);   // Min: 1 dakika
-const SYNC_MAX_MS = parseInt(process.env.SYNC_MAX_MS ?? '3600000', 10); // Max: 1 saat
 const STARTUP_DELAY_MS = parseInt(process.env.STARTUP_DELAY_MS ?? '5000', 10);
 
-function randomInterval(): number {
-  return Math.floor(Math.random() * (SYNC_MAX_MS - SYNC_MIN_MS)) + SYNC_MIN_MS;
+async function randomInterval(): Promise<number> {
+  const config = await getWorkerConfig();
+  return Math.floor(Math.random() * (config.syncIntervalMaxMs - config.syncIntervalMinMs)) + config.syncIntervalMinMs;
 }
 
 let syncRunning = false;
 let cycleCount = 0;
-let nextIntervalMs = randomInterval();
+let nextIntervalMs = 60000;
 let lastSyncResult: { success: boolean; elapsed: number; result?: Record<string, unknown>; error?: string } | null = null;
 
 export function getSchedulerState() {
@@ -20,7 +20,7 @@ export function getSchedulerState() {
     cycleCount,
     lastSyncResult,
     intervalMs: nextIntervalMs,
-    intervalRange: { min: SYNC_MIN_MS, max: SYNC_MAX_MS },
+    intervalRange: { min: 60000, max: 3600000 }, // Will be overridden by config
     startupDelayMs: STARTUP_DELAY_MS,
   };
 }
@@ -31,7 +31,8 @@ export function getSchedulerState() {
  * - Checks for stale RUNNING jobs from previous crashes and marks them FAILED
  */
 export async function startScheduler(): Promise<void> {
-  console.log(`[scheduler] 🚀 Worker starting — random interval: ${SYNC_MIN_MS / 1000}s–${SYNC_MAX_MS / 1000 / 60}min, startup delay: ${STARTUP_DELAY_MS}ms`);
+  const config = await getWorkerConfig();
+  console.log(`[scheduler] 🚀 Worker starting — interval: ${config.syncIntervalMinMs / 1000}s–${config.syncIntervalMaxMs / 1000 / 60}min, mode: ${config.activeMode}, startup delay: ${STARTUP_DELAY_MS}ms`);
   console.log(`[scheduler] ⏰ ${new Date().toISOString()}`);
 
   // ── Recover from previous crash: mark stale RUNNING jobs as FAILED ──
@@ -65,12 +66,14 @@ export async function startScheduler(): Promise<void> {
 }
 
 function scheduleNext(): void {
-  nextIntervalMs = randomInterval();
-  console.log(`[scheduler] 🎲 Next sync in ${(nextIntervalMs / 1000 / 60).toFixed(1)} min`);
-  setTimeout(async () => {
-    await runSyncSafe();
-    scheduleNext();
-  }, nextIntervalMs);
+  randomInterval().then(interval => {
+    nextIntervalMs = interval;
+    console.log(`[scheduler] 🎲 Next sync in ${(nextIntervalMs / 1000 / 60).toFixed(1)} min`);
+    setTimeout(async () => {
+      await runSyncSafe();
+      scheduleNext();
+    }, nextIntervalMs);
+  });
 }
 
 async function runSyncSafe(): Promise<void> {

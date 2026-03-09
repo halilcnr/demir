@@ -13,8 +13,10 @@ import {
   RefreshCw,
   Settings,
   Search,
+  Gauge,
 } from 'lucide-react';
 import { cn } from '@repo/shared';
+import { SyncStatusPill } from '../sync-status-pill';
 
 const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -22,6 +24,7 @@ const navItems = [
   { href: '/deals', label: 'Fırsatlar', icon: TrendingDown },
   { href: '/alerts', label: 'Alarmlar', icon: Bell },
   { href: '/sync', label: 'Senkronizasyon', icon: RefreshCw },
+  { href: '/sync-control', label: 'Operasyon Merkezi', icon: Gauge },
   { href: '/settings', label: 'Ayarlar', icon: Settings },
 ];
 
@@ -63,6 +66,8 @@ export function Header() {
               ⌘K
             </kbd>
           </div>
+
+          <SyncStatusPill />
 
           <Link
             href="/alerts"

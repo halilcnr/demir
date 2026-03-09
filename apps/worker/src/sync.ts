@@ -25,6 +25,8 @@ import { clearSyncLogs, addSyncLog, finishSyncLogs, updateSyncProgress, logScrap
 import type { ScrapeStatus } from './sync-logger';
 import { queryFallbackSourcesDetailed } from './discovery';
 import { notifyPriceDrop } from './services/telegram';
+import { recordMetricEvent, recordCircuitSuccess, recordCircuitFailure, isCircuitOpen, incrementProviderCounter } from './metrics-collector';
+import { getAdaptiveDelay } from './provider-queue';
 
 /**
  * Tüm retailer'lardan veya belirli bir retailer'dan fiyat güncellemesi yapar.
@@ -161,6 +163,13 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
           continue;
         }
 
+        // Skip if circuit breaker is open
+        if (isCircuitOpen(slug)) {
+          addSyncLog({ type: 'warn', retailer: slug, variant: variantLabel, message: `${slug} devre kesici açık, atlanıyor` });
+          logScrapeAttempt({ retailer: slug, variant: variantLabel, status: 'skipped_blocked', error: 'circuit breaker open' });
+          continue;
+        }
+
         try {
           // Skip search/browse URLs
           if (listing.productUrl.includes('/search?q=') || listing.productUrl.includes('/ara?q=') || listing.productUrl.includes('/arama?q=') || listing.productUrl.includes('/s?k=') || listing.productUrl.includes('/sr?q=')) {
@@ -278,6 +287,11 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
             const stratUsed = (meta?.strategyUsed as string) ?? 'unknown';
             const respTime = (meta?.responseTimeMs as number) ?? 0;
             const confidence = (meta?.parseConfidence as 'high' | 'medium' | 'low') ?? undefined;
+
+            // Record metrics
+            recordCircuitSuccess(slug);
+            recordMetricEvent(slug, 'success', respTime);
+            incrementProviderCounter(slug, 'successCount').catch(() => {});
             console.log(`[sync] ✓ ${slug} — ${result.rawTitle} → ${result.price} TL (${stratUsed}, ${respTime}ms, ${confidence ?? 'n/a'})`);
             addSyncLog({ type: 'success', retailer: slug, variant: variantLabel, message: `${slug} → ${result.price.toLocaleString('tr-TR')} TL`, price: result.price, strategy: stratUsed, responseTimeMs: respTime });
             logScrapeAttempt({ retailer: slug, variant: variantLabel, strategy: stratUsed, status: 'success', responseTimeMs: respTime, price: result.price, confidence });
@@ -367,7 +381,8 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
                     }
                   }
 
-                  await new Promise((r) => setTimeout(r, 1500 + Math.floor(Math.random() * 1000)));
+                  const fallbackDelay = await getAdaptiveDelay();
+                  await new Promise((r) => setTimeout(r, fallbackDelay));
                   continue;
                 } else {
                   console.warn(`[sync] Fallback URL scrape returned empty for ${slug}: ${discoveryForRetailer.productUrl}`);
@@ -402,7 +417,8 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
             addSyncLog({ type: 'error', retailer: slug, variant: variantLabel, message: `${slug} — veri alınamadı` });
           }
 
-          await new Promise((r) => setTimeout(r, 1500 + Math.floor(Math.random() * 1000)));
+          const iterDelay = await getAdaptiveDelay();
+          await new Promise((r) => setTimeout(r, iterDelay));
         } catch (err) {
           itemsScanned++;
 
@@ -410,6 +426,9 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
             blockedCount++;
             console.error(`[sync] ${slug} provider blocked (HTTP 403)`);
             await recordBlocked(slug);
+            recordCircuitFailure(slug);
+            recordMetricEvent(slug, 'blocked', 0);
+            incrementProviderCounter(slug, 'blockedCount').catch(() => {});
             logScrapeAttempt({ retailer: slug, variant: variantLabel, status: 'blocked', httpStatus: 403 });
 
             await prisma.listing.update({
@@ -429,6 +448,9 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
             failureCount++;
             await recordFailure(slug);
             applyCooldown(slug, 'rate_limit', err.retryAfterMs);
+            recordCircuitFailure(slug);
+            recordMetricEvent(slug, 'rate_limited', 0);
+            incrementProviderCounter(slug, 'rateLimitCount').catch(() => {});
             logScrapeAttempt({ retailer: slug, variant: variantLabel, status: 'rate_limited', httpStatus: 429 });
             await prisma.listing.update({
               where: { id: listing.id },

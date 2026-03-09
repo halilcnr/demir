@@ -10,6 +10,18 @@ import {
   ParseError,
   StrategyExhaustedError,
 } from '../errors';
+import {
+  getRotatedProfile,
+  buildMorphedHeaders,
+  getSmartBackoff,
+  recordSmartBackoffBlock,
+  recordSmartBackoffSuccess,
+  getSessionCookies,
+  storeResponseCookies,
+  storeSnapshot,
+  validateScrapedPrice,
+  type ValidationResult,
+} from '../scrape-toolkit';
 
 // ─── Strategy Types ─────────────────────────────────────────────
 
@@ -73,8 +85,8 @@ export abstract class BaseProvider implements RetailerProvider {
   protected abstract getStrategies(): ScrapeStrategy[];
 
   /**
-   * Fetches a page with browser-like headers and typed error mapping.
-   * - 403 → ProviderBlockedError
+   * Fetches a page with rotated fingerprint, morphed headers, and session cookies.
+   * - 403 → ProviderBlockedError (records smart backoff)
    * - 404 → ListingNotFoundError
    * - 429 → RateLimitedError
    * - 5xx → RetryableProviderError
@@ -85,27 +97,30 @@ export abstract class BaseProvider implements RetailerProvider {
     const timeoutId = setTimeout(() => controller.abort(), 20_000);
 
     try {
+      const profile = getRotatedProfile(this.retailerSlug);
+      const headers = buildMorphedHeaders(profile);
+
+      // Attach session cookies if available
+      const cookies = getSessionCookies(this.retailerSlug);
+      if (cookies) headers['Cookie'] = cookies;
+
       const res = await fetch(url, {
-        headers: {
-          'User-Agent': this.userAgent,
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-          'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
-          'Accept-Encoding': 'gzip, deflate, br',
-          'Referer': 'https://www.google.com.tr/',
-          'Connection': 'keep-alive',
-          'Upgrade-Insecure-Requests': '1',
-          'Cache-Control': 'max-age=0',
-          'DNT': '1',
-        },
+        headers,
         signal: controller.signal,
         redirect: 'follow',
       });
 
+      // Store response cookies for session persistence
+      const setCookies = res.headers.getSetCookie?.() ?? [];
+      if (setCookies.length) storeResponseCookies(this.retailerSlug, setCookies);
+
       if (res.status === 403) {
+        recordSmartBackoffBlock(this.retailerSlug, this.pacing.baseDelayMs);
         throw new ProviderBlockedError(this.retailerSlug, url);
       }
 
       if (res.status === 429) {
+        recordSmartBackoffBlock(this.retailerSlug, this.pacing.baseDelayMs);
         const retryAfter = res.headers.get('retry-after');
         const retryAfterMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : undefined;
         throw new RateLimitedError(this.retailerSlug, url, retryAfterMs);
@@ -123,7 +138,10 @@ export abstract class BaseProvider implements RetailerProvider {
         throw new RetryableProviderError(this.retailerSlug, res.status, url);
       }
 
-      return await res.text();
+      const html = await res.text();
+      recordSmartBackoffSuccess(this.retailerSlug);
+      storeSnapshot(this.retailerSlug, url, html, true);
+      return html;
     } catch (err) {
       if (
         err instanceof ProviderBlockedError ||
@@ -149,10 +167,11 @@ export abstract class BaseProvider implements RetailerProvider {
     }
   }
 
-  /** Sleep with configurable provider-specific jitter */
+  /** Sleep with smart backoff-aware provider-specific jitter */
   protected async pacedDelay(): Promise<void> {
+    const smartBase = getSmartBackoff(this.retailerSlug, this.pacing.baseDelayMs);
     const jitter = Math.floor(Math.random() * this.pacing.jitterMs);
-    const total = this.pacing.baseDelayMs + jitter;
+    const total = smartBase + jitter;
     return new Promise((r) => setTimeout(r, total));
   }
 
@@ -221,6 +240,12 @@ export abstract class BaseProvider implements RetailerProvider {
       try {
         const result = strategy.run(html, url, $);
         if (result && result.price > 0) {
+          // Run validation engine
+          const validation = validateScrapedPrice(result.price, result.rawTitle || '', this.retailerSlug);
+          if (validation.warnings.length > 0) {
+            console.warn(`[${this.retailerSlug}] validation warnings: ${validation.warnings.join(', ')}`);
+          }
+
           const confidence: 'high' | 'medium' | 'low' = i === 0 ? 'high' : i === 1 ? 'medium' : 'low';
           if (i > 0) {
             console.log(
@@ -243,7 +268,8 @@ export abstract class BaseProvider implements RetailerProvider {
       }
     }
 
-    // All strategies failed
+    // All strategies failed — store snapshot for debugging
+    storeSnapshot(this.retailerSlug, url, html, false);
     console.warn(
       `[${this.retailerSlug}] all ${strategies.length} strategies failed — ${url}: ${failures.map((f) => `${f.strategy}(${f.error})`).join(', ')}`,
     );

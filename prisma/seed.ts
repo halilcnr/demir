@@ -182,6 +182,38 @@ async function main() {
     },
   });
   console.log('✅ Varsayılan bildirim ayarları oluşturuldu');
+
+  // ─── Varsayılan Worker Konfigürasyonu ─────────────────
+  await prisma.workerConfig.upsert({
+    where: { id: 'default' },
+    update: {},
+    create: {
+      id: 'default',
+      syncIntervalMinMs: 60000,
+      syncIntervalMaxMs: 3600000,
+      requestDelayMinMs: 1500,
+      requestDelayMaxMs: 3000,
+      jitterPercent: 30,
+      globalConcurrency: 1,
+      providerConcurrency: 1,
+      maxRetries: 2,
+      cooldownMultiplier: 1.5,
+      blockCooldownMinutes: 10,
+      activeMode: 'balanced',
+    },
+  });
+  console.log('✅ Varsayılan worker konfigürasyonu oluşturuldu');
+
+  // ─── Provider Metrikleri (tüm retailer'lar) ───────────
+  const retailers = await prisma.retailer.findMany({ select: { slug: true } });
+  for (const r of retailers) {
+    await prisma.providerMetrics.upsert({
+      where: { retailerSlug: r.slug },
+      update: {},
+      create: { retailerSlug: r.slug },
+    });
+  }
+  console.log(`✅ ${retailers.length} provider metrik kaydı oluşturuldu`);
 }
 
 main()

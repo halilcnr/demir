@@ -12,6 +12,7 @@ import {
   Sparkles,
   Trophy,
   Bot,
+  Gauge,
 } from 'lucide-react';
 import { cn } from '@repo/shared';
 
@@ -22,6 +23,7 @@ const navItems = [
   { href: '/deals', label: 'Fırsatlar', icon: TrendingDown },
   { href: '/alerts', label: 'Alarmlar', icon: Bell },
   { href: '/sync', label: 'Senkronizasyon', icon: RefreshCw },
+  { href: '/sync-control', label: 'Operasyon Merkezi', icon: Gauge },
   { href: '/settings/telegram', label: 'Telegram', icon: Bot },
   { href: '/settings', label: 'Ayarlar', icon: Settings },
 ];
