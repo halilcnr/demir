@@ -4,10 +4,63 @@ import { prisma } from '@repo/shared';
 const TELEGRAM_ENABLED = process.env.TELEGRAM_ENABLED === 'true';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
 
-const MIN_DROP_PERCENT = parseFloat(process.env.NOTIFY_DROP_PERCENT ?? '1');  // Minimum % düşüş (bildirim eşiği — default 1%)
-const MIN_DROP_AMOUNT = parseFloat(process.env.NOTIFY_DROP_AMOUNT ?? '100'); // Minimum TL düşüş
-const COOLDOWN_MS = parseInt(process.env.NOTIFY_COOLDOWN_MS ?? String(4 * 60 * 60 * 1000), 10); // Aynı listing için 4 saat bekleme
+// Env vars as fallback defaults (DB settings override these)
+const ENV_MIN_DROP_PERCENT = parseFloat(process.env.NOTIFY_DROP_PERCENT ?? '1');
+const ENV_MIN_DROP_AMOUNT = parseFloat(process.env.NOTIFY_DROP_AMOUNT ?? '100');
+const ENV_COOLDOWN_MS = parseInt(process.env.NOTIFY_COOLDOWN_MS ?? String(4 * 60 * 60 * 1000), 10);
 const POLL_INTERVAL_MS = 30_000; // getUpdates polling interval
+
+// ─── DB Settings Cache ───────────────────────────────────────────
+interface CachedSettings {
+  notifyDropPercent: number;
+  notifyDropAmount: number;
+  notifyCooldownMinutes: number;
+  notifyAllTimeLow: boolean;
+  notifyEnabled: boolean;
+  notifyMinPrice: number | null;
+  notifyMaxPrice: number | null;
+}
+
+let settingsCache: CachedSettings | null = null;
+let settingsCacheTime = 0;
+const SETTINGS_CACHE_TTL = 60_000; // 1 min cache
+
+async function getNotifySettings(): Promise<CachedSettings> {
+  const now = Date.now();
+  if (settingsCache && (now - settingsCacheTime) < SETTINGS_CACHE_TTL) {
+    return settingsCache;
+  }
+
+  try {
+    const row = await prisma.appSettings.findUnique({ where: { id: 'default' } });
+    if (row) {
+      settingsCache = {
+        notifyDropPercent: row.notifyDropPercent,
+        notifyDropAmount: row.notifyDropAmount,
+        notifyCooldownMinutes: row.notifyCooldownMinutes,
+        notifyAllTimeLow: row.notifyAllTimeLow,
+        notifyEnabled: row.notifyEnabled,
+        notifyMinPrice: row.notifyMinPrice,
+        notifyMaxPrice: row.notifyMaxPrice,
+      };
+      settingsCacheTime = now;
+      return settingsCache;
+    }
+  } catch (err) {
+    console.warn('[telegram] Failed to fetch settings from DB, using env defaults:', err instanceof Error ? err.message : err);
+  }
+
+  // Env var fallback
+  return {
+    notifyDropPercent: ENV_MIN_DROP_PERCENT,
+    notifyDropAmount: ENV_MIN_DROP_AMOUNT,
+    notifyCooldownMinutes: Math.round(ENV_COOLDOWN_MS / 60_000),
+    notifyAllTimeLow: true,
+    notifyEnabled: true,
+    notifyMinPrice: null,
+    notifyMaxPrice: null,
+  };
+}
 
 // ─── Types ───────────────────────────────────────────────────────
 export interface PriceDropPayload {
@@ -129,13 +182,30 @@ function buildPriceDropMessage(payload: PriceDropPayload): string {
 
 // ─── Anti-spam / deduplication checks ────────────────────────────
 async function shouldNotify(payload: PriceDropPayload): Promise<{ send: boolean; reason?: string }> {
-  const { listingId, newPrice, oldPrice } = payload;
+  const { listingId, newPrice, oldPrice, isAllTimeLow } = payload;
+  const settings = await getNotifySettings();
+
+  // Master switch from DB
+  if (!settings.notifyEnabled) {
+    return { send: false, reason: 'Notifications disabled in settings' };
+  }
 
   const dropAmount = oldPrice - newPrice;
   const dropPercent = ((dropAmount / oldPrice) * 100);
 
-  if (dropPercent < MIN_DROP_PERCENT && dropAmount < MIN_DROP_AMOUNT) {
-    return { send: false, reason: `Drop too small: ${dropAmount.toFixed(0)} TL (${dropPercent.toFixed(1)}%)` };
+  // All-time low bypass: skip threshold check if enabled
+  const allTimeLowBypass = isAllTimeLow && settings.notifyAllTimeLow;
+
+  if (!allTimeLowBypass && dropPercent < settings.notifyDropPercent && dropAmount < settings.notifyDropAmount) {
+    return { send: false, reason: `Drop too small: ${dropAmount.toFixed(0)} TL (${dropPercent.toFixed(1)}%) — min %${settings.notifyDropPercent} or ${settings.notifyDropAmount} TL` };
+  }
+
+  // Price range filter
+  if (settings.notifyMinPrice != null && newPrice < settings.notifyMinPrice) {
+    return { send: false, reason: `Price ${newPrice} TL below min filter ${settings.notifyMinPrice} TL` };
+  }
+  if (settings.notifyMaxPrice != null && newPrice > settings.notifyMaxPrice) {
+    return { send: false, reason: `Price ${newPrice} TL above max filter ${settings.notifyMaxPrice} TL` };
   }
 
   const listing = await prisma.listing.findUnique({
@@ -147,10 +217,11 @@ async function shouldNotify(payload: PriceDropPayload): Promise<{ send: boolean;
     return { send: false, reason: `Already notified for this price (${newPrice} TL)` };
   }
 
+  const cooldownMs = settings.notifyCooldownMinutes * 60_000;
   if (listing?.notificationSentAt) {
     const elapsed = Date.now() - listing.notificationSentAt.getTime();
-    if (elapsed < COOLDOWN_MS) {
-      const remainingMin = Math.round((COOLDOWN_MS - elapsed) / 60_000);
+    if (elapsed < cooldownMs) {
+      const remainingMin = Math.round((cooldownMs - elapsed) / 60_000);
       return { send: false, reason: `Cooldown active (${remainingMin}m remaining)` };
     }
   }

@@ -346,3 +346,21 @@ enum UserRole {
   ADMIN
   VIEWER
 }
+
+// ─── Uygulama Ayarları (singleton — tek satır) ──────────────────
+model AppSettings {
+  id                    String   @id @default("default")
+
+  // Telegram bildirim eşikleri
+  notifyDropPercent     Float    @default(1)     // Min % düşüş (ör: 1 = %1)
+  notifyDropAmount      Float    @default(100)   // Min TL düşüş
+  notifyCooldownMinutes Int      @default(240)   // Aynı listing için bekleme süresi (dk)
+  notifyAllTimeLow      Boolean  @default(true)  // Tüm zamanların en düşüğünde bildir
+  notifyEnabled         Boolean  @default(true)  // Bildirimleri aç/kapa (master switch)
+
+  // Bildirim filtreleri
+  notifyMinPrice        Float?                   // Bu fiyatın altındaki düşüşleri bildir (null = sınırsız)
+  notifyMaxPrice        Float?                   // Bu fiyatın üstündeki düşüşleri bildir (null = sınırsız)
+
+  updatedAt             DateTime @updatedAt
+}

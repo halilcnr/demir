@@ -165,6 +165,23 @@ async function main() {
     }
   }
   console.log(`✅ ${manualListingCount} manuel URL listing oluşturuldu`);
+
+  // ─── Varsayılan Uygulama Ayarları ─────────────────────
+  await prisma.appSettings.upsert({
+    where: { id: 'default' },
+    update: {},
+    create: {
+      id: 'default',
+      notifyDropPercent: 1,
+      notifyDropAmount: 100,
+      notifyCooldownMinutes: 240,
+      notifyAllTimeLow: true,
+      notifyEnabled: true,
+      notifyMinPrice: null,
+      notifyMaxPrice: null,
+    },
+  });
+  console.log('✅ Varsayılan bildirim ayarları oluşturuldu');
 }
 
 main()

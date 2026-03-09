@@ -18,6 +18,8 @@ import {
   Bot,
   Wifi,
   WifiOff,
+  Settings,
+  Save,
 } from 'lucide-react';
 import { Card, StatCard } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -89,6 +91,16 @@ interface DailyStats {
   failed: number;
 }
 
+interface NotifySettings {
+  notifyDropPercent: number;
+  notifyDropAmount: number;
+  notifyCooldownMinutes: number;
+  notifyAllTimeLow: boolean;
+  notifyEnabled: boolean;
+  notifyMinPrice: number | null;
+  notifyMaxPrice: number | null;
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────
 
 function MutationFeedback({ data }: { data: { ok: boolean; sent?: number; error?: string } | undefined }) {
@@ -146,6 +158,49 @@ export default function TelegramSettingsPage() {
   const { data: dailyStats } = useQuery<DailyStats[]>({
     queryKey: ['telegram-daily-stats'],
     queryFn: () => fetch('/api/telegram/stats').then(r => r.json()),
+  });
+
+  const { data: notifySettings, isLoading: settingsLoading } = useQuery<NotifySettings>({
+    queryKey: ['telegram-settings'],
+    queryFn: () => fetch('/api/telegram/settings').then(r => r.json()),
+  });
+
+  // Local form state for settings
+  const [settingsForm, setSettingsForm] = useState<NotifySettings | null>(null);
+  const [settingsSaved, setSettingsSaved] = useState(false);
+
+  // Sync form state when settings load
+  const effectiveSettings = settingsForm ?? notifySettings ?? null;
+
+  const updateSettingsField = (field: keyof NotifySettings, value: unknown) => {
+    setSettingsSaved(false);
+    setSettingsForm(prev => ({
+      ...(prev ?? notifySettings ?? {
+        notifyDropPercent: 1,
+        notifyDropAmount: 100,
+        notifyCooldownMinutes: 240,
+        notifyAllTimeLow: true,
+        notifyEnabled: true,
+        notifyMinPrice: null,
+        notifyMaxPrice: null,
+      }),
+      [field]: value,
+    }));
+  };
+
+  const saveSettingsMutation = useMutation({
+    mutationFn: (data: Partial<NotifySettings>) =>
+      fetch('/api/telegram/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      }).then(r => r.json()),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['telegram-settings'] });
+      setSettingsForm(data);
+      setSettingsSaved(true);
+      setTimeout(() => setSettingsSaved(false), 3000);
+    },
   });
 
   // ── Mutations ──
@@ -399,6 +454,201 @@ export default function TelegramSettingsPage() {
           )}
         </Card>
       </div>
+
+      {/* ── Notification Settings ── */}
+      <Card>
+        <div className="mb-5 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Settings className="h-4 w-4 text-text-tertiary" />
+            <h2 className="text-sm font-semibold text-text-primary">Bildirim Ayarları</h2>
+          </div>
+          {settingsSaved && (
+            <span className="text-xs text-emerald-600 font-medium animate-float-in">✓ Kaydedildi</span>
+          )}
+        </div>
+
+        {settingsLoading || !effectiveSettings ? (
+          <div className="space-y-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-12 animate-pulse rounded-lg bg-surface-secondary" />
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Master switch */}
+            <div className="flex items-center justify-between rounded-lg border border-border px-4 py-3">
+              <div>
+                <p className="text-sm font-medium text-text-primary">Bildirimleri Aktifleştir</p>
+                <p className="text-xs text-text-tertiary">Kapatıldığında hiçbir bildirim gönderilmez</p>
+              </div>
+              <button
+                onClick={() => updateSettingsField('notifyEnabled', !effectiveSettings.notifyEnabled)}
+                className={cn(
+                  'relative h-6 w-11 rounded-full transition-colors',
+                  effectiveSettings.notifyEnabled ? 'bg-emerald-500' : 'bg-slate-300'
+                )}
+              >
+                <span
+                  className={cn(
+                    'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform',
+                    effectiveSettings.notifyEnabled ? 'translate-x-[22px]' : 'translate-x-0.5'
+                  )}
+                />
+              </button>
+            </div>
+
+            {/* Threshold settings */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              {/* Drop percent */}
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-text-secondary">
+                  Minimum Düşüş Yüzdesi (%)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.5}
+                  value={effectiveSettings.notifyDropPercent}
+                  onChange={e => updateSettingsField('notifyDropPercent', parseFloat(e.target.value) || 0)}
+                  className="w-full rounded-lg border border-border bg-surface-secondary px-3 py-2 text-sm text-text-primary tabular-nums focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
+                />
+                <p className="mt-1 text-[11px] text-text-tertiary">
+                  Bu yüzdenin altındaki düşüşlerde bildirim gönderilmez
+                </p>
+              </div>
+
+              {/* Drop amount */}
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-text-secondary">
+                  Minimum Düşüş Tutarı (₺)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step={10}
+                  value={effectiveSettings.notifyDropAmount}
+                  onChange={e => updateSettingsField('notifyDropAmount', parseFloat(e.target.value) || 0)}
+                  className="w-full rounded-lg border border-border bg-surface-secondary px-3 py-2 text-sm text-text-primary tabular-nums focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
+                />
+                <p className="mt-1 text-[11px] text-text-tertiary">
+                  Bu tutarın altındaki düşüşlerde bildirim gönderilmez
+                </p>
+              </div>
+
+              {/* Cooldown */}
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-text-secondary">
+                  Bildirim Bekleme Süresi (dk)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={1440}
+                  step={15}
+                  value={effectiveSettings.notifyCooldownMinutes}
+                  onChange={e => updateSettingsField('notifyCooldownMinutes', parseInt(e.target.value, 10) || 0)}
+                  className="w-full rounded-lg border border-border bg-surface-secondary px-3 py-2 text-sm text-text-primary tabular-nums focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
+                />
+                <p className="mt-1 text-[11px] text-text-tertiary">
+                  Aynı ürün için tekrar bildirim göndermeden önce bekleme süresi
+                </p>
+              </div>
+
+              {/* All-time low toggle */}
+              <div className="flex items-start gap-3 rounded-lg border border-border px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={effectiveSettings.notifyAllTimeLow}
+                  onChange={e => updateSettingsField('notifyAllTimeLow', e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-border text-primary accent-primary"
+                />
+                <div>
+                  <p className="text-sm font-medium text-text-primary">En Düşük Fiyat Bildirimi</p>
+                  <p className="text-xs text-text-tertiary">
+                    Tüm zamanların en düşük fiyatına ulaşıldığında ayrıca bildir
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Price range filters */}
+            <div>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wider text-text-tertiary">Fiyat Aralığı Filtresi</p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-text-secondary">
+                    Minimum Fiyat (₺)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1000}
+                    value={effectiveSettings.notifyMinPrice ?? ''}
+                    onChange={e => {
+                      const val = e.target.value;
+                      updateSettingsField('notifyMinPrice', val === '' ? null : parseFloat(val) || 0);
+                    }}
+                    placeholder="Sınır yok"
+                    className="w-full rounded-lg border border-border bg-surface-secondary px-3 py-2 text-sm text-text-primary tabular-nums placeholder:text-text-tertiary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
+                  />
+                  <p className="mt-1 text-[11px] text-text-tertiary">
+                    Sadece bu fiyatın üstündeki ürünler için bildirim gönder
+                  </p>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-text-secondary">
+                    Maksimum Fiyat (₺)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1000}
+                    value={effectiveSettings.notifyMaxPrice ?? ''}
+                    onChange={e => {
+                      const val = e.target.value;
+                      updateSettingsField('notifyMaxPrice', val === '' ? null : parseFloat(val) || 0);
+                    }}
+                    placeholder="Sınır yok"
+                    className="w-full rounded-lg border border-border bg-surface-secondary px-3 py-2 text-sm text-text-primary tabular-nums placeholder:text-text-tertiary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
+                  />
+                  <p className="mt-1 text-[11px] text-text-tertiary">
+                    Sadece bu fiyatın altındaki ürünler için bildirim gönder
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Info summary */}
+            <div className="rounded-lg bg-sky-50 border border-sky-100 px-4 py-3 text-xs text-sky-700">
+              <p className="font-medium mb-1">Mevcut Bildirim Kuralları</p>
+              <ul className="space-y-0.5 text-sky-600">
+                <li>• Fiyat düşüşü en az <b>%{effectiveSettings.notifyDropPercent}</b> veya <b>{effectiveSettings.notifyDropAmount.toLocaleString('tr-TR')} ₺</b> olmalı</li>
+                <li>• Aynı ürün için <b>{effectiveSettings.notifyCooldownMinutes} dakika</b> ({(effectiveSettings.notifyCooldownMinutes / 60).toFixed(1)} saat) bekleme süresi</li>
+                <li>• En düşük fiyat bildirimi: <b>{effectiveSettings.notifyAllTimeLow ? 'Aktif' : 'Kapalı'}</b></li>
+                {effectiveSettings.notifyMinPrice != null && (
+                  <li>• Sadece <b>{effectiveSettings.notifyMinPrice.toLocaleString('tr-TR')} ₺</b> üstü ürünler</li>
+                )}
+                {effectiveSettings.notifyMaxPrice != null && (
+                  <li>• Sadece <b>{effectiveSettings.notifyMaxPrice.toLocaleString('tr-TR')} ₺</b> altı ürünler</li>
+                )}
+              </ul>
+            </div>
+
+            {/* Save button */}
+            <div className="flex justify-end">
+              <Button
+                onClick={() => effectiveSettings && saveSettingsMutation.mutate(effectiveSettings)}
+                loading={saveSettingsMutation.isPending}
+                size="sm"
+                icon={<Save className="h-3 w-3" />}
+              >
+                Ayarları Kaydet
+              </Button>
+            </div>
+          </div>
+        )}
+      </Card>
 
       {/* ── Subscribers ── */}
       {subscriberData && subscriberData.subscribers.length > 0 && (
