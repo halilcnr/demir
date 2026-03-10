@@ -33,7 +33,7 @@ import {
   recordBlocked,
 } from './provider-health';
 import { addSyncLog, logScrapeAttempt, updateSyncProgress } from './sync-logger';
-import { notifyPriceDrop } from './services/telegram';
+import { notifySmartDeal } from './services/telegram';
 import {
   recordMetricEvent,
   recordCircuitSuccess,
@@ -309,21 +309,18 @@ async function processOneTask(task: ClaimedTask): Promise<'success' | 'failure' 
         await checkAlertRules(listing.variantId, listingId, result.price, previousPrice, slug);
       }
 
-      // Telegram notification on price drop
+      // Telegram smart deal notification on price drop
       if (previousPrice && result.price < previousPrice) {
         try {
-          await notifyPriceDrop({
+          await notifySmartDeal({
             listingId,
+            variantId: listing.variantId,
             variantLabel,
             retailerName: listing.retailer.name,
             retailerSlug: slug,
             productUrl,
             newPrice: result.price,
             oldPrice: previousPrice,
-            lowestPrice: listing.lowestPrice
-              ? Math.min(listing.lowestPrice, result.price)
-              : result.price,
-            isAllTimeLow: !listing.lowestPrice || result.price < listing.lowestPrice,
           });
         } catch {
           // Non-fatal
@@ -448,18 +445,17 @@ async function tryFallback(
     recordCircuitSuccess(task.retailerSlug);
     recordTaskComplete(0);
 
-    // Notify
+    // Notify via smart deal system
     if (previousPrice && retryResult.price < previousPrice) {
-      await notifyPriceDrop({
+      await notifySmartDeal({
         listingId: listing.id,
+        variantId: listing.variantId,
         variantLabel: task.variantLabel,
         retailerName: listing.retailer.name,
         retailerSlug: task.retailerSlug,
         productUrl: match.productUrl,
         newPrice: retryResult.price,
         oldPrice: previousPrice,
-        lowestPrice: listing.lowestPrice ? Math.min(listing.lowestPrice, retryResult.price) : retryResult.price,
-        isAllTimeLow: !listing.lowestPrice || retryResult.price < listing.lowestPrice,
       }).catch(() => {});
     }
 

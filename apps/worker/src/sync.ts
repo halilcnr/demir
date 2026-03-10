@@ -24,7 +24,7 @@ import {
 import { clearSyncLogs, addSyncLog, finishSyncLogs, updateSyncProgress, logScrapeAttempt, logDiscoveryAttempt } from './sync-logger';
 import type { ScrapeStatus } from './sync-logger';
 import { queryFallbackSourcesDetailed } from './discovery';
-import { notifyPriceDrop } from './services/telegram';
+import { notifySmartDeal } from './services/telegram';
 import { recordMetricEvent, recordCircuitSuccess, recordCircuitFailure, isCircuitOpen, incrementProviderCounter } from './metrics-collector';
 import { getAdaptiveDelay } from './provider-queue';
 
@@ -260,19 +260,18 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
               );
             }
 
-            // ── Telegram: notify on price drop ──
+            // ── Telegram: smart deal alert on price drop ──
             if (previousPrice && result.price < previousPrice) {
               try {
-                await notifyPriceDrop({
+                await notifySmartDeal({
                   listingId: listing.id,
+                  variantId: listing.variantId,
                   variantLabel,
                   retailerName: listing.retailer.name,
                   retailerSlug: slug,
                   productUrl: listing.productUrl,
                   newPrice: result.price,
                   oldPrice: previousPrice,
-                  lowestPrice: listing.lowestPrice ? Math.min(listing.lowestPrice, result.price) : result.price,
-                  isAllTimeLow: !listing.lowestPrice || result.price < listing.lowestPrice,
                 });
               } catch (tgErr) {
                 console.error('[telegram] Notification error (non-fatal):', tgErr instanceof Error ? tgErr.message : tgErr);
@@ -362,19 +361,18 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
                   console.log(`[sync] ✓ ${slug} (fallback via ${discoveryForRetailer.source}) — ${retryResult.price} TL`);
                   addSyncLog({ type: 'success', retailer: slug, variant: variantLabel, message: `${slug} (fallback) → ${retryResult.price.toLocaleString('tr-TR')} TL`, price: retryResult.price });
 
-                  // ── Telegram: notify on price drop (fallback) ──
+                  // ── Telegram: smart deal alert on price drop (fallback) ──
                   if (previousPrice && retryResult.price < previousPrice) {
                     try {
-                      await notifyPriceDrop({
+                      await notifySmartDeal({
                         listingId: listing.id,
+                        variantId: listing.variantId,
                         variantLabel,
                         retailerName: listing.retailer.name,
                         retailerSlug: slug,
                         productUrl: discoveryForRetailer.productUrl,
                         newPrice: retryResult.price,
                         oldPrice: previousPrice,
-                        lowestPrice: listing.lowestPrice ? Math.min(listing.lowestPrice, retryResult.price) : retryResult.price,
-                        isAllTimeLow: !listing.lowestPrice || retryResult.price < listing.lowestPrice,
                       });
                     } catch (tgErr) {
                       console.error('[telegram] Notification error (non-fatal):', tgErr instanceof Error ? tgErr.message : tgErr);

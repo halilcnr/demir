@@ -78,6 +78,33 @@ export interface PriceDropPayload {
   isAllTimeLow: boolean;
 }
 
+// ─── Smart Deal Types ────────────────────────────────────────────
+export interface SmartDealPayload {
+  listingId: string;
+  variantId: string;
+  variantLabel: string;
+  retailerName: string;
+  retailerSlug: string;
+  productUrl: string;
+  newPrice: number;
+  oldPrice: number;
+}
+
+interface DealScoreResult {
+  score: number;
+  tier: 'ignore' | 'minor' | 'good' | 'super';
+  reasons: string[];
+  indicators: string[];
+  metrics: {
+    top3Average: number | null;
+    marketAverage: number | null;
+    allTimeLowest: number | null;
+    savingsVsMarket: number | null;
+    savingsVsTop3: number | null;
+    clusterGapPercent: number | null;
+  };
+}
+
 // ─── Stats ───────────────────────────────────────────────────────
 let sentCount = 0;
 let failCount = 0;
@@ -310,6 +337,290 @@ export async function notifyPriceDrop(payload: PriceDropPayload): Promise<void> 
     await prisma.notificationLog.create({
       data: {
         messageType: msgType as never,
+        status: 'FAILED',
+        productName: payload.variantLabel,
+        retailer: payload.retailerName,
+        oldPrice: payload.oldPrice,
+        newPrice: payload.newPrice,
+        dropPercent: ((payload.oldPrice - payload.newPrice) / payload.oldPrice) * 100,
+        messageText: message,
+        sentTo: 0,
+        failedTo: result.failed,
+        errorMessage: 'All subscribers failed',
+        listingId: payload.listingId,
+      },
+    }).catch(() => {});
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  SMART DEAL ALERT SYSTEM — Only high-confidence deals (score ≥ 80)
+// ═══════════════════════════════════════════════════════════════════
+
+// ─── Smart Deal Scoring Engine ───────────────────────────────────
+const SMART_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour per listing
+const SMART_RE_ALERT_DROP_PERCENT = 1;     // must drop another 1% to re-alert
+
+async function computeDealScore(variantId: string, newPrice: number, oldPrice: number): Promise<DealScoreResult> {
+  const empty: DealScoreResult = {
+    score: 0, tier: 'ignore', reasons: [], indicators: [],
+    metrics: { top3Average: null, marketAverage: null, allTimeLowest: null, savingsVsMarket: null, savingsVsTop3: null, clusterGapPercent: null },
+  };
+
+  const analytics = await prisma.variantPriceAnalytics.findUnique({ where: { variantId } });
+  if (!analytics || !analytics.top3AveragePrice || !analytics.marketAveragePrice) {
+    return empty;
+  }
+
+  let score = 0;
+  const reasons: string[] = [];
+  const indicators: string[] = [];
+
+  // +40: below historical lowest
+  if (analytics.allTimeLowest != null && newPrice < analytics.allTimeLowest) {
+    score += 40;
+    reasons.push('Tüm zamanların en düşüğü');
+    indicators.push('🔥');
+  }
+
+  // +25: below top 3 average by 3%
+  if (newPrice < analytics.top3AveragePrice * 0.97) {
+    const pct = ((analytics.top3AveragePrice - newPrice) / analytics.top3AveragePrice * 100).toFixed(1);
+    score += 25;
+    reasons.push(`Top 3 ortalamanın %${pct} altı`);
+  }
+
+  // +20: below market average by 5%
+  if (newPrice < analytics.marketAveragePrice * 0.95) {
+    const pct = ((analytics.marketAveragePrice - newPrice) / analytics.marketAveragePrice * 100).toFixed(1);
+    score += 20;
+    reasons.push(`Piyasa ortalamasının %${pct} altı`);
+  }
+
+  // +10: cluster gap — cheapest significantly below second cheapest
+  let clusterGapPercent: number | null = null;
+  if (analytics.bestRetailerPrice != null && analytics.secondBestPrice != null && analytics.secondBestPrice > 0) {
+    // Use the lower of newPrice and stored bestRetailerPrice as the cheapest
+    const cheapest = Math.min(newPrice, analytics.bestRetailerPrice);
+    const gap = ((analytics.secondBestPrice - cheapest) / analytics.secondBestPrice) * 100;
+    clusterGapPercent = Math.round(gap * 10) / 10;
+    if (gap > 5) {
+      score += 10;
+      reasons.push(`Rakiplerden %${clusterGapPercent.toFixed(1)} daha ucuz`);
+      indicators.push('⚡');
+    }
+  }
+
+  // Bonus indicator: sudden price crash (>10% in one scrape)
+  if (oldPrice > 0) {
+    const dropPct = ((oldPrice - newPrice) / oldPrice) * 100;
+    if (dropPct > 10) {
+      indicators.push('📉');
+    }
+  }
+
+  score = Math.min(100, score);
+
+  let tier: DealScoreResult['tier'];
+  if (score >= 80) tier = 'super';
+  else if (score >= 60) tier = 'good';
+  else if (score >= 40) tier = 'minor';
+  else tier = 'ignore';
+
+  return {
+    score,
+    tier,
+    reasons,
+    indicators,
+    metrics: {
+      top3Average: Math.round(analytics.top3AveragePrice),
+      marketAverage: Math.round(analytics.marketAveragePrice),
+      allTimeLowest: analytics.allTimeLowest,
+      savingsVsMarket: Math.round(analytics.marketAveragePrice - newPrice),
+      savingsVsTop3: Math.round(analytics.top3AveragePrice - newPrice),
+      clusterGapPercent,
+    },
+  };
+}
+
+// ─── Smart Anti-Spam ─────────────────────────────────────────────
+async function shouldSendSmartAlert(listingId: string, newPrice: number): Promise<{ send: boolean; reason?: string }> {
+  const settings = await getNotifySettings();
+  if (!settings.notifyEnabled) {
+    return { send: false, reason: 'Notifications disabled in settings' };
+  }
+
+  const listing = await prisma.listing.findUnique({
+    where: { id: listingId },
+    select: { lastNotifiedPrice: true, notificationSentAt: true },
+  });
+
+  // Cooldown: 1 hour per listing
+  if (listing?.notificationSentAt) {
+    const elapsed = Date.now() - listing.notificationSentAt.getTime();
+    if (elapsed < SMART_COOLDOWN_MS) {
+      const remainingMin = Math.round((SMART_COOLDOWN_MS - elapsed) / 60_000);
+      return { send: false, reason: `Akıllı uyarı bekleme süresi (${remainingMin}dk kaldı)` };
+    }
+  }
+
+  // Re-alert threshold: price must drop at least 1% more from last alerted price
+  if (listing?.lastNotifiedPrice != null) {
+    const additionalDropPct = ((listing.lastNotifiedPrice - newPrice) / listing.lastNotifiedPrice) * 100;
+    if (additionalDropPct < SMART_RE_ALERT_DROP_PERCENT) {
+      return { send: false, reason: `Son uyarıdan bu yana yeterli düşüş yok (%${additionalDropPct.toFixed(1)} < %${SMART_RE_ALERT_DROP_PERCENT})` };
+    }
+  }
+
+  return { send: true };
+}
+
+// ─── Rich Turkish Message Builder ────────────────────────────────
+function buildSmartAlertMessage(payload: SmartDealPayload, sr: DealScoreResult): string {
+  const fmtPrice = (p: number) => p.toLocaleString('tr-TR', { maximumFractionDigits: 0 });
+  const lines: string[] = [];
+
+  // Header
+  lines.push('🔥🔥 <b>SÜPER FIRSAT!</b> 🔥🔥');
+  lines.push('');
+
+  // Product & retailer
+  lines.push(`📱 <b>${payload.variantLabel}</b>`);
+  lines.push(`🏪 ${payload.retailerName}`);
+  lines.push('');
+
+  // Price with old price strikethrough
+  lines.push(`💰 <s>${fmtPrice(payload.oldPrice)} TL</s>  →  <b>${fmtPrice(payload.newPrice)} TL</b>`);
+  lines.push('');
+
+  // Market comparison
+  if (sr.metrics.top3Average != null) {
+    lines.push(`📊 Top 3 Ort: ${fmtPrice(sr.metrics.top3Average)} TL`);
+  }
+  if (sr.metrics.marketAverage != null) {
+    lines.push(`📈 Piyasa Ort: ${fmtPrice(sr.metrics.marketAverage)} TL`);
+  }
+  if (sr.metrics.allTimeLowest != null) {
+    lines.push(`📉 Tüm Zamanlar En Düşük: ${fmtPrice(sr.metrics.allTimeLowest)} TL`);
+  }
+  lines.push('');
+
+  // Savings
+  if (sr.metrics.savingsVsMarket != null && sr.metrics.marketAverage != null && sr.metrics.marketAverage > 0) {
+    const savingsPct = ((sr.metrics.savingsVsMarket / sr.metrics.marketAverage) * 100).toFixed(1);
+    lines.push(`💸 Tasarruf: <b>${fmtPrice(sr.metrics.savingsVsMarket)} TL</b> (%${savingsPct})`);
+  }
+  lines.push('');
+
+  // Confidence score
+  lines.push(`🎯 Güven Skoru: <b>${sr.score}/100</b>`);
+  lines.push('');
+
+  // Deal indicators
+  if (sr.indicators.length > 0 || sr.reasons.length > 0) {
+    for (let i = 0; i < sr.reasons.length; i++) {
+      const icon = sr.indicators[i] ?? '✅';
+      lines.push(`${icon} ${sr.reasons[i]}`);
+    }
+    // Extra indicators without matching reasons (e.g. 📉 crash)
+    if (sr.indicators.length > sr.reasons.length) {
+      for (let i = sr.reasons.length; i < sr.indicators.length; i++) {
+        if (sr.indicators[i] === '📉') {
+          lines.push('📉 Ani fiyat düşüşü');
+        }
+      }
+    }
+    lines.push('');
+  }
+
+  // Link
+  lines.push(`🔗 <a href="${payload.productUrl}">Ürüne Git</a>`);
+
+  return lines.join('\n');
+}
+
+// ─── Public: Smart Deal Notification (score ≥ 80 only) ───────────
+export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> {
+  if (!TELEGRAM_ENABLED) return;
+
+  // 1) Compute deal score
+  const sr = await computeDealScore(payload.variantId, payload.newPrice, payload.oldPrice);
+  console.log(`[telegram-smart] ${payload.retailerSlug} ${payload.variantLabel}: score=${sr.score} tier=${sr.tier}`);
+
+  // 2) Only SUPER deals (≥80) get Telegram
+  if (sr.score < 80) {
+    skippedCount++;
+    console.log(`[telegram-smart] Skipped (score ${sr.score} < 80): ${payload.variantLabel}`);
+    return;
+  }
+
+  // 3) Anti-spam check
+  const spam = await shouldSendSmartAlert(payload.listingId, payload.newPrice);
+  if (!spam.send) {
+    skippedCount++;
+    console.log(`[telegram-smart] Anti-spam blocked: ${spam.reason}`);
+    return;
+  }
+
+  // 4) Atomic claim — prevent duplicate sends across replicas
+  const cooldownThreshold = new Date(Date.now() - SMART_COOLDOWN_MS);
+  const claimed = await prisma.listing.updateMany({
+    where: {
+      id: payload.listingId,
+      OR: [
+        { lastNotifiedPrice: { not: payload.newPrice } },
+        { lastNotifiedPrice: null },
+      ],
+      AND: [{
+        OR: [
+          { notificationSentAt: null },
+          { notificationSentAt: { lt: cooldownThreshold } },
+        ],
+      }],
+    },
+    data: {
+      lastNotifiedPrice: payload.newPrice,
+      notificationSentAt: new Date(),
+    },
+  });
+
+  if (claimed.count === 0) {
+    skippedCount++;
+    console.log(`[telegram-smart] Already claimed by another replica`);
+    return;
+  }
+
+  // 5) Build & broadcast
+  const message = buildSmartAlertMessage(payload, sr);
+  const result = await broadcast(message);
+
+  // 6) Log
+  if (result.sent > 0) {
+    sentCount++;
+    console.log(`[telegram-smart] ✓ SÜPER FIRSAT sent: ${payload.variantLabel} (${payload.newPrice} TL, score=${sr.score}) → ${result.sent} subscriber(s)`);
+
+    await prisma.notificationLog.create({
+      data: {
+        messageType: 'DEAL_ALERT' as never,
+        status: result.failed > 0 ? 'PARTIAL' : 'SENT',
+        productName: payload.variantLabel,
+        retailer: payload.retailerName,
+        oldPrice: payload.oldPrice,
+        newPrice: payload.newPrice,
+        dropPercent: ((payload.oldPrice - payload.newPrice) / payload.oldPrice) * 100,
+        messageText: message,
+        sentTo: result.sent,
+        failedTo: result.failed,
+        listingId: payload.listingId,
+      },
+    }).catch(() => {});
+  } else {
+    failCount++;
+    console.error(`[telegram-smart] ✗ Broadcast failed: ${result.failed} failure(s)`);
+
+    await prisma.notificationLog.create({
+      data: {
+        messageType: 'DEAL_ALERT' as never,
         status: 'FAILED',
         productName: payload.variantLabel,
         retailer: payload.retailerName,
