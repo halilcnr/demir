@@ -113,7 +113,11 @@ export default function AnalyticsPage() {
 
   const { data, isLoading, error, refetch } = useQuery<AnalyticsData>({
     queryKey: ['analytics'],
-    queryFn: () => fetch('/api/analytics').then((r) => r.json()),
+    queryFn: async () => {
+      const r = await fetch('/api/analytics');
+      if (!r.ok) throw new Error('Analytics API error');
+      return r.json();
+    },
     refetchInterval: 120_000,
   });
 
@@ -295,7 +299,7 @@ export default function AnalyticsPage() {
                       <span>Tüm Zaman En Düşük: {formatPrice(deal.allTimeLowest)}</span>
                     </div>
                     <div className="flex flex-wrap gap-1 pt-1">
-                      {deal.reasons.map((reason, i) => (
+                      {(deal.reasons ?? []).map((reason, i) => (
                         <Badge key={i} variant="success" size="sm">{reason}</Badge>
                       ))}
                     </div>
@@ -307,7 +311,7 @@ export default function AnalyticsPage() {
                         -{formatPrice(deal.savingsVsMarket)}
                       </div>
                       <div className="text-[11px] text-text-tertiary">
-                        %{deal.savingsPercent.toFixed(1)} tasarruf
+                        %{(deal.savingsPercent ?? 0).toFixed(1)} tasarruf
                       </div>
                     </div>
                     <a
@@ -380,13 +384,13 @@ export default function AnalyticsPage() {
                       <TrendIcon direction={a.trendDirection} />
                     </td>
                     <td className="py-3 pr-4 text-right font-mono text-xs text-text-secondary">
-                      {a.volatilityScore.toFixed(1)}
+                      {(a.volatilityScore ?? 0).toFixed(1)}
                     </td>
                     <td className="py-3 pr-4 text-right">
                       <DealScoreBar score={a.dealProbability} />
                     </td>
                     <td className="py-3 text-right text-xs text-text-tertiary">
-                      {(a.cheapestRetailers as string[]).slice(0, 2).join(', ')}
+                      {((a.cheapestRetailers ?? []) as string[]).slice(0, 2).join(', ')}
                     </td>
                   </tr>
                 ))}

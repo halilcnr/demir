@@ -96,7 +96,11 @@ function StatusDot({ status }: { status: 'healthy' | 'unstable' | 'failing' }) {
 export default function ScrapeHealthPage() {
   const { data, isLoading, error, refetch } = useQuery<ScrapeHealthDashboard>({
     queryKey: ['scrape-health'],
-    queryFn: () => fetch('/api/scrape-health').then((r) => r.json()),
+    queryFn: async () => {
+      const r = await fetch('/api/scrape-health');
+      if (!r.ok) throw new Error('Scrape health API error');
+      return r.json();
+    },
     refetchInterval: 60_000,
   });
 
@@ -108,7 +112,12 @@ export default function ScrapeHealthPage() {
   if (error) return <ErrorState description="Sağlık verileri yüklenemedi" onRetry={refetch} />;
   if (!data) return null;
 
-  const { providers, staleListings, summary } = data;
+  const providers = data.providers ?? [];
+  const staleListings = data.staleListings ?? [];
+  const summary = data.summary ?? {
+    totalProviders: 0, healthyProviders: 0, failingProviders: 0,
+    totalListingsTracked: 0, listingsUpdatedToday: 0, listingsFailedToday: 0, staleListingCount: 0,
+  };
 
   return (
     <div className="space-y-6">
