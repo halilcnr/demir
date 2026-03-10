@@ -1,6 +1,6 @@
 import * as cheerio from 'cheerio';
 import { BaseProvider, type ScrapeStrategy } from './base';
-import { normalizeIPhoneModel } from '@repo/shared';
+import { normalizeIPhoneModel, parseTurkishPrice as sharedParseTurkishPrice } from '@repo/shared';
 import type { ScrapedProduct } from '@repo/shared';
 
 export class N11Provider extends BaseProvider {
@@ -90,6 +90,123 @@ export class N11Provider extends BaseProvider {
             price: meta.price,
             currency: 'TRY',
             imageUrl: meta.image ?? undefined,
+            stockStatus: 'IN_STOCK',
+            productUrl: url,
+            fetchedAt: new Date(),
+          };
+        },
+      },
+      {
+        name: 'embedded-json',
+        run: (html, url, $) => {
+          // N11 sometimes embeds product data in inline scripts (window.__PRODUCT_DATA__, dataLayer, etc.)
+          const scripts = $('script:not([src])');
+          for (let i = 0; i < scripts.length; i++) {
+            const text = $(scripts[i]).html() || '';
+
+            // Pattern 1: window.__PRODUCT_DATA__ or similar object assignment
+            const objMatch = text.match(/(?:window\.__PRODUCT_DATA__|window\.productData|var\s+productData)\s*=\s*(\{[\s\S]*?\});/);
+            if (objMatch) {
+              try {
+                const data = JSON.parse(objMatch[1]);
+                const title = data.name || data.title || data.productName;
+                const price = data.price || data.salePrice || data.discountedPrice;
+                if (title && price) {
+                  const parsed = normalizeIPhoneModel(title);
+                  if (!parsed) continue;
+                  const numPrice = typeof price === 'number' ? price : sharedParseTurkishPrice(String(price));
+                  if (!numPrice) continue;
+                  return {
+                    retailerSlug: this.retailerSlug,
+                    retailerName: this.retailerName,
+                    rawTitle: title,
+                    normalizedModel: parsed.model,
+                    normalizedColor: parsed.color,
+                    normalizedStorageGb: parsed.storageGb,
+                    price: numPrice,
+                    currency: 'TRY',
+                    stockStatus: 'IN_STOCK',
+                    productUrl: url,
+                    fetchedAt: new Date(),
+                  };
+                }
+              } catch { /* not valid JSON */ }
+            }
+
+            // Pattern 2: dataLayer push with ecommerce data
+            const dlMatch = text.match(/dataLayer\.push\((\{[\s\S]*?"ecommerce"[\s\S]*?\})\)/);
+            if (dlMatch) {
+              try {
+                const dl = JSON.parse(dlMatch[1]);
+                const items = dl.ecommerce?.items || dl.ecommerce?.detail?.products || [];
+                const item = items[0];
+                if (item?.name && item?.price) {
+                  const parsed = normalizeIPhoneModel(item.name);
+                  if (!parsed) continue;
+                  const numPrice = typeof item.price === 'number' ? item.price : sharedParseTurkishPrice(String(item.price));
+                  if (!numPrice) continue;
+                  return {
+                    retailerSlug: this.retailerSlug,
+                    retailerName: this.retailerName,
+                    rawTitle: item.name,
+                    normalizedModel: parsed.model,
+                    normalizedColor: parsed.color,
+                    normalizedStorageGb: parsed.storageGb,
+                    price: numPrice,
+                    currency: 'TRY',
+                    sellerName: item.brand || undefined,
+                    stockStatus: 'IN_STOCK',
+                    productUrl: url,
+                    fetchedAt: new Date(),
+                  };
+                }
+              } catch { /* not valid JSON */ }
+            }
+          }
+          return null;
+        },
+      },
+      {
+        name: 'regex-fallback',
+        run: (html, url) => {
+          // Last-resort: extract data from raw HTML using regex patterns
+          const titleMatch = html.match(/<h1[^>]*class="[^"]*proName[^"]*"[^>]*>([\s\S]*?)<\/h1>/)
+            || html.match(/<h1[^>]*>([\s\S]*?iPhone[\s\S]*?)<\/h1>/);
+          if (!titleMatch) return null;
+          const title = titleMatch[1].replace(/<[^>]+>/g, '').trim();
+
+          const parsed = normalizeIPhoneModel(title);
+          if (!parsed) return null;
+
+          // Try multiple price patterns
+          const pricePatterns = [
+            /"price"\s*:\s*"?([\d.,]+)"?/,
+            /class="[^"]*newPrice[^"]*"[\s\S]*?>([\d.,]+\s*TL)/,
+            /data-price="([\d.,]+)"/,
+            /content="([\d.,]+)"[^>]*property="product:price:amount"/,
+            /property="product:price:amount"[^>]*content="([\d.,]+)"/,
+          ];
+
+          let price: number | null = null;
+          for (const pattern of pricePatterns) {
+            const m = html.match(pattern);
+            if (m) {
+              price = sharedParseTurkishPrice(m[1]);
+              if (price && price > 1000) break;
+              price = null;
+            }
+          }
+          if (!price) return null;
+
+          return {
+            retailerSlug: this.retailerSlug,
+            retailerName: this.retailerName,
+            rawTitle: title,
+            normalizedModel: parsed.model,
+            normalizedColor: parsed.color,
+            normalizedStorageGb: parsed.storageGb,
+            price,
+            currency: 'TRY',
             stockStatus: 'IN_STOCK',
             productUrl: url,
             fetchedAt: new Date(),

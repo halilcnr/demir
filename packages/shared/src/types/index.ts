@@ -394,3 +394,134 @@ export const DEAL_THRESHOLDS = {
   SUSPICIOUS_SPIKE_PERCENT: 15,
   SUSPICIOUS_WINDOW_HOURS: 48,
 } as const;
+
+// ─── Scrape Health Dashboard Types ──────────────────────────────
+
+export type ScrapeHealthStatus = 'healthy' | 'unstable' | 'failing';
+
+export interface ProviderHealthRow {
+  slug: string;
+  name: string;
+  isActive: boolean;
+  status: ScrapeHealthStatus;
+  lastSuccessAt: string | null;
+  lastFailureAt: string | null;
+  lastBlockedAt: string | null;
+  successRate: number;         // 0-100
+  avgScrapeTimeMs: number;
+  listingsUpdatedToday: number;
+  listingsFailedToday: number;
+  blockedRecently: boolean;
+  consecutiveFailures: number;
+  totalAttempts: number;
+  httpStatusBreakdown: Record<string, number>;
+}
+
+export interface StaleListingRow {
+  listingId: string;
+  variantName: string;
+  familyName: string;
+  retailerName: string;
+  retailerSlug: string;
+  lastCheckedAt: string | null;
+  lastPrice: number | null;
+  staleness: 'warning' | 'critical'; // 6h+ = warning, 12h+ = critical
+  hoursSinceUpdate: number;
+}
+
+export interface ScrapeHealthDashboard {
+  providers: ProviderHealthRow[];
+  staleListings: StaleListingRow[];
+  summary: {
+    totalListings: number;
+    updatedToday: number;
+    failedToday: number;
+    staleCount: number;
+    overallSuccessRate: number;
+    lastSyncAt: string | null;
+  };
+}
+
+// ─── Price Analytics Types ──────────────────────────────────────
+
+export interface VariantAnalytics {
+  variantId: string;
+  variantName: string;
+  familyName: string;
+  color: string;
+  storageGb: number;
+  
+  // Current market
+  lowestCurrentPrice: number | null;
+  top3AveragePrice: number | null;
+  marketAveragePrice: number | null;
+  medianPrice: number | null;
+  priceSpread: number | null;
+  activeListingCount: number;
+  
+  // Historical
+  allTimeLowest: number | null;
+  allTimeHighest: number | null;
+  avg30d: number | null;
+  lowest30d: number | null;
+  
+  // Trend
+  trendDirection: string;
+  volatilityScore: number | null;
+  priceChangePercent7d: number | null;
+  priceChangePercent30d: number | null;
+  
+  // Deal intelligence
+  dealProbability: number;
+  bestRetailer: { slug: string; name: string; price: number } | null;
+  secondBest: { slug: string; price: number } | null;
+  savingsVsAverage: number | null;
+  
+  // Top 3 cheapest
+  cheapestRetailers: {
+    slug: string;
+    name: string;
+    price: number;
+    productUrl: string;
+  }[];
+}
+
+export interface SmartDealAlert {
+  listingId: string;
+  variantName: string;
+  familyName: string;
+  retailerName: string;
+  retailerSlug: string;
+  productUrl: string;
+  currentPrice: number;
+  top3Average: number;
+  marketAverage: number;
+  allTimeLowest: number | null;
+  savingsVsMarket: number;
+  savingsVsTop3: number;
+  isNewAllTimeLow: boolean;
+  isBelowTop3: boolean;
+  isBelowMarket: boolean;
+  dealScore: number;
+  reason: string;
+}
+
+export interface DailyHealthReport {
+  date: string;
+  providers: {
+    slug: string;
+    name: string;
+    successRate: number;
+    isWarning: boolean;
+  }[];
+  listings: {
+    updatedToday: number;
+    failedToday: number;
+    staleCount: number;
+  };
+  topFailures: {
+    provider: string;
+    reason: string;
+    count: number;
+  }[];
+}

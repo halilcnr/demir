@@ -13,6 +13,8 @@ import {
   Trophy,
   Bot,
   Gauge,
+  Activity,
+  BarChart3,
 } from 'lucide-react';
 import { cn } from '@repo/shared';
 
@@ -24,6 +26,8 @@ const navItems = [
   { href: '/alerts', label: 'Alarmlar', icon: Bell },
   { href: '/sync', label: 'Senkronizasyon', icon: RefreshCw },
   { href: '/sync-control', label: 'Operasyon Merkezi', icon: Gauge },
+  { href: '/scrape-health', label: 'Scrape Sağlık', icon: Activity },
+  { href: '/analytics', label: 'Analitik', icon: BarChart3 },
   { href: '/settings/telegram', label: 'Telegram', icon: Bot },
   { href: '/settings', label: 'Ayarlar', icon: Settings },
 ];

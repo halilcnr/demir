@@ -40,6 +40,7 @@ model ProductVariant {
   family     ProductFamily @relation(fields: [familyId], references: [id], onDelete: Cascade)
   listings   Listing[]
   alertRules AlertRule[]
+  priceAnalytics VariantPriceAnalytics?
 
   @@unique([familyId, color, storageGb])
   @@index([familyId])
@@ -291,6 +292,8 @@ enum NotificationMsgType {
   PRICE_DROP
   ALL_TIME_LOW
   TEST_MESSAGE
+  HEALTH_REPORT
+  DEAL_ALERT
 }
 
 enum NotificationStatus {
@@ -522,4 +525,92 @@ model ProviderRateLimit {
   updatedAt         DateTime @updatedAt
 
   @@index([id])
+}
+
+// ─── Scrape Health Snapshot (hourly aggregated provider stats) ───
+model ScrapeHealthSnapshot {
+  id              String   @id @default(cuid())
+  retailerSlug    String
+  periodStart     DateTime // start of the 1-hour window
+  periodEnd       DateTime
+  totalAttempts   Int      @default(0)
+  successCount    Int      @default(0)
+  failureCount    Int      @default(0)
+  blockedCount    Int      @default(0)
+  timeoutCount    Int      @default(0)
+  avgResponseMs   Float    @default(0)
+  p95ResponseMs   Float    @default(0)
+  successRate     Float    @default(0) // 0-100
+  listingsUpdated Int      @default(0)
+  listingsFailed  Int      @default(0)
+  httpStatusCodes String?  // JSON: {"200":45,"403":3,"429":1}
+  createdAt       DateTime @default(now())
+
+  @@unique([retailerSlug, periodStart])
+  @@index([retailerSlug])
+  @@index([periodStart])
+  @@index([createdAt])
+}
+
+// ─── Daily Scrape Report (sent to Telegram) ─────────────────────
+model DailyScrapeReport {
+  id              String   @id @default(cuid())
+  reportDate      DateTime @unique // YYYY-MM-DD
+  totalListings   Int      @default(0)
+  updatedToday    Int      @default(0)
+  failedToday     Int      @default(0)
+  staleListings   Int      @default(0) // not updated in 12h+
+  providerSummary String?  // JSON array of per-provider stats
+  topFailures     String?  // JSON array of top failure reasons
+  sentToTelegram  Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  @@index([reportDate])
+}
+
+// ─── Variant Price Analytics (materialized view per variant) ────
+model VariantPriceAnalytics {
+  id                  String   @id @default(cuid())
+  variantId           String   @unique
+  
+  // Current market state
+  lowestCurrentPrice  Float?   // lowest active listing price right now
+  top3AveragePrice    Float?   // average of top 3 cheapest active listings
+  marketAveragePrice  Float?   // average of ALL active listings
+  medianPrice         Float?   // median price across retailers
+  priceSpread         Float?   // max - min price
+  activeListingCount  Int      @default(0)
+  
+  // Historical metrics
+  allTimeLowest       Float?
+  allTimeHighest      Float?
+  avg7d               Float?
+  avg30d              Float?
+  avg90d              Float?
+  lowest7d            Float?
+  lowest30d           Float?
+  
+  // Trend & volatility
+  trendDirection      String   @default("unknown") // rising, falling, stable
+  volatilityScore     Float?   // standard deviation / mean * 100
+  priceChangePercent7d  Float? // % change over 7 days
+  priceChangePercent30d Float? // % change over 30 days
+  
+  // Deal intelligence
+  dealProbability     Float?   @default(0) // 0-100, how likely a deal exists now
+  bestRetailerSlug    String?
+  bestRetailerName    String?
+  bestRetailerPrice   Float?
+  secondBestSlug      String?
+  secondBestPrice     Float?
+  savingsVsAverage    Float?   // how much cheaper vs market average
+  
+  computedAt          DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@index([variantId])
+  @@index([dealProbability])
+  @@index([computedAt])
 }

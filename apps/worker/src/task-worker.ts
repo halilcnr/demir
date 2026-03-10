@@ -47,6 +47,7 @@ import { acquireRateSlot, releaseRateSlot } from './distributed-rate-limiter';
 import { WORKER_ID, recordTaskComplete, recordTaskFailed, recordTaskSkipped, setWorkerStatus, setCurrentTask } from './worker-identity';
 import { queryFallbackSourcesDetailed } from './discovery';
 import { getWorkerConfig } from './worker-config';
+import { recordHealthSuccess, recordHealthFailure } from './services/scrape-health';
 
 const DEFAULT_CONCURRENCY = parseInt(process.env.WORKER_CONCURRENCY ?? '5', 10);
 
@@ -335,6 +336,7 @@ async function processOneTask(task: ClaimedTask): Promise<'success' | 'failure' 
       await recordSuccess(slug);
       recordCircuitSuccess(slug);
       recordMetricEvent(slug, 'success', respTime);
+      recordHealthSuccess(slug, listingId, respTime);
       incrementProviderCounter(slug, 'successCount').catch(() => {});
       recordTaskComplete(Date.now() - startMs);
 
@@ -356,6 +358,7 @@ async function processOneTask(task: ClaimedTask): Promise<'success' | 'failure' 
       await failTask(taskId, 'scrape returned null');
       await recordFailure(slug);
       recordTaskFailed();
+      recordHealthFailure(slug, listingId, 'error');
       addSyncLog({ type: 'error', retailer: slug, variant: variantLabel, message: `${slug} — veri alınamadı` });
       return 'failure';
     }
@@ -489,6 +492,7 @@ async function handleTaskError(task: ClaimedTask, err: unknown): Promise<'succes
     recordMetricEvent(slug, 'blocked', 0);
     incrementProviderCounter(slug, 'blockedCount').catch(() => {});
     recordTaskFailed();
+    recordHealthFailure(slug, listingId, 'blocked', 403);
     await prisma.listing.update({ where: { id: listingId }, data: { lastBlockedAt: new Date(), lastFailureAt: new Date() } }).catch(() => {});
     addSyncLog({ type: 'error', retailer: slug, variant: variantLabel, message: `${slug} engellendi (403)`, blocked: true });
     return 'failure';
@@ -501,8 +505,7 @@ async function handleTaskError(task: ClaimedTask, err: unknown): Promise<'succes
     recordCircuitFailure(slug);
     recordMetricEvent(slug, 'rate_limited', 0);
     incrementProviderCounter(slug, 'rateLimitCount').catch(() => {});
-    recordTaskFailed();
-    addSyncLog({ type: 'warn', retailer: slug, variant: variantLabel, message: `${slug} hız limiti (429)` });
+    recordTaskFailed();    recordHealthFailure(slug, listingId, 'blocked', 429);    addSyncLog({ type: 'warn', retailer: slug, variant: variantLabel, message: `${slug} hız limiti (429)` });
     return 'failure';
   }
 
@@ -510,6 +513,7 @@ async function handleTaskError(task: ClaimedTask, err: unknown): Promise<'succes
     await failTask(taskId, 'not found (404)', 'not_found');
     await prisma.listing.update({ where: { id: listingId }, data: { isActive: false, lastFailureAt: new Date() } }).catch(() => {});
     recordTaskFailed();
+    recordHealthFailure(slug, listingId, 'error', 404);
     addSyncLog({ type: 'warn', retailer: slug, variant: variantLabel, message: `${slug} — ürün bulunamadı (404)` });
     return 'failure';
   }

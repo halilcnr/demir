@@ -11,6 +11,8 @@ import { WORKER_ID, startWorkerIdentity, stopWorkerIdentity, getClusterWorkers, 
 import { initRateLimits, resetAllConcurrency } from './distributed-rate-limiter';
 import { getTaskQueueStats, cleanupOldTasks } from './task-queue';
 import { getTaskWorkerState } from './task-worker';
+import { getScrapeHealthDashboard, generateDailyReport, buildHealthReportMessage, flushHourlySnapshots, cleanupOldSnapshots } from './services/scrape-health';
+import { computeAllVariantAnalytics, detectSmartDeals, buildSmartDealMessage } from './services/price-analytics';
 
 const startedAt = new Date().toISOString();
 console.log('=== iPhone Price Tracker Worker ===');
@@ -350,6 +352,72 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // ─── Scrape Health Dashboard ───────────────────────────
+  if (req.method === 'GET' && req.url === '/scrape-health') {
+    try {
+      const dashboard = await getScrapeHealthDashboard();
+      res.writeHead(200);
+      res.end(JSON.stringify(dashboard));
+    } catch (err) {
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: err instanceof Error ? err.message : 'Internal error' }));
+    }
+    return;
+  }
+
+  // ─── Daily Health Report (generate + optionally send to Telegram) ──
+  if (req.method === 'POST' && req.url === '/health-report') {
+    const authHeader = req.headers['authorization'] ?? '';
+    if (TRIGGER_SECRET && authHeader !== `Bearer ${TRIGGER_SECRET}`) {
+      res.writeHead(401);
+      res.end(JSON.stringify({ error: 'Unauthorized' }));
+      return;
+    }
+    try {
+      const report = await generateDailyReport();
+      const message = buildHealthReportMessage(report);
+      const sendResult = await sendCustomMessage(message);
+      res.writeHead(200);
+      res.end(JSON.stringify({ report, telegramSent: sendResult.ok }));
+    } catch (err) {
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: err instanceof Error ? err.message : 'Internal error' }));
+    }
+    return;
+  }
+
+  // ─── Price Analytics: compute all + return smart deals ─
+  if (req.method === 'GET' && req.url === '/analytics') {
+    try {
+      const deals = await detectSmartDeals();
+      res.writeHead(200);
+      res.end(JSON.stringify({ deals, count: deals.length }));
+    } catch (err) {
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: err instanceof Error ? err.message : 'Internal error' }));
+    }
+    return;
+  }
+
+  // ─── Trigger analytics recomputation ───────────────────
+  if (req.method === 'POST' && req.url === '/analytics/compute') {
+    const authHeader = req.headers['authorization'] ?? '';
+    if (TRIGGER_SECRET && authHeader !== `Bearer ${TRIGGER_SECRET}`) {
+      res.writeHead(401);
+      res.end(JSON.stringify({ error: 'Unauthorized' }));
+      return;
+    }
+    try {
+      const count = await computeAllVariantAnalytics();
+      res.writeHead(200);
+      res.end(JSON.stringify({ ok: true, computedVariants: count }));
+    } catch (err) {
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: err instanceof Error ? err.message : 'Internal error' }));
+    }
+    return;
+  }
+
   res.writeHead(404);
   res.end(JSON.stringify({ error: 'Not found' }));
 });
@@ -365,6 +433,47 @@ startTelegramPolling();
 setInterval(() => {
   persistMetricsToDB().catch(() => {});
 }, 60_000);
+
+// Flush hourly health snapshots (every 5 min)
+setInterval(() => {
+  flushHourlySnapshots().catch(() => {});
+}, 5 * 60_000);
+
+// Recompute price analytics (every 15 min)
+setInterval(() => {
+  computeAllVariantAnalytics().catch(() => {});
+}, 15 * 60_000);
+
+// Daily health report to Telegram (check every hour, send at ~09:00 Istanbul time)
+let lastReportDate = '';
+setInterval(async () => {
+  const now = new Date();
+  const istHour = parseInt(now.toLocaleString('en-US', { timeZone: 'Europe/Istanbul', hour: 'numeric', hour12: false }));
+  const todayStr = now.toISOString().split('T')[0];
+  if (istHour === 9 && lastReportDate !== todayStr) {
+    lastReportDate = todayStr;
+    try {
+      const report = await generateDailyReport();
+      const message = buildHealthReportMessage(report);
+      await sendCustomMessage(message);
+      console.log('[worker] Daily health report sent to Telegram');
+
+      // Also detect and send smart deals
+      const deals = await detectSmartDeals();
+      for (const deal of deals.slice(0, 3)) { // Top 3 deals only
+        const dealMsg = buildSmartDealMessage(deal);
+        await sendCustomMessage(dealMsg);
+      }
+    } catch (err) {
+      console.error('[worker] Failed to send daily report:', err);
+    }
+  }
+}, 60 * 60_000);
+
+// Cleanup old snapshots (daily)
+setInterval(() => {
+  cleanupOldSnapshots().catch(() => {});
+}, 24 * 60 * 60_000);
 
 // Periodic housekeeping — dead workers + old tasks (every 10 min)
 setInterval(() => {
