@@ -375,6 +375,10 @@ interface MarketAnalysis {
   clusterGapPercent: number | null;
   retailerCount: number;
   allPrices: { price: number; slug: string; name: string }[];
+  // Enhancement fields
+  crossColorCheapest: number | null;    // cheapest price among sibling colors
+  trendMomentumDrops: number;           // consecutive recent price drops
+  historicalPercentile: number | null;   // price percentile in historical distribution (0=cheapest ever)
 }
 
 /**
@@ -382,6 +386,12 @@ interface MarketAnalysis {
  * This avoids relying on potentially stale VariantPriceAnalytics.
  */
 async function computeLiveMarketAnalysis(variantId: string): Promise<MarketAnalysis | null> {
+  // Get the variant to find its familyId + storageGb for cross-color comparison
+  const variant = await prisma.productVariant.findUnique({
+    where: { id: variantId },
+    select: { familyId: true, storageGb: true },
+  });
+
   const listings = await prisma.listing.findMany({
     where: {
       variantId,
@@ -423,6 +433,58 @@ async function computeLiveMarketAnalysis(variantId: string): Promise<MarketAnaly
     _min: { observedPrice: true },
   });
 
+  // ── Cross-color cheapest: find cheapest price across all colors of the same model+storage ──
+  let crossColorCheapest: number | null = null;
+  if (variant) {
+    const siblingListings = await prisma.listing.findMany({
+      where: {
+        variant: { familyId: variant.familyId, storageGb: variant.storageGb },
+        variantId: { not: variantId },
+        isActive: true,
+        currentPrice: { not: null, gt: 0 },
+        stockStatus: { in: ['IN_STOCK', 'LIMITED'] },
+      },
+      select: { currentPrice: true },
+      orderBy: { currentPrice: 'asc' },
+      take: 1,
+    });
+    if (siblingListings.length > 0 && siblingListings[0].currentPrice != null) {
+      crossColorCheapest = siblingListings[0].currentPrice;
+    }
+  }
+
+  // ── Trend momentum: check for consecutive price drops in recent snapshots ──
+  let trendMomentumDrops = 0;
+  if (listingIds.length > 0) {
+    const recentSnapshots = await prisma.priceSnapshot.findMany({
+      where: { listingId: { in: listingIds } },
+      orderBy: { observedAt: 'desc' },
+      take: 10,
+      select: { observedPrice: true },
+    });
+    if (recentSnapshots.length >= 3) {
+      for (let i = 0; i < recentSnapshots.length - 1; i++) {
+        if (recentSnapshots[i].observedPrice < recentSnapshots[i + 1].observedPrice) {
+          trendMomentumDrops++;
+        } else {
+          break; // Consecutive check: stop at first non-drop
+        }
+      }
+    }
+  }
+
+  // ── Historical percentile: what percentile is the current cheapest price in? ──
+  let historicalPercentile: number | null = null;
+  if (listingIds.length > 0) {
+    const [totalCount, belowCount] = await Promise.all([
+      prisma.priceSnapshot.count({ where: { listingId: { in: listingIds } } }),
+      prisma.priceSnapshot.count({ where: { listingId: { in: listingIds }, observedPrice: { gte: lowestPrice } } }),
+    ]);
+    if (totalCount > 0) {
+      historicalPercentile = Math.round(((totalCount - belowCount) / totalCount) * 100);
+    }
+  }
+
   return {
     lowestPrice,
     top3AveragePrice,
@@ -432,6 +494,9 @@ async function computeLiveMarketAnalysis(variantId: string): Promise<MarketAnaly
     clusterGapPercent,
     retailerCount: activePrices.length,
     allPrices: activePrices.map(p => ({ price: p.price, slug: p.slug, name: p.name })),
+    crossColorCheapest,
+    trendMomentumDrops,
+    historicalPercentile,
   };
 }
 
@@ -484,6 +549,37 @@ async function computeDealScore(variantId: string, newPrice: number, oldPrice: n
       score += 5;
       reasons.push('Piyasada istatistiksel anomali');
     }
+  }
+
+  // ══ NEW ENHANCEMENT 1: Cross-color comparison (+15) ══
+  // If this variant's cheapest price beats all sibling colors of the same model+storage
+  if (market.crossColorCheapest != null && newPrice < market.crossColorCheapest) {
+    const colorDiffPct = ((market.crossColorCheapest - newPrice) / market.crossColorCheapest * 100).toFixed(1);
+    score += 15;
+    reasons.push(`Diğer renklere göre %${colorDiffPct} daha ucuz`);
+    indicators.push('🎨');
+  }
+
+  // ══ NEW ENHANCEMENT 2: Trend momentum (+10) ══
+  // Reward consistent downward price trend (3+ consecutive drops = strong signal)
+  if (market.trendMomentumDrops >= 3) {
+    score += 10;
+    reasons.push(`Ardışık ${market.trendMomentumDrops} fiyat düşüşü (güçlü düşüş trendi)`);
+    indicators.push('📉');
+  } else if (market.trendMomentumDrops >= 2) {
+    score += 5;
+    reasons.push(`Ardışık ${market.trendMomentumDrops} fiyat düşüşü`);
+  }
+
+  // ══ NEW ENHANCEMENT 3: Historical percentile position (+10) ══
+  // If price is in the bottom 10th percentile of all historical prices
+  if (market.historicalPercentile != null && market.historicalPercentile <= 10) {
+    score += 10;
+    reasons.push(`Tarihsel fiyatların en düşük %${market.historicalPercentile} diliminde`);
+    indicators.push('📊');
+  } else if (market.historicalPercentile != null && market.historicalPercentile <= 20) {
+    score += 5;
+    reasons.push(`Tarihsel fiyatların en düşük %${market.historicalPercentile} diliminde`);
   }
 
   // ── Bonus indicator: sudden crash (>10% from previous price) ──

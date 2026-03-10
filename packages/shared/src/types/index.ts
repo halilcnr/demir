@@ -506,6 +506,39 @@ export interface SmartDealAlert {
   reason: string;
 }
 
+// ─── Storage Group Analytics (color-independent) ─────────────────
+export interface StorageGroupAnalytics {
+  groupKey: string;            // "iphone-13|128"
+  familyName: string;          // "iPhone 13"
+  familySlug: string;          // "iphone-13"
+  storageGb: number;           // 128
+  groupLabel: string;          // "iPhone 13 128GB"
+  cheapestPrice: number;
+  cheapestColor: string;
+  cheapestVariantSlug: string;
+  cheapestRetailerName: string;
+  cheapestRetailerSlug: string;
+  cheapestProductUrl: string;
+  top3AveragePrice: number;
+  marketAveragePrice: number;
+  allTimeLowest: number | null;
+  allTimeHighest: number | null;
+  trendDirection: string;
+  volatilityScore: number | null;
+  dealProbability: number;
+  activeListingCount: number;
+  colorCount: number;
+  priceSpread: number;
+  avg30d: number | null;
+  cheapestRetailers: {
+    name: string;
+    slug: string;
+    price: number;
+    color: string;
+    productUrl: string;
+  }[];
+}
+
 export interface DailyHealthReport {
   date: string;
   providers: {

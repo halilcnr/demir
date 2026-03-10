@@ -18,6 +18,7 @@ import {
   Sparkles,
   Target,
   Zap,
+  Palette,
 } from 'lucide-react';
 import {
   BarChart,
@@ -52,32 +53,41 @@ interface SmartDealAlert {
   detectedAt: string;
 }
 
-interface AnalyticsRow {
-  variantId: string;
-  variantName: string;
-  variantSlug: string;
+interface StorageGroupRow {
+  groupKey: string;
   familyName: string;
-  lowestCurrentPrice: number;
+  familySlug: string;
+  storageGb: number;
+  groupLabel: string;
+  cheapestPrice: number;
+  cheapestColor: string;
+  cheapestVariantSlug: string;
+  cheapestRetailerName: string;
+  cheapestRetailerSlug: string;
+  cheapestProductUrl: string;
   top3AveragePrice: number;
   marketAveragePrice: number;
-  medianPrice: number;
-  priceSpread: number;
-  allTimeLowest: number;
-  allTimeHighest: number;
-  avg7d: number | null;
-  avg30d: number | null;
-  avg90d: number | null;
+  allTimeLowest: number | null;
+  allTimeHighest: number | null;
   trendDirection: string;
-  volatilityScore: number;
+  volatilityScore: number | null;
   dealProbability: number;
   activeListingCount: number;
-  cheapestRetailers: string[];
-  computedAt: string;
+  colorCount: number;
+  priceSpread: number;
+  avg30d: number | null;
+  cheapestRetailers: {
+    name: string;
+    slug: string;
+    price: number;
+    color: string;
+    productUrl: string;
+  }[];
 }
 
 interface AnalyticsData {
   deals: SmartDealAlert[];
-  analytics: AnalyticsRow[];
+  analytics: StorageGroupRow[];
 }
 
 function formatPrice(value: number): string {
@@ -267,7 +277,7 @@ export default function AnalyticsPage() {
               : 'text-text-tertiary hover:text-text-secondary',
           )}
         >
-          Varyant Analitik ({analytics.length})
+          Model Bazlı Analiz ({analytics.length})
         </button>
       </div>
 
@@ -330,70 +340,90 @@ export default function AnalyticsPage() {
         </div>
       )}
 
-      {/* Variant Analytics Table */}
+      {/* Grouped Analytics Table (color-independent) */}
       {tab === 'analytics' && (
         <Card>
           <div className="mb-4 flex items-center gap-2">
             <BarChart3 className="h-4 w-4 text-primary" />
-            <h2 className="text-sm font-semibold text-text-primary">Varyant Fiyat Analizi</h2>
+            <h2 className="text-sm font-semibold text-text-primary">Model Bazlı Fiyat Analizi</h2>
+            <span className="text-xs text-text-tertiary">(renk bağımsız, en ucuz fiyat)</span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-border text-xs uppercase tracking-wider text-text-tertiary">
-                  <th className="pb-3 pr-4">Varyant</th>
-                  <th className="pb-3 pr-4 text-right">En Düşük</th>
+                  <th className="pb-3 pr-4">Model</th>
+                  <th className="pb-3 pr-4 text-right">En Ucuz</th>
                   <th className="pb-3 pr-4 text-right">Top3 Ort.</th>
                   <th className="pb-3 pr-4 text-right">Piyasa Ort.</th>
                   <th className="pb-3 pr-4 text-right">Fark</th>
                   <th className="pb-3 pr-4 text-center">Trend</th>
-                  <th className="pb-3 pr-4 text-right">Volatilite</th>
                   <th className="pb-3 pr-4 text-right">Fırsat %</th>
-                  <th className="pb-3 text-right">Mağaza</th>
+                  <th className="pb-3 text-right">En Ucuz Mağaza</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {analytics.map((a) => (
-                  <tr key={a.variantId} className="hover:bg-slate-50/50">
-                    <td className="py-3 pr-4">
-                      <Link
-                        href={`/variants/${a.variantSlug}`}
-                        className="font-medium text-primary hover:underline"
-                      >
-                        {a.variantName}
-                      </Link>
-                      <div className="text-[11px] text-text-tertiary">
-                        {a.familyName} · {a.activeListingCount} listing
-                      </div>
-                    </td>
-                    <td className="py-3 pr-4 text-right font-mono text-xs font-semibold text-text-primary">
-                      {formatPrice(a.lowestCurrentPrice)}
-                    </td>
-                    <td className="py-3 pr-4 text-right font-mono text-xs text-text-secondary">
-                      {formatPrice(a.top3AveragePrice)}
-                    </td>
-                    <td className="py-3 pr-4 text-right font-mono text-xs text-text-secondary">
-                      {formatPrice(a.marketAveragePrice)}
-                    </td>
-                    <td className="py-3 pr-4 text-right font-mono text-xs">
-                      <span className={a.priceSpread > 5000 ? 'text-amber-600' : 'text-text-tertiary'}>
-                        {formatPrice(a.priceSpread)}
-                      </span>
-                    </td>
-                    <td className="py-3 pr-4 text-center">
-                      <TrendIcon direction={a.trendDirection} />
-                    </td>
-                    <td className="py-3 pr-4 text-right font-mono text-xs text-text-secondary">
-                      {(a.volatilityScore ?? 0).toFixed(1)}
-                    </td>
-                    <td className="py-3 pr-4 text-right">
-                      <DealScoreBar score={a.dealProbability} />
-                    </td>
-                    <td className="py-3 text-right text-xs text-text-tertiary">
-                      {((a.cheapestRetailers ?? []) as string[]).slice(0, 2).join(', ')}
-                    </td>
-                  </tr>
-                ))}
+                {analytics.map((a) => {
+                  const isNearAllTimeLow = a.allTimeLowest != null && a.cheapestPrice <= a.allTimeLowest * 1.02;
+                  return (
+                    <tr key={a.groupKey} className="hover:bg-slate-50/50">
+                      <td className="py-3 pr-4">
+                        <Link
+                          href={`/variants/${a.cheapestVariantSlug}`}
+                          className="font-medium text-primary hover:underline"
+                        >
+                          {a.groupLabel}
+                        </Link>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-[11px] text-text-tertiary">
+                            {a.activeListingCount} listing
+                          </span>
+                          <span className="text-[11px] text-text-tertiary">·</span>
+                          <Palette className="h-3 w-3 text-text-tertiary" />
+                          <span className="text-[11px] text-text-tertiary">
+                            {a.colorCount} renk
+                          </span>
+                          {isNearAllTimeLow && (
+                            <Badge variant="success" size="sm">En Düşük</Badge>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-3 pr-4 text-right">
+                        <div className="font-mono text-xs font-semibold text-text-primary">
+                          {formatPrice(a.cheapestPrice)}
+                        </div>
+                        <div className="text-[10px] text-text-tertiary">{a.cheapestColor}</div>
+                      </td>
+                      <td className="py-3 pr-4 text-right font-mono text-xs text-text-secondary">
+                        {formatPrice(a.top3AveragePrice)}
+                      </td>
+                      <td className="py-3 pr-4 text-right font-mono text-xs text-text-secondary">
+                        {formatPrice(a.marketAveragePrice)}
+                      </td>
+                      <td className="py-3 pr-4 text-right font-mono text-xs">
+                        <span className={a.priceSpread > 5000 ? 'text-amber-600' : 'text-text-tertiary'}>
+                          {formatPrice(a.priceSpread)}
+                        </span>
+                      </td>
+                      <td className="py-3 pr-4 text-center">
+                        <TrendIcon direction={a.trendDirection} />
+                      </td>
+                      <td className="py-3 pr-4 text-right">
+                        <DealScoreBar score={a.dealProbability} />
+                      </td>
+                      <td className="py-3 text-right">
+                        <div className="text-xs text-text-primary font-medium">
+                          {a.cheapestRetailerName}
+                        </div>
+                        {a.cheapestRetailers.length > 1 && (
+                          <div className="text-[10px] text-text-tertiary">
+                            +{a.cheapestRetailers.length - 1} diğer
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
