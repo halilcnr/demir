@@ -366,6 +366,15 @@ model AppSettings {
   notifyMinPrice        Float?                   // Bu fiyatın altındaki düşüşleri bildir (null = sınırsız)
   notifyMaxPrice        Float?                   // Bu fiyatın üstündeki düşüşleri bildir (null = sınırsız)
 
+  // Bildirim tipleri aç/kapa
+  notifyPriceDrop       Boolean  @default(true)  // Fiyat düşüşü bildirimleri
+  notifySmartDeal       Boolean  @default(true)  // Akıllı fırsat bildirimleri
+  notifyDailyReport     Boolean  @default(true)  // Günlük sağlık raporu
+
+  // Akıllı fırsat ayarları
+  smartDealMinScore       Int    @default(80)    // Minimum skor (0-100) — sadece bu ve üstü gönderilir
+  smartDealCooldownMin    Int    @default(60)    // Aynı listing için akıllı fırsat bekleme süresi (dk)
+
   updatedAt             DateTime @updatedAt
 }
 

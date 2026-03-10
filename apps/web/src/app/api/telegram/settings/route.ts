@@ -75,6 +75,34 @@ export async function PUT(request: Request) {
     }
   }
 
+  // Notification type toggles
+  if (body.notifyPriceDrop !== undefined) {
+    updates.notifyPriceDrop = Boolean(body.notifyPriceDrop);
+  }
+  if (body.notifySmartDeal !== undefined) {
+    updates.notifySmartDeal = Boolean(body.notifySmartDeal);
+  }
+  if (body.notifyDailyReport !== undefined) {
+    updates.notifyDailyReport = Boolean(body.notifyDailyReport);
+  }
+
+  // Smart deal settings
+  if (body.smartDealMinScore !== undefined) {
+    const v = parseInt(body.smartDealMinScore, 10);
+    if (isNaN(v) || v < 0 || v > 100) {
+      return NextResponse.json({ error: 'smartDealMinScore must be between 0 and 100' }, { status: 400 });
+    }
+    updates.smartDealMinScore = v;
+  }
+
+  if (body.smartDealCooldownMin !== undefined) {
+    const v = parseInt(body.smartDealCooldownMin, 10);
+    if (isNaN(v) || v < 0 || v > 1440) {
+      return NextResponse.json({ error: 'smartDealCooldownMin must be between 0 and 1440' }, { status: 400 });
+    }
+    updates.smartDealCooldownMin = v;
+  }
+
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
   }

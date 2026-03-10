@@ -20,6 +20,14 @@ import {
   WifiOff,
   Settings,
   Save,
+  Bell,
+  BellOff,
+  TrendingDown,
+  Zap,
+  FileText,
+  Shield,
+  SlidersHorizontal,
+  Target,
 } from 'lucide-react';
 import { Card, StatCard } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -99,6 +107,14 @@ interface NotifySettings {
   notifyEnabled: boolean;
   notifyMinPrice: number | null;
   notifyMaxPrice: number | null;
+  // Notification type toggles
+  notifyPriceDrop: boolean;
+  notifySmartDeal: boolean;
+  notifyDailyReport: boolean;
+  // Smart deal settings
+  smartDealMinScore: number;
+  smartDealCooldownMin: number;
+  updatedAt: string;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────
@@ -183,6 +199,12 @@ export default function TelegramSettingsPage() {
         notifyEnabled: true,
         notifyMinPrice: null,
         notifyMaxPrice: null,
+        notifyPriceDrop: true,
+        notifySmartDeal: true,
+        notifyDailyReport: true,
+        smartDealMinScore: 80,
+        smartDealCooldownMin: 60,
+        updatedAt: new Date().toISOString(),
       }),
       [field]: value,
     }));
@@ -499,16 +521,114 @@ export default function TelegramSettingsPage() {
         </Card>
       </div>
 
-      {/* ── Notification Settings ── */}
+      {/* ── Active Configuration Overview ── */}
+      {!settingsLoading && effectiveSettings && (
+        <div className="grid gap-4 md:grid-cols-3">
+          {/* Notification Types Summary */}
+          <Card className={cn(!effectiveSettings.notifyEnabled && 'opacity-60')}>
+            <div className="mb-3 flex items-center gap-2">
+              <div className={cn(
+                'flex h-8 w-8 items-center justify-center rounded-lg',
+                effectiveSettings.notifyEnabled ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'
+              )}>
+                {effectiveSettings.notifyEnabled ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-text-primary">
+                  {effectiveSettings.notifyEnabled ? 'Bildirimler Aktif' : 'Bildirimler Kapalı'}
+                </p>
+                <p className="text-[11px] text-text-tertiary">Bildirim türleri</p>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <SettingPill label="Fiyat Düşüşü" active={effectiveSettings.notifyPriceDrop && effectiveSettings.notifyEnabled} icon={<TrendingDown className="h-3 w-3" />} />
+              <SettingPill label="Akıllı Fırsat" active={effectiveSettings.notifySmartDeal && effectiveSettings.notifyEnabled} icon={<Zap className="h-3 w-3" />} />
+              <SettingPill label="Günlük Rapor" active={effectiveSettings.notifyDailyReport && effectiveSettings.notifyEnabled} icon={<FileText className="h-3 w-3" />} />
+              <SettingPill label="En Düşük Fiyat" active={effectiveSettings.notifyAllTimeLow && effectiveSettings.notifyEnabled} icon={<Target className="h-3 w-3" />} />
+            </div>
+          </Card>
+
+          {/* Thresholds Summary */}
+          <Card>
+            <div className="mb-3 flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-50 text-sky-600">
+                <SlidersHorizontal className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-text-primary">Eşikler</p>
+                <p className="text-[11px] text-text-tertiary">Bildirim tetikleme koşulları</p>
+              </div>
+            </div>
+            <div className="space-y-2 text-xs">
+              <div className="flex items-center justify-between rounded-md bg-surface-secondary/60 px-2.5 py-1.5">
+                <span className="text-text-secondary">Min. düşüş</span>
+                <span className="font-semibold text-text-primary tabular-nums">%{effectiveSettings.notifyDropPercent} veya {effectiveSettings.notifyDropAmount.toLocaleString('tr-TR')} ₺</span>
+              </div>
+              <div className="flex items-center justify-between rounded-md bg-surface-secondary/60 px-2.5 py-1.5">
+                <span className="text-text-secondary">Akıllı fırsat skoru</span>
+                <span className="font-semibold text-text-primary tabular-nums">≥ {effectiveSettings.smartDealMinScore}/100</span>
+              </div>
+              <div className="flex items-center justify-between rounded-md bg-surface-secondary/60 px-2.5 py-1.5">
+                <span className="text-text-secondary">Fiyat aralığı</span>
+                <span className="font-semibold text-text-primary tabular-nums">
+                  {effectiveSettings.notifyMinPrice != null || effectiveSettings.notifyMaxPrice != null
+                    ? `${effectiveSettings.notifyMinPrice?.toLocaleString('tr-TR') ?? '∞'} — ${effectiveSettings.notifyMaxPrice?.toLocaleString('tr-TR') ?? '∞'} ₺`
+                    : 'Sınır yok'}
+                </span>
+              </div>
+            </div>
+          </Card>
+
+          {/* Anti-Spam Summary */}
+          <Card>
+            <div className="mb-3 flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
+                <Shield className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-text-primary">Anti-Spam</p>
+                <p className="text-[11px] text-text-tertiary">Bekleme süreleri</p>
+              </div>
+            </div>
+            <div className="space-y-2 text-xs">
+              <div className="flex items-center justify-between rounded-md bg-surface-secondary/60 px-2.5 py-1.5">
+                <span className="text-text-secondary">Fiyat düşüşü bekleme</span>
+                <span className="font-semibold text-text-primary tabular-nums">{effectiveSettings.notifyCooldownMinutes} dk ({(effectiveSettings.notifyCooldownMinutes / 60).toFixed(1)} saat)</span>
+              </div>
+              <div className="flex items-center justify-between rounded-md bg-surface-secondary/60 px-2.5 py-1.5">
+                <span className="text-text-secondary">Akıllı fırsat bekleme</span>
+                <span className="font-semibold text-text-primary tabular-nums">{effectiveSettings.smartDealCooldownMin} dk ({(effectiveSettings.smartDealCooldownMin / 60).toFixed(1)} saat)</span>
+              </div>
+              {effectiveSettings.updatedAt && (
+                <div className="mt-1 text-[11px] text-text-tertiary text-right">
+                  Son güncelleme: {formatRelativeDate(effectiveSettings.updatedAt)}
+                </div>
+              )}
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* ── Notification Settings Form ── */}
       <Card>
         <div className="mb-5 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Settings className="h-4 w-4 text-text-tertiary" />
             <h2 className="text-sm font-semibold text-text-primary">Bildirim Ayarları</h2>
           </div>
-          {settingsSaved && (
-            <span className="text-xs text-emerald-600 font-medium animate-float-in">✓ Kaydedildi</span>
-          )}
+          <div className="flex items-center gap-2">
+            {settingsSaved && (
+              <span className="text-xs text-emerald-600 font-medium animate-float-in">✓ Kaydedildi</span>
+            )}
+            <Button
+              onClick={() => effectiveSettings && saveSettingsMutation.mutate(effectiveSettings)}
+              loading={saveSettingsMutation.isPending}
+              size="sm"
+              icon={<Save className="h-3 w-3" />}
+            >
+              Kaydet
+            </Button>
+          </div>
         </div>
 
         {settingsLoading || !effectiveSettings ? (
@@ -518,107 +638,179 @@ export default function TelegramSettingsPage() {
             ))}
           </div>
         ) : (
-          <div className="space-y-6">
-            {/* Master switch */}
-            <div className="flex items-center justify-between rounded-lg border border-border px-4 py-3">
-              <div>
-                <p className="text-sm font-medium text-text-primary">Bildirimleri Aktifleştir</p>
-                <p className="text-xs text-text-tertiary">Kapatıldığında hiçbir bildirim gönderilmez</p>
-              </div>
-              <button
-                onClick={() => updateSettingsField('notifyEnabled', !effectiveSettings.notifyEnabled)}
-                className={cn(
-                  'relative h-6 w-11 rounded-full transition-colors',
-                  effectiveSettings.notifyEnabled ? 'bg-emerald-500' : 'bg-slate-300'
-                )}
-              >
-                <span
-                  className={cn(
-                    'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform',
-                    effectiveSettings.notifyEnabled ? 'translate-x-[22px]' : 'translate-x-0.5'
-                  )}
+          <div className="space-y-8">
+            {/* ─ Section 1: Master Switch + Notification Types ─ */}
+            <div>
+              <p className="mb-3 text-xs font-medium uppercase tracking-wider text-text-tertiary">Bildirim Türleri</p>
+
+              {/* Master switch */}
+              <ToggleRow
+                label="Tüm Bildirimler"
+                description="Kapatıldığında hiçbir bildirim gönderilmez"
+                checked={effectiveSettings.notifyEnabled}
+                onChange={v => updateSettingsField('notifyEnabled', v)}
+                accent
+              />
+
+              <div className={cn('mt-3 space-y-2 transition-opacity', !effectiveSettings.notifyEnabled && 'opacity-50 pointer-events-none')}>
+                <ToggleRow
+                  label="Fiyat Düşüşü Bildirimleri"
+                  description="Fiyat düşüşlerinde otomatik bildirim gönderir"
+                  icon={<TrendingDown className="h-3.5 w-3.5 text-sky-500" />}
+                  checked={effectiveSettings.notifyPriceDrop}
+                  onChange={v => updateSettingsField('notifyPriceDrop', v)}
                 />
-              </button>
+                <ToggleRow
+                  label="Akıllı Fırsat Bildirimleri"
+                  description="Yüksek skorlu fırsatlarda otomatik bildirim gönderir"
+                  icon={<Zap className="h-3.5 w-3.5 text-amber-500" />}
+                  checked={effectiveSettings.notifySmartDeal}
+                  onChange={v => updateSettingsField('notifySmartDeal', v)}
+                />
+                <ToggleRow
+                  label="Günlük Sağlık Raporu"
+                  description="Her sabah 09:00'da sistem durumu ve top 3 fırsat gönderir"
+                  icon={<FileText className="h-3.5 w-3.5 text-violet-500" />}
+                  checked={effectiveSettings.notifyDailyReport}
+                  onChange={v => updateSettingsField('notifyDailyReport', v)}
+                />
+                <ToggleRow
+                  label="En Düşük Fiyat Bildirimi"
+                  description="Tüm zamanların en düşük fiyatına ulaşıldığında ayrıca bildir"
+                  icon={<Target className="h-3.5 w-3.5 text-emerald-500" />}
+                  checked={effectiveSettings.notifyAllTimeLow}
+                  onChange={v => updateSettingsField('notifyAllTimeLow', v)}
+                />
+              </div>
             </div>
 
-            {/* Threshold settings */}
-            <div className="grid gap-4 sm:grid-cols-2">
-              {/* Drop percent */}
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-text-secondary">
-                  Minimum Düşüş Yüzdesi (%)
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  step={0.5}
-                  value={effectiveSettings.notifyDropPercent}
-                  onChange={e => updateSettingsField('notifyDropPercent', parseFloat(e.target.value) || 0)}
-                  className="w-full rounded-lg border border-border bg-surface-secondary px-3 py-2 text-sm text-text-primary tabular-nums focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
-                />
-                <p className="mt-1 text-[11px] text-text-tertiary">
-                  Bu yüzdenin altındaki düşüşlerde bildirim gönderilmez
-                </p>
-              </div>
+            <div className="h-px bg-border" />
 
-              {/* Drop amount */}
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-text-secondary">
-                  Minimum Düşüş Tutarı (₺)
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  step={10}
-                  value={effectiveSettings.notifyDropAmount}
-                  onChange={e => updateSettingsField('notifyDropAmount', parseFloat(e.target.value) || 0)}
-                  className="w-full rounded-lg border border-border bg-surface-secondary px-3 py-2 text-sm text-text-primary tabular-nums focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
-                />
-                <p className="mt-1 text-[11px] text-text-tertiary">
-                  Bu tutarın altındaki düşüşlerde bildirim gönderilmez
-                </p>
-              </div>
-
-              {/* Cooldown */}
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-text-secondary">
-                  Bildirim Bekleme Süresi (dk)
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  max={1440}
-                  step={15}
-                  value={effectiveSettings.notifyCooldownMinutes}
-                  onChange={e => updateSettingsField('notifyCooldownMinutes', parseInt(e.target.value, 10) || 0)}
-                  className="w-full rounded-lg border border-border bg-surface-secondary px-3 py-2 text-sm text-text-primary tabular-nums focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
-                />
-                <p className="mt-1 text-[11px] text-text-tertiary">
-                  Aynı ürün için tekrar bildirim göndermeden önce bekleme süresi
-                </p>
-              </div>
-
-              {/* All-time low toggle */}
-              <div className="flex items-start gap-3 rounded-lg border border-border px-4 py-3">
-                <input
-                  type="checkbox"
-                  checked={effectiveSettings.notifyAllTimeLow}
-                  onChange={e => updateSettingsField('notifyAllTimeLow', e.target.checked)}
-                  className="mt-0.5 h-4 w-4 rounded border-border text-primary accent-primary"
-                />
+            {/* ─ Section 2: Thresholds ─ */}
+            <div>
+              <p className="mb-3 text-xs font-medium uppercase tracking-wider text-text-tertiary">Eşik Değerleri</p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {/* Drop percent */}
                 <div>
-                  <p className="text-sm font-medium text-text-primary">En Düşük Fiyat Bildirimi</p>
-                  <p className="text-xs text-text-tertiary">
-                    Tüm zamanların en düşük fiyatına ulaşıldığında ayrıca bildir
+                  <label className="mb-1.5 block text-xs font-medium text-text-secondary">
+                    Minimum Düşüş Yüzdesi (%)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={0.5}
+                    value={effectiveSettings.notifyDropPercent}
+                    onChange={e => updateSettingsField('notifyDropPercent', parseFloat(e.target.value) || 0)}
+                    className="w-full rounded-lg border border-border bg-surface-secondary px-3 py-2 text-sm text-text-primary tabular-nums focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
+                  />
+                  <p className="mt-1 text-[11px] text-text-tertiary">
+                    Bu yüzdenin altındaki düşüşlerde bildirim gönderilmez
+                  </p>
+                </div>
+
+                {/* Drop amount */}
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-text-secondary">
+                    Minimum Düşüş Tutarı (₺)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={10}
+                    value={effectiveSettings.notifyDropAmount}
+                    onChange={e => updateSettingsField('notifyDropAmount', parseFloat(e.target.value) || 0)}
+                    className="w-full rounded-lg border border-border bg-surface-secondary px-3 py-2 text-sm text-text-primary tabular-nums focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
+                  />
+                  <p className="mt-1 text-[11px] text-text-tertiary">
+                    Bu tutarın altındaki düşüşlerde bildirim gönderilmez
+                  </p>
+                </div>
+
+                {/* Smart deal min score */}
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-text-secondary">
+                    Akıllı Fırsat Minimum Skoru
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={effectiveSettings.smartDealMinScore}
+                    onChange={e => updateSettingsField('smartDealMinScore', parseInt(e.target.value, 10) || 0)}
+                    className="w-full rounded-lg border border-border bg-surface-secondary px-3 py-2 text-sm text-text-primary tabular-nums focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
+                  />
+                  <p className="mt-1 text-[11px] text-text-tertiary">
+                    {effectiveSettings.smartDealMinScore >= 80 ? 'Sadece SÜPER fırsatlar' : effectiveSettings.smartDealMinScore >= 50 ? 'İYİ ve üstü fırsatlar' : 'Düşük eşik — çok bildirim gelebilir'}
+                  </p>
+                </div>
+
+                {/* Score explanation */}
+                <div className="flex items-start gap-3 rounded-lg border border-border px-4 py-3">
+                  <Target className="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
+                  <div className="text-[11px] text-text-tertiary space-y-0.5">
+                    <p className="font-medium text-text-secondary">Skor Açıklaması</p>
+                    <p>80+ = Süper Fırsat (varsayılan)</p>
+                    <p>50-79 = İyi Fırsat</p>
+                    <p>20-49 = Küçük Fırsat</p>
+                    <p>0-19 = Yok sayılır</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="h-px bg-border" />
+
+            {/* ─ Section 3: Anti-Spam ─ */}
+            <div>
+              <p className="mb-3 text-xs font-medium uppercase tracking-wider text-text-tertiary">Anti-Spam Ayarları</p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {/* Price drop cooldown */}
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-text-secondary">
+                    Fiyat Düşüşü Bekleme Süresi (dk)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={1440}
+                    step={15}
+                    value={effectiveSettings.notifyCooldownMinutes}
+                    onChange={e => updateSettingsField('notifyCooldownMinutes', parseInt(e.target.value, 10) || 0)}
+                    className="w-full rounded-lg border border-border bg-surface-secondary px-3 py-2 text-sm text-text-primary tabular-nums focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
+                  />
+                  <p className="mt-1 text-[11px] text-text-tertiary">
+                    Aynı ürün için tekrar fiyat düşüşü bildirimi göndermeden önce bekleme
+                  </p>
+                </div>
+
+                {/* Smart deal cooldown */}
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-text-secondary">
+                    Akıllı Fırsat Bekleme Süresi (dk)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={1440}
+                    step={15}
+                    value={effectiveSettings.smartDealCooldownMin}
+                    onChange={e => updateSettingsField('smartDealCooldownMin', parseInt(e.target.value, 10) || 0)}
+                    className="w-full rounded-lg border border-border bg-surface-secondary px-3 py-2 text-sm text-text-primary tabular-nums focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
+                  />
+                  <p className="mt-1 text-[11px] text-text-tertiary">
+                    Aynı ürün için tekrar akıllı fırsat bildirimi göndermeden önce bekleme
                   </p>
                 </div>
               </div>
             </div>
 
-            {/* Price range filters */}
+            <div className="h-px bg-border" />
+
+            {/* ─ Section 4: Price Range Filters ─ */}
             <div>
-              <p className="mb-2 text-xs font-medium uppercase tracking-wider text-text-tertiary">Fiyat Aralığı Filtresi</p>
+              <p className="mb-3 text-xs font-medium uppercase tracking-wider text-text-tertiary">Fiyat Aralığı Filtresi</p>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-text-secondary">
@@ -663,24 +855,11 @@ export default function TelegramSettingsPage() {
               </div>
             </div>
 
-            {/* Info summary */}
-            <div className="rounded-lg bg-sky-50 border border-sky-100 px-4 py-3 text-xs text-sky-700">
-              <p className="font-medium mb-1">Mevcut Bildirim Kuralları</p>
-              <ul className="space-y-0.5 text-sky-600">
-                <li>• Fiyat düşüşü en az <b>%{effectiveSettings.notifyDropPercent}</b> veya <b>{effectiveSettings.notifyDropAmount.toLocaleString('tr-TR')} ₺</b> olmalı</li>
-                <li>• Aynı ürün için <b>{effectiveSettings.notifyCooldownMinutes} dakika</b> ({(effectiveSettings.notifyCooldownMinutes / 60).toFixed(1)} saat) bekleme süresi</li>
-                <li>• En düşük fiyat bildirimi: <b>{effectiveSettings.notifyAllTimeLow ? 'Aktif' : 'Kapalı'}</b></li>
-                {effectiveSettings.notifyMinPrice != null && (
-                  <li>• Sadece <b>{effectiveSettings.notifyMinPrice.toLocaleString('tr-TR')} ₺</b> üstü ürünler</li>
-                )}
-                {effectiveSettings.notifyMaxPrice != null && (
-                  <li>• Sadece <b>{effectiveSettings.notifyMaxPrice.toLocaleString('tr-TR')} ₺</b> altı ürünler</li>
-                )}
-              </ul>
-            </div>
-
-            {/* Save button */}
-            <div className="flex justify-end">
+            {/* Bottom save button */}
+            <div className="flex items-center justify-between pt-2">
+              <p className="text-[11px] text-text-tertiary">
+                {effectiveSettings.updatedAt && `Son güncelleme: ${new Date(effectiveSettings.updatedAt).toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })}`}
+              </p>
               <Button
                 onClick={() => effectiveSettings && saveSettingsMutation.mutate(effectiveSettings)}
                 loading={saveSettingsMutation.isPending}
@@ -1086,6 +1265,61 @@ function MetaItem({ label, value }: { label: string; value: React.ReactNode }) {
     <div>
       <p className="mb-0.5 text-[10px] font-medium uppercase tracking-wider text-text-tertiary">{label}</p>
       {value}
+    </div>
+  );
+}
+
+function ToggleRow({ label, description, icon, checked, onChange, accent }: {
+  label: string;
+  description: string;
+  icon?: React.ReactNode;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  accent?: boolean;
+}) {
+  return (
+    <div className={cn(
+      'flex items-center justify-between rounded-lg border px-4 py-3',
+      accent ? 'border-border' : 'border-border/60'
+    )}>
+      <div className="flex items-center gap-2.5">
+        {icon}
+        <div>
+          <p className={cn('font-medium text-text-primary', accent ? 'text-sm' : 'text-[13px]')}>{label}</p>
+          <p className="text-xs text-text-tertiary">{description}</p>
+        </div>
+      </div>
+      <button
+        onClick={() => onChange(!checked)}
+        className={cn(
+          'relative h-6 w-11 shrink-0 rounded-full transition-colors',
+          checked ? 'bg-emerald-500' : 'bg-slate-300'
+        )}
+      >
+        <span
+          className={cn(
+            'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform',
+            checked ? 'translate-x-[22px]' : 'translate-x-0.5'
+          )}
+        />
+      </button>
+    </div>
+  );
+}
+
+function SettingPill({ label, active, icon }: { label: string; active: boolean; icon: React.ReactNode }) {
+  return (
+    <div className={cn(
+      'flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs transition-colors',
+      active
+        ? 'bg-emerald-50 text-emerald-700'
+        : 'bg-slate-50 text-slate-400'
+    )}>
+      {icon}
+      <span className="font-medium">{label}</span>
+      <span className="ml-auto text-[10px] font-semibold uppercase">
+        {active ? 'Açık' : 'Kapalı'}
+      </span>
     </div>
   );
 }

@@ -22,13 +22,20 @@ interface CachedSettings {
   notifyEnabled: boolean;
   notifyMinPrice: number | null;
   notifyMaxPrice: number | null;
+  // Notification type toggles
+  notifyPriceDrop: boolean;
+  notifySmartDeal: boolean;
+  notifyDailyReport: boolean;
+  // Smart deal settings
+  smartDealMinScore: number;
+  smartDealCooldownMin: number;
 }
 
 let settingsCache: CachedSettings | null = null;
 let settingsCacheTime = 0;
 const SETTINGS_CACHE_TTL = 60_000; // 1 min cache
 
-async function getNotifySettings(): Promise<CachedSettings> {
+export async function getNotifySettings(): Promise<CachedSettings> {
   const now = Date.now();
   if (settingsCache && (now - settingsCacheTime) < SETTINGS_CACHE_TTL) {
     return settingsCache;
@@ -45,6 +52,11 @@ async function getNotifySettings(): Promise<CachedSettings> {
         notifyEnabled: row.notifyEnabled,
         notifyMinPrice: row.notifyMinPrice,
         notifyMaxPrice: row.notifyMaxPrice,
+        notifyPriceDrop: row.notifyPriceDrop,
+        notifySmartDeal: row.notifySmartDeal,
+        notifyDailyReport: row.notifyDailyReport,
+        smartDealMinScore: row.smartDealMinScore,
+        smartDealCooldownMin: row.smartDealCooldownMin,
       };
       settingsCacheTime = now;
       return settingsCache;
@@ -62,6 +74,11 @@ async function getNotifySettings(): Promise<CachedSettings> {
     notifyEnabled: true,
     notifyMinPrice: null,
     notifyMaxPrice: null,
+    notifyPriceDrop: true,
+    notifySmartDeal: true,
+    notifyDailyReport: true,
+    smartDealMinScore: 80,
+    smartDealCooldownMin: 60,
   };
 }
 
@@ -222,6 +239,11 @@ async function shouldNotify(payload: PriceDropPayload): Promise<{ send: boolean;
     return { send: false, reason: 'Notifications disabled in settings' };
   }
 
+  // Price drop toggle
+  if (!settings.notifyPriceDrop) {
+    return { send: false, reason: 'Price drop notifications disabled in settings' };
+  }
+
   const dropAmount = oldPrice - newPrice;
   const dropPercent = ((dropAmount / oldPrice) * 100);
 
@@ -357,13 +379,11 @@ export async function notifyPriceDrop(payload: PriceDropPayload): Promise<void> 
 
 // ═══════════════════════════════════════════════════════════════════
 //  SMART DEAL ALERT SYSTEM — Intelligent high-confidence deal detection
-//  Only sends Telegram alerts for score ≥ 80 (SUPER DEAL)
+//  Settings now read from DB (AppSettings) via getNotifySettings()
 // ═══════════════════════════════════════════════════════════════════
 
-// ─── Constants ───────────────────────────────────────────────────
-const SMART_COOLDOWN_MS = 60 * 60 * 1000;  // 1 hour minimum between alerts per listing
+// ─── Fallback Constants (overridden by DB settings) ──────────────
 const SMART_RE_ALERT_DROP_PERCENT = 1;      // must drop at least 1% more to re-alert
-const SMART_MIN_SCORE = 80;                 // only score >= 80 triggers Telegram
 
 // ─── Live Market Analysis ────────────────────────────────────────
 interface MarketAnalysis {
@@ -626,6 +646,11 @@ async function shouldSendSmartAlert(listingId: string, newPrice: number): Promis
   if (!settings.notifyEnabled) {
     return { send: false, reason: 'Bildirimler ayarlardan kapatılmış' };
   }
+  if (!settings.notifySmartDeal) {
+    return { send: false, reason: 'Akıllı fırsat bildirimleri kapalı' };
+  }
+
+  const smartCooldownMs = settings.smartDealCooldownMin * 60_000;
 
   const listing = await prisma.listing.findUnique({
     where: { id: listingId },
@@ -637,11 +662,11 @@ async function shouldSendSmartAlert(listingId: string, newPrice: number): Promis
     return { send: false, reason: `Bu fiyat için zaten bildirim gönderildi (${newPrice} TL)` };
   }
 
-  // Cooldown: 1 hour per listing
+  // Cooldown per listing (from DB settings)
   if (listing?.notificationSentAt) {
     const elapsed = Date.now() - listing.notificationSentAt.getTime();
-    if (elapsed < SMART_COOLDOWN_MS) {
-      const remainingMin = Math.round((SMART_COOLDOWN_MS - elapsed) / 60_000);
+    if (elapsed < smartCooldownMs) {
+      const remainingMin = Math.round((smartCooldownMs - elapsed) / 60_000);
       return { send: false, reason: `Bekleme süresi aktif (${remainingMin}dk kaldı)` };
     }
   }
@@ -722,18 +747,30 @@ function buildSmartAlertMessage(payload: SmartDealPayload, sr: DealScoreResult):
   return lines.join('\n');
 }
 
-// ─── Public: Smart Deal Notification (score ≥ 80 only) ───────────
+// ─── Public: Smart Deal Notification (score threshold from DB) ───
 export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> {
   if (!TELEGRAM_ENABLED) return;
+
+  const settings = await getNotifySettings();
+
+  // Check smart deal toggle
+  if (!settings.notifySmartDeal) {
+    skippedCount++;
+    console.log(`[telegram-smart] Akıllı fırsat bildirimleri kapalı`);
+    return;
+  }
+
+  const minScore = settings.smartDealMinScore;
+  const smartCooldownMs = settings.smartDealCooldownMin * 60_000;
 
   // 1) Compute deal score from live market data
   const sr = await computeDealScore(payload.variantId, payload.newPrice, payload.oldPrice);
   console.log(`[telegram-smart] ${payload.retailerSlug} ${payload.variantLabel}: score=${sr.score} tier=${sr.tier}`);
 
-  // 2) Only SUPER deals (score ≥ 80) get Telegram notifications
-  if (sr.score < SMART_MIN_SCORE) {
+  // 2) Only deals above min score get Telegram notifications
+  if (sr.score < minScore) {
     skippedCount++;
-    console.log(`[telegram-smart] Atlandı (skor ${sr.score} < ${SMART_MIN_SCORE}): ${payload.variantLabel}`);
+    console.log(`[telegram-smart] Atlandı (skor ${sr.score} < ${minScore}): ${payload.variantLabel}`);
     return;
   }
 
@@ -746,7 +783,7 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
   }
 
   // 4) Atomic claim — prevent duplicate sends across replicas
-  const cooldownThreshold = new Date(Date.now() - SMART_COOLDOWN_MS);
+  const cooldownThreshold = new Date(Date.now() - smartCooldownMs);
   const claimed = await prisma.listing.updateMany({
     where: {
       id: payload.listingId,
@@ -980,6 +1017,7 @@ export async function sendSmartDealTest(listingId?: string): Promise<{ ok: boole
   );
 
   // Build the message (send regardless of score for testing purposes)
+  const settings = await getNotifySettings();
   const payload: SmartDealPayload = {
     listingId: listing.id,
     variantId: listing.variantId,
@@ -997,7 +1035,7 @@ export async function sendSmartDealTest(listingId?: string): Promise<{ ok: boole
     buildSmartAlertMessage(payload, sr),
     '',
     '─────────────',
-    `⚙️ Bu bir test mesajıdır. Gerçek bildirimler yalnızca skor ≥ ${SMART_MIN_SCORE} olduğunda gönderilir.`,
+    `⚙️ Bu bir test mesajıdır. Gerçek bildirimler yalnızca skor ≥ ${settings.smartDealMinScore} olduğunda gönderilir.`,
   ].join('\n');
 
   const result = await broadcast(message);

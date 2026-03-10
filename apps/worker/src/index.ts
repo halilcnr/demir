@@ -3,7 +3,7 @@ import { createServer } from 'http';
 import { runSync } from './sync';
 import { getSyncLogs, getSyncProgress } from './sync-logger';
 import { getAllProviderHealth, getDiscoverySourceHealth } from './provider-health';
-import { sendTestMessage, getTelegramStats, startTelegramPolling, sendCustomMessage, sendListingAlert, sendSmartDealTest } from './services/telegram';
+import { sendTestMessage, getTelegramStats, startTelegramPolling, sendCustomMessage, sendListingAlert, sendSmartDealTest, getNotifySettings } from './services/telegram';
 import { getWorkerConfig, invalidateConfigCache, MODE_PRESETS } from './worker-config';
 import { getAllProviderLiveMetrics, computeGlobalRiskScore, getRiskLevel, persistMetricsToDB } from './metrics-collector';
 import { getQueueDepth, getActiveRequests, estimateCycleDuration } from './provider-queue';
@@ -476,6 +476,14 @@ setInterval(async () => {
   const todayStr = now.toISOString().split('T')[0];
   if (istHour === 9 && lastReportDate !== todayStr) {
     lastReportDate = todayStr;
+
+    // Check daily report toggle from DB
+    const settings = await getNotifySettings();
+    if (!settings.notifyDailyReport) {
+      console.log('[worker] Daily report disabled in settings, skipping');
+      return;
+    }
+
     try {
       const report = await generateDailyReport();
       const message = buildHealthReportMessage(report);
