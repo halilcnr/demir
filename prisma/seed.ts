@@ -69,8 +69,8 @@ async function main() {
     }),
     prisma.retailer.upsert({
       where: { slug: 'idefix' },
-      update: {},
-      create: { name: 'İdefix', slug: 'idefix', baseUrl: 'https://www.idefix.com', logoUrl: '/retailers/idefix.svg' },
+      update: { isActive: false },
+      create: { name: 'İdefix', slug: 'idefix', baseUrl: 'https://www.idefix.com', logoUrl: '/retailers/idefix.svg', isActive: false },
     }),
     prisma.retailer.upsert({
       where: { slug: 'mediamarkt' },
