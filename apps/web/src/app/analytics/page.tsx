@@ -128,7 +128,8 @@ export default function AnalyticsPage() {
   if (error) return <ErrorState description="Analitik verileri yüklenemedi" onRetry={refetch} />;
   if (!data) return null;
 
-  const { deals, analytics } = data;
+  const deals = data.deals ?? [];
+  const analytics = data.analytics ?? [];
 
   // Data for the top deals bar chart
   const topDealsChart = deals.slice(0, 8).map((d) => ({
