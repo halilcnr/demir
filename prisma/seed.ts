@@ -45,17 +45,24 @@ async function main() {
   // ─── Neon compute'u uyandır ─────────────────────────
   await waitForDb();
 
-  // ─── Önce tüm verileri sıfırla ─────────────────────────
-  console.log('🗑️  Mevcut veriler siliniyor...');
-  await prisma.alertEvent.deleteMany();
-  await prisma.alertRule.deleteMany();
-  await prisma.priceSnapshot.deleteMany();
-  await prisma.listing.deleteMany();
-  await prisma.syncJob.deleteMany();
-  await prisma.productVariant.deleteMany();
-  await prisma.productFamily.deleteMany();
-  await prisma.retailer.deleteMany();
-  console.log('✅ Tüm veriler silindi, sıfırdan oluşturuluyor...');
+  // Tüm işlemler upsert — mevcut veriler (fiyat geçmişi, alertler vb.) korunur.
+  // Sıfırdan başlatmak istersen: pnpm db:seed -- --reset
+  const forceReset = process.argv.includes('--reset');
+
+  if (forceReset) {
+    console.log('🗑️  --reset bayrağı algılandı, tüm veriler siliniyor...');
+    await prisma.alertEvent.deleteMany();
+    await prisma.alertRule.deleteMany();
+    await prisma.priceSnapshot.deleteMany();
+    await prisma.listing.deleteMany();
+    await prisma.syncJob.deleteMany();
+    await prisma.productVariant.deleteMany();
+    await prisma.productFamily.deleteMany();
+    await prisma.retailer.deleteMany();
+    console.log('✅ Tüm veriler silindi, sıfırdan oluşturuluyor...');
+  } else {
+    console.log('🔄 Mevcut veriler korunarak güncelleniyor (sıfırlamak için: pnpm db:seed -- --reset)');
+  }
 
   // ─── Retailer'lar ─────────────────────────────────────
   const retailers = await Promise.all([

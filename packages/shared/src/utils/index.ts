@@ -63,12 +63,22 @@ export function normalizeIPhoneModel(
 ): { model: string; color: string; storageGb: number } | null {
   const lower = title.toLowerCase();
 
-  const modelMatch = lower.match(/iphone\s*(\d{2,3})\s*(pro\s*max|pro|plus|mini|air)?/);
-  if (!modelMatch) return null;
+  // Try numbered models first: "iPhone 16 Pro Max", "iPhone 17 Air", etc.
+  let modelMatch = lower.match(/iphone\s*(\d{2,3})\s*(pro\s*max|pro|plus|mini|air)?/);
 
-  const number = modelMatch[1];
-  const variant = modelMatch[2]
-    ? modelMatch[2].replace(/\s+/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+  // Fallback: "iPhone Air" without generation number (Apple's 2025 naming = iPhone 17 Air)
+  if (!modelMatch) {
+    const airMatch = lower.match(/iphone\s+(air)/);
+    if (!airMatch) return null;
+    modelMatch = airMatch as RegExpMatchArray;
+    // Synthesize: group[1] = "air", no number
+  }
+
+  const hasNumber = /^\d+$/.test(modelMatch[1]);
+  const number = hasNumber ? modelMatch[1] : '17'; // "iPhone Air" → iPhone 17 Air
+  const variantRaw = hasNumber ? modelMatch[2] : modelMatch[1]; // "air" from fallback
+  const variant = variantRaw
+    ? variantRaw.replace(/\s+/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
     : '';
 
   const model = `iPhone ${number}${variant ? ' ' + variant : ''}`;
@@ -90,6 +100,7 @@ const COLOR_MAP: Record<string, string> = {
   // Basic colors — map Turkish retailer names to English DB names
   'siyah': 'Black', 'black': 'Black', 'midnight': 'Black', 'gece yarısı': 'Black',
   'beyaz': 'White', 'white': 'White', 'starlight': 'White', 'yıldız ışığı': 'White',
+  'pamuk beyazı': 'White', 'pamuk beyazi': 'White', 'bulut beyazı': 'White', 'bulut beyazi': 'White',
   'mavi': 'Blue', 'blue': 'Blue',
   'yeşil': 'Green', 'green': 'Green', 'yesil': 'Green',
   'pembe': 'Pink', 'pink': 'Pink',
@@ -107,8 +118,10 @@ const COLOR_MAP: Record<string, string> = {
   'desert titanium': 'Desert Titanium', 'çöl titanyum': 'Desert Titanium', 'çöl beji': 'Desert Titanium', 'col titanyum': 'Desert Titanium', 'col beji': 'Desert Titanium',
   // iPhone 17 colors
   'fog blue': 'Fog Blue', 'sis mavisi': 'Fog Blue', 'sis mavi': 'Fog Blue',
+  'gök mavisi': 'Fog Blue', 'gok mavisi': 'Fog Blue', 'sky blue': 'Fog Blue',
   'lavender': 'Lavender', 'lavanta': 'Lavender',
   'sage': 'Sage', 'ada çayı': 'Sage', 'ada cayi': 'Sage', 'adaçayı': 'Sage',
+  'uçuk altın rengi': 'Sage', 'ucuk altin rengi': 'Sage', 'uçuk altın': 'Sage', 'ucuk altin': 'Sage', 'light gold': 'Sage', 'soft gold': 'Sage',
   // iPhone 17 Pro / Pro Max colors
   'obsidian': 'Obsidian', 'obsidyen': 'Obsidian', 'abis': 'Obsidian',
   'silver': 'Silver', 'gümüş': 'Silver', 'gumus': 'Silver', 'gümüş rengi': 'Silver',
