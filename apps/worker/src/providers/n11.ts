@@ -1,13 +1,102 @@
 import * as cheerio from 'cheerio';
+import { execFile } from 'child_process';
 import { BaseProvider, type ScrapeStrategy } from './base';
 import { normalizeIPhoneModel, parseTurkishPrice as sharedParseTurkishPrice } from '@repo/shared';
 import type { ScrapedProduct } from '@repo/shared';
+import {
+  ProviderBlockedError,
+  RetryableNetworkError,
+} from '../errors';
+import {
+  getRotatedProfile,
+  recordSmartBackoffBlock,
+  recordSmartBackoffSuccess,
+  storeSnapshot,
+} from '../scrape-toolkit';
 
 export class N11Provider extends BaseProvider {
   retailerSlug = 'n11';
   retailerName = 'N11';
 
   protected pacing = { baseDelayMs: 2200, jitterMs: 1500, concurrencyLimit: 1 };
+
+  /**
+   * Override fetchPage to use curl subprocess.
+   * N11 uses TLS fingerprinting (Cloudflare/Akamai WAF) that blocks Node.js
+   * native fetch. curl has a real browser-like TLS fingerprint that passes WAF.
+   */
+  protected async fetchPage(url: string): Promise<string> {
+    const profile = getRotatedProfile(this.retailerSlug);
+
+    const args = [
+      '-s',                    // silent
+      '-L',                    // follow redirects
+      '--max-time', '20',     // timeout
+      '--compressed',          // accept gzip/br
+      '-H', `User-Agent: ${profile.userAgent}`,
+      '-H', `Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8`,
+      '-H', `Accept-Language: ${profile.acceptLanguage}`,
+      '-H', 'Accept-Encoding: gzip, deflate, br',
+      '-H', 'Connection: keep-alive',
+      '-H', 'Upgrade-Insecure-Requests: 1',
+      '-H', 'DNT: 1',
+    ];
+
+    // Add Chromium sec-ch-ua headers
+    if (profile.secChUa) {
+      args.push(
+        '-H', `Sec-Ch-Ua: ${profile.secChUa}`,
+        '-H', `Sec-Ch-Ua-Platform: ${profile.secChUaPlatform}`,
+        '-H', `Sec-Ch-Ua-Mobile: ${profile.secChUaMobile}`,
+        '-H', 'Sec-Fetch-Dest: document',
+        '-H', 'Sec-Fetch-Mode: navigate',
+        '-H', 'Sec-Fetch-Site: none',
+        '-H', 'Sec-Fetch-User: ?1',
+      );
+    }
+
+    // Sometimes add a referer
+    if (Math.random() > 0.5) {
+      args.push('-H', 'Referer: https://www.google.com.tr/');
+    }
+
+    // Write HTTP status to stderr via --write-out %{stderr}, body to stdout
+    args.push('-w', '%{stderr}%{http_code}', url);
+
+    return new Promise<string>((resolve, reject) => {
+      execFile('curl', args, { maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
+        if (error && !stdout.length) {
+          reject(new RetryableNetworkError(this.retailerSlug, url, error.message));
+          return;
+        }
+
+        const statusCode = parseInt(stderr.trim(), 10);
+        const html = stdout;
+
+        if (statusCode === 403) {
+          recordSmartBackoffBlock(this.retailerSlug, this.pacing.baseDelayMs);
+          storeSnapshot(this.retailerSlug, url, html, false);
+          reject(new ProviderBlockedError(this.retailerSlug, url));
+          return;
+        }
+
+        if (statusCode === 429) {
+          recordSmartBackoffBlock(this.retailerSlug, this.pacing.baseDelayMs);
+          reject(new ProviderBlockedError(this.retailerSlug, url));
+          return;
+        }
+
+        if (statusCode >= 400 || !html.length) {
+          reject(new RetryableNetworkError(this.retailerSlug, url, `HTTP ${statusCode}`));
+          return;
+        }
+
+        recordSmartBackoffSuccess(this.retailerSlug);
+        storeSnapshot(this.retailerSlug, url, html, true);
+        resolve(html);
+      });
+    });
+  }
 
   protected getStrategies(): ScrapeStrategy[] {
     return [
