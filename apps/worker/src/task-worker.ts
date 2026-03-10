@@ -309,8 +309,8 @@ async function processOneTask(task: ClaimedTask): Promise<'success' | 'failure' 
         await checkAlertRules(listing.variantId, listingId, result.price, previousPrice, slug);
       }
 
-      // Telegram smart deal notification on price drop
-      if (previousPrice && result.price < previousPrice) {
+      // Telegram: intelligent deal alert (price drop or first observation)
+      if (!previousPrice || result.price < previousPrice) {
         try {
           await notifySmartDeal({
             listingId,
@@ -320,7 +320,7 @@ async function processOneTask(task: ClaimedTask): Promise<'success' | 'failure' 
             retailerSlug: slug,
             productUrl,
             newPrice: result.price,
-            oldPrice: previousPrice,
+            oldPrice: previousPrice ?? null,
           });
         } catch {
           // Non-fatal
@@ -445,8 +445,8 @@ async function tryFallback(
     recordCircuitSuccess(task.retailerSlug);
     recordTaskComplete(0);
 
-    // Notify via smart deal system
-    if (previousPrice && retryResult.price < previousPrice) {
+    // Telegram: intelligent deal alert (fallback)
+    if (!previousPrice || retryResult.price < previousPrice) {
       await notifySmartDeal({
         listingId: listing.id,
         variantId: listing.variantId,
@@ -455,7 +455,7 @@ async function tryFallback(
         retailerSlug: task.retailerSlug,
         productUrl: match.productUrl,
         newPrice: retryResult.price,
-        oldPrice: previousPrice,
+        oldPrice: previousPrice ?? null,
       }).catch(() => {});
     }
 

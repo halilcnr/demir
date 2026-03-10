@@ -260,8 +260,8 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
               );
             }
 
-            // ── Telegram: smart deal alert on price drop ──
-            if (previousPrice && result.price < previousPrice) {
+            // ── Telegram: intelligent deal alert (price drop or first observation) ──
+            if (!previousPrice || result.price < previousPrice) {
               try {
                 await notifySmartDeal({
                   listingId: listing.id,
@@ -271,7 +271,7 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
                   retailerSlug: slug,
                   productUrl: listing.productUrl,
                   newPrice: result.price,
-                  oldPrice: previousPrice,
+                  oldPrice: previousPrice ?? null,
                 });
               } catch (tgErr) {
                 console.error('[telegram] Notification error (non-fatal):', tgErr instanceof Error ? tgErr.message : tgErr);
@@ -361,8 +361,8 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
                   console.log(`[sync] ✓ ${slug} (fallback via ${discoveryForRetailer.source}) — ${retryResult.price} TL`);
                   addSyncLog({ type: 'success', retailer: slug, variant: variantLabel, message: `${slug} (fallback) → ${retryResult.price.toLocaleString('tr-TR')} TL`, price: retryResult.price });
 
-                  // ── Telegram: smart deal alert on price drop (fallback) ──
-                  if (previousPrice && retryResult.price < previousPrice) {
+                  // ── Telegram: intelligent deal alert (fallback) ──
+                  if (!previousPrice || retryResult.price < previousPrice) {
                     try {
                       await notifySmartDeal({
                         listingId: listing.id,
@@ -372,7 +372,7 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
                         retailerSlug: slug,
                         productUrl: discoveryForRetailer.productUrl,
                         newPrice: retryResult.price,
-                        oldPrice: previousPrice,
+                        oldPrice: previousPrice ?? null,
                       });
                     } catch (tgErr) {
                       console.error('[telegram] Notification error (non-fatal):', tgErr instanceof Error ? tgErr.message : tgErr);
