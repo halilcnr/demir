@@ -212,6 +212,19 @@ export default function TelegramSettingsPage() {
     },
   });
 
+  const smartDealTestMutation = useMutation<{ ok: boolean; sent?: number; score?: number; tier?: string; error?: string }, Error, string | undefined>({
+    mutationFn: (listingId?: string) =>
+      fetch('/api/telegram/test-smart-deal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(listingId ? { listingId } : {}),
+      }).then(r => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['telegram-status'] });
+      queryClient.invalidateQueries({ queryKey: ['telegram-history'] });
+    },
+  });
+
   const customMsgMutation = useMutation({
     mutationFn: (text: string) =>
       fetch('/api/telegram/send', {
@@ -378,6 +391,37 @@ export default function TelegramSettingsPage() {
               Bağlantı Testi
             </Button>
             <MutationFeedback data={testMutation.data} />
+          </div>
+
+          <div className="mb-5 h-px bg-border" />
+
+          {/* Smart deal test */}
+          <div className="mb-5">
+            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-text-tertiary">Akıllı Fırsat Skoru Testi</p>
+            <p className="mb-2 text-xs text-text-tertiary">Gerçek piyasa verileriyle fırsat skoru hesaplayıp örnek mesaj gönderir.</p>
+            <Button
+              onClick={() => smartDealTestMutation.mutate(selectedListingId || undefined)}
+              loading={smartDealTestMutation.isPending}
+              disabled={!status?.enabled || !status?.workerReachable}
+              size="sm"
+              variant="secondary"
+              icon={<Activity className="h-3 w-3" />}
+            >
+              🔥 Fırsat Skoru Testi
+            </Button>
+            {smartDealTestMutation.data && (
+              <div className={cn(
+                'mt-2 rounded-lg border p-2 text-xs',
+                smartDealTestMutation.data.ok
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  : 'border-rose-200 bg-rose-50 text-rose-700'
+              )}>
+                {smartDealTestMutation.data.ok
+                  ? `✓ ${smartDealTestMutation.data.sent ?? ''} aboneye gönderildi — Skor: ${smartDealTestMutation.data.score}/100 (${smartDealTestMutation.data.tier === 'super' ? '🔥 SÜPER' : smartDealTestMutation.data.tier === 'good' ? '✅ İYİ' : smartDealTestMutation.data.tier === 'minor' ? '📊 KÜÇÜK' : '⬜ YOK'})`
+                  : `✗ ${smartDealTestMutation.data.error}${smartDealTestMutation.data.score != null ? ` — Skor: ${smartDealTestMutation.data.score}/100` : ''}`
+                }
+              </div>
+            )}
           </div>
 
           <div className="mb-5 h-px bg-border" />

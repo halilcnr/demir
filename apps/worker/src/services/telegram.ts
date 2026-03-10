@@ -854,6 +854,79 @@ export async function sendListingAlert(listingId: string): Promise<{ ok: boolean
   return { ok: false, sent: 0, error: result.failed > 0 ? `${result.failed} failed` : 'No active subscribers' };
 }
 
+// ─── Public: Test Smart Deal Alert (picks best deal or uses a listing) ───
+export async function sendSmartDealTest(listingId?: string): Promise<{ ok: boolean; sent?: number; score?: number; tier?: string; error?: string }> {
+  if (!TELEGRAM_BOT_TOKEN) {
+    return { ok: false, error: 'TELEGRAM_BOT_TOKEN not set' };
+  }
+
+  // Find target listing: specific one or the best current deal
+  const includeOpts = { variant: { include: { family: true } }, retailer: true } as const;
+  const listing = listingId
+    ? await prisma.listing.findUnique({ where: { id: listingId }, include: includeOpts })
+    : await prisma.listing.findFirst({
+        where: { isActive: true, currentPrice: { not: null, gt: 0 }, stockStatus: 'IN_STOCK' },
+        include: includeOpts,
+        orderBy: { dealScore: 'desc' },
+      });
+
+  if (!listing || !listing.currentPrice) {
+    return { ok: false, error: 'Uygun listing bulunamadı' };
+  }
+
+  const variantLabel = `${listing.variant.family.name} ${listing.variant.color} ${listing.variant.storageGb}GB`;
+
+  // Compute the real deal score using live market data
+  const sr = await computeDealScore(
+    listing.variantId,
+    listing.currentPrice,
+    listing.previousPrice,
+  );
+
+  // Build the message (send regardless of score for testing purposes)
+  const payload: SmartDealPayload = {
+    listingId: listing.id,
+    variantId: listing.variantId,
+    variantLabel,
+    retailerName: listing.retailer.name,
+    retailerSlug: listing.retailer.slug,
+    productUrl: listing.productUrl,
+    newPrice: listing.currentPrice,
+    oldPrice: listing.previousPrice,
+  };
+
+  const message = [
+    '🧪 <b>FIRSAT SKORU TEST MESAJI</b>',
+    '',
+    buildSmartAlertMessage(payload, sr),
+    '',
+    '─────────────',
+    `⚙️ Bu bir test mesajıdır. Gerçek bildirimler yalnızca skor ≥ ${SMART_MIN_SCORE} olduğunda gönderilir.`,
+  ].join('\n');
+
+  const result = await broadcast(message);
+
+  await prisma.notificationLog.create({
+    data: {
+      messageType: 'TEST_MESSAGE',
+      status: result.sent > 0 ? 'SENT' : 'FAILED',
+      productName: variantLabel,
+      retailer: listing.retailer.name,
+      newPrice: listing.currentPrice,
+      messageText: message,
+      sentTo: result.sent,
+      failedTo: result.failed,
+      listingId: listing.id,
+      errorMessage: result.sent === 0 ? (result.failed > 0 ? `${result.failed} failed` : 'No active subscribers') : null,
+    },
+  }).catch(() => {});
+
+  if (result.sent > 0) {
+    return { ok: true, sent: result.sent, score: sr.score, tier: sr.tier };
+  }
+  return { ok: false, sent: 0, score: sr.score, tier: sr.tier, error: result.failed > 0 ? `${result.failed} failed` : 'No active subscribers' };
+}
+
 // ═══════════════════════════════════════════════════════════════════
 //  getUpdates Polling — /start ile abone ol, /stop ile çık
 // ═══════════════════════════════════════════════════════════════════

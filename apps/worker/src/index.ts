@@ -3,7 +3,7 @@ import { createServer } from 'http';
 import { runSync } from './sync';
 import { getSyncLogs, getSyncProgress } from './sync-logger';
 import { getAllProviderHealth, getDiscoverySourceHealth } from './provider-health';
-import { sendTestMessage, getTelegramStats, startTelegramPolling, sendCustomMessage, sendListingAlert } from './services/telegram';
+import { sendTestMessage, getTelegramStats, startTelegramPolling, sendCustomMessage, sendListingAlert, sendSmartDealTest } from './services/telegram';
 import { getWorkerConfig, invalidateConfigCache, MODE_PRESETS } from './worker-config';
 import { getAllProviderLiveMetrics, computeGlobalRiskScore, getRiskLevel, persistMetricsToDB } from './metrics-collector';
 import { getQueueDepth, getActiveRequests, estimateCycleDuration } from './provider-queue';
@@ -215,6 +215,30 @@ const server = createServer(async (req, res) => {
           return;
         }
         const result = await sendCustomMessage(text);
+        res.writeHead(result.ok ? 200 : 500);
+        res.end(JSON.stringify(result));
+      } catch {
+        res.writeHead(400);
+        res.end(JSON.stringify({ ok: false, error: 'Invalid JSON body' }));
+      }
+    });
+    return;
+  }
+
+  // Test smart deal alert
+  if (req.method === 'POST' && req.url === '/test-smart-deal') {
+    const authHeader = req.headers['authorization'] ?? '';
+    if (TRIGGER_SECRET && authHeader !== `Bearer ${TRIGGER_SECRET}`) {
+      res.writeHead(401);
+      res.end(JSON.stringify({ error: 'Unauthorized' }));
+      return;
+    }
+    let body = '';
+    req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+    req.on('end', async () => {
+      try {
+        const parsed = body ? JSON.parse(body) : {};
+        const result = await sendSmartDealTest(parsed.listingId);
         res.writeHead(result.ok ? 200 : 500);
         res.end(JSON.stringify(result));
       } catch {
