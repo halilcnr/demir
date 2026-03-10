@@ -119,6 +119,9 @@ const PROVIDER_COOLDOWNS: Record<string, Partial<ProviderCooldownConfig>> = {
   a101:        { blockCooldownMs: 5 * 60 * 1000 },
   migros:      { blockCooldownMs: 5 * 60 * 1000 },
   idefix:      { blockCooldownMs: 5 * 60 * 1000 },
+  bim:         { blockCooldownMs: 5 * 60 * 1000 },
+  sok:         { blockCooldownMs: 5 * 60 * 1000 },
+  beymen:      { blockCooldownMs: 8 * 60 * 1000, maxCooldownMs: 45 * 60 * 1000 },
 };
 
 function getCooldownConfig(slug: string): ProviderCooldownConfig {

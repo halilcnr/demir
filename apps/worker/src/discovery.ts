@@ -60,6 +60,9 @@ const RETAILER_DOMAINS: Record<string, TrustedRetailer> = {
   'mediamarkt.com.tr': 'mediamarkt',
   'a101.com.tr': 'a101',
   'migros.com.tr': 'migros',
+  'bim.com.tr': 'bim',
+  'sokmarket.com.tr': 'sok',
+  'beymen.com': 'beymen',
 };
 
 // Retailer name aliases → slug (case-insensitive matching)
@@ -85,6 +88,17 @@ const RETAILER_NAME_ALIASES: Record<string, TrustedRetailer> = {
   'a101.com.tr': 'a101',
   'migros': 'migros',
   'migros.com.tr': 'migros',
+  'bim': 'bim',
+  'bim.com.tr': 'bim',
+  'BİM': 'bim',
+  'sok': 'sok',
+  'sokmarket.com.tr': 'sok',
+  'şok': 'sok',
+  'ŞOK': 'sok',
+  'şok market': 'sok',
+  'beymen': 'beymen',
+  'beymen.com': 'beymen',
+  'Beymen': 'beymen',
 };
 
 // Turkish color name → English normalized color (for matching)

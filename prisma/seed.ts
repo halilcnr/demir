@@ -111,6 +111,21 @@ async function main() {
       update: {},
       create: { name: 'Migros', slug: 'migros', baseUrl: 'https://www.migros.com.tr', logoUrl: '/retailers/migros.svg' },
     }),
+    prisma.retailer.upsert({
+      where: { slug: 'bim' },
+      update: {},
+      create: { name: 'BİM', slug: 'bim', baseUrl: 'https://www.bim.com.tr', logoUrl: '/retailers/bim.svg' },
+    }),
+    prisma.retailer.upsert({
+      where: { slug: 'sok' },
+      update: {},
+      create: { name: 'ŞOK', slug: 'sok', baseUrl: 'https://www.sokmarket.com.tr', logoUrl: '/retailers/sok.svg' },
+    }),
+    prisma.retailer.upsert({
+      where: { slug: 'beymen' },
+      update: {},
+      create: { name: 'Beymen', slug: 'beymen', baseUrl: 'https://www.beymen.com', logoUrl: '/retailers/beymen.svg' },
+    }),
   ]);
   console.log(`✅ ${retailers.length} retailer oluşturuldu`);
 

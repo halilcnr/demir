@@ -8,13 +8,16 @@ import { IdefixProvider } from './idefix';
 import { MediaMarktProvider } from './mediamarkt';
 import { A101Provider } from './a101';
 import { MigrosProvider } from './migros';
+import { BimProvider } from './bim';
+import { SokProvider } from './sok';
+import { BeymenProvider } from './beymen';
 import { MockProvider } from './mock';
 
 const USE_MOCK = process.env.USE_MOCK_PROVIDERS === 'true';
 
 const ALL_RETAILER_SLUGS = [
   'hepsiburada', 'trendyol', 'n11', 'amazon', 'pazarama',
-  'idefix', 'mediamarkt', 'a101', 'migros',
+  'idefix', 'mediamarkt', 'a101', 'migros', 'bim', 'sok', 'beymen',
 ] as const;
 
 /** Tüm aktif provider'ları döndürür */
@@ -35,6 +38,9 @@ export function getProviders(): RetailerProvider[] {
     new MediaMarktProvider(),
     new A101Provider(),
     new MigrosProvider(),
+    new BimProvider(),
+    new SokProvider(),
+    new BeymenProvider(),
   ];
 }
 
@@ -48,5 +54,6 @@ export {
   HepsiburadaProvider, TrendyolProvider, N11Provider,
   AmazonProvider, PazaramaProvider, IdefixProvider,
   MediaMarktProvider, A101Provider, MigrosProvider,
+  BimProvider, SokProvider, BeymenProvider,
   MockProvider,
 };

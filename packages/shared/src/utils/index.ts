@@ -154,6 +154,9 @@ export function getRetailerColor(slug: string): string {
     mediamarkt: '#df0000',
     a101: '#004e9a',
     migros: '#f26f21',
+    bim: '#ed1c24',
+    sok: '#00a651',
+    beymen: '#000000',
   };
   return colors[slug] ?? '#6b7280';
 }

@@ -314,7 +314,7 @@ export interface SystemHealthInfo {
 // ─── Discovery Source Types ─────────────────────────────────────
 export const TRUSTED_RETAILERS = [
   'amazon', 'hepsiburada', 'trendyol', 'n11', 'pazarama',
-  'idefix', 'mediamarkt', 'a101', 'migros',
+  'idefix', 'mediamarkt', 'a101', 'migros', 'bim', 'sok', 'beymen',
 ] as const;
 export type TrustedRetailer = typeof TRUSTED_RETAILERS[number];
 

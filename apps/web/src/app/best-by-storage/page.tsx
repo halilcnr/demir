@@ -48,6 +48,13 @@ function getRetailerBrandColor(slug: string): string {
     n11: '#7849b8',
     amazon: '#ff9900',
     pazarama: '#00b900',
+    idefix: '#00a1e4',
+    mediamarkt: '#df0000',
+    a101: '#004e9a',
+    migros: '#f26f21',
+    bim: '#ed1c24',
+    sok: '#00a651',
+    beymen: '#000000',
   };
   return map[slug] ?? '#6b7280';
 }

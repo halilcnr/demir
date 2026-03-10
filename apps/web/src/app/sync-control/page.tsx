@@ -228,6 +228,9 @@ const PROVIDER_NAMES: Record<string, string> = {
   mediamarkt: 'MediaMarkt',
   a101: 'A101',
   migros: 'Migros',
+  bim: 'BİM',
+  sok: 'ŞOK',
+  beymen: 'Beymen',
 };
 
 // ─── Page Component ──────────────────────────────────────────────
