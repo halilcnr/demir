@@ -27,7 +27,24 @@ function storageLabel(gb: number): string {
   return gb >= 1024 ? `${gb / 1024}TB` : `${gb}GB`;
 }
 
+async function waitForDb(maxRetries = 5): Promise<void> {
+  for (let i = 1; i <= maxRetries; i++) {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      console.log('✅ Veritabanı bağlantısı başarılı');
+      return;
+    } catch (err) {
+      console.warn(`⏳ DB bağlantı denemesi ${i}/${maxRetries} başarısız, ${5 * i}s bekleniyor...`);
+      if (i === maxRetries) throw err;
+      await new Promise(r => setTimeout(r, 5000 * i));
+    }
+  }
+}
+
 async function main() {
+  // ─── Neon compute'u uyandır ─────────────────────────
+  await waitForDb();
+
   // ─── Önce tüm verileri sıfırla ─────────────────────────
   console.log('🗑️  Mevcut veriler siliniyor...');
   await prisma.alertEvent.deleteMany();
@@ -207,15 +224,15 @@ async function main() {
   console.log('✅ Varsayılan worker konfigürasyonu oluşturuldu');
 
   // ─── Provider Metrikleri (tüm retailer'lar) ───────────
-  const retailers = await prisma.retailer.findMany({ select: { slug: true } });
-  for (const r of retailers) {
+  const allRetailerSlugs = await prisma.retailer.findMany({ select: { slug: true } });
+  for (const r of allRetailerSlugs) {
     await prisma.providerMetrics.upsert({
       where: { retailerSlug: r.slug },
       update: {},
       create: { retailerSlug: r.slug },
     });
   }
-  console.log(`✅ ${retailers.length} provider metrik kaydı oluşturuldu`);
+  console.log(`✅ ${allRetailerSlugs.length} provider metrik kaydı oluşturuldu`);
 }
 
 main()

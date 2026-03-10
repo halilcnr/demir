@@ -100,11 +100,11 @@ const COLOR_MAP: Record<string, string> = {
   'teal': 'Teal', 'deniz mavisi': 'Teal',
   'ultramarine': 'Ultramarine', 'lacivert taş': 'Ultramarine', 'lacivert tas': 'Ultramarine', 'laciverttaş': 'Ultramarine', 'laciverttas': 'Ultramarine',
   // Titanium variants
-  'natural titanium': 'Natural Titanium', 'doğal titanyum': 'Natural Titanium',
+  'natural titanium': 'Natural Titanium', 'doğal titanyum': 'Natural Titanium', 'natürel titanyum': 'Natural Titanium', 'naturel titanyum': 'Natural Titanium',
   'blue titanium': 'Blue Titanium', 'mavi titanyum': 'Blue Titanium',
   'white titanium': 'White Titanium', 'beyaz titanyum': 'White Titanium',
   'black titanium': 'Black Titanium', 'siyah titanyum': 'Black Titanium',
-  'desert titanium': 'Desert Titanium', 'çöl titanyum': 'Desert Titanium',
+  'desert titanium': 'Desert Titanium', 'çöl titanyum': 'Desert Titanium', 'çöl beji': 'Desert Titanium', 'col titanyum': 'Desert Titanium', 'col beji': 'Desert Titanium',
   // iPhone 17 colors
   'fog blue': 'Fog Blue', 'sis mavisi': 'Fog Blue', 'sis mavi': 'Fog Blue',
   'lavender': 'Lavender', 'lavanta': 'Lavender',
