@@ -15,7 +15,7 @@
  *   - beymen is a premium department store with broad iPhone selection.
  *   - Fallback discovery (akakce, cimri, enuygun, epey) can auto-discover
  *     URLs for any trusted retailer and refresh listing URLs in the DB.
- *   - Do not add generic search pages or unverified URLs.
+ *   - Do not add generic search pages or unverified URLs. d
  */
 
 export interface ProductUrlMap {
