@@ -42,6 +42,8 @@ export default function SyncPage() {
   const [syncLogs, setSyncLogs] = useState<SyncLogEntry[]>([]);
   const logEndRef = useRef<HTMLDivElement>(null);
   const logFetchedCount = useRef(0);
+  const [togglingSlug, setTogglingSlug] = useState<string | null>(null);
+  const [syncingSlug, setSyncingSlug] = useState<string | null>(null);
 
   const { data, isLoading, error, refetch } = useQuery<SyncStatusResponse>({
     queryKey: ['sync-status'],
@@ -81,6 +83,27 @@ export default function SyncPage() {
       setSyncMessage('Worker ile bağlantı kurulamadı');
     }
   }, [refetch]);
+
+  const toggleRetailer = useCallback(async (slug: string) => {
+    setTogglingSlug(slug);
+    try {
+      const res = await fetch(`/api/retailers/${encodeURIComponent(slug)}`, { method: 'PATCH' });
+      if (res.ok) refetch();
+    } catch { /* ignore */ }
+    setTogglingSlug(null);
+  }, [refetch]);
+
+  const syncRetailer = useCallback(async (slug: string) => {
+    setSyncingSlug(slug);
+    try {
+      await fetch('/api/sync/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ retailerSlug: slug }),
+      });
+    } catch { /* ignore */ }
+    setSyncingSlug(null);
+  }, []);
 
   // Auto-detect if job is still running and update sync state
   const isJobRunning = data?.lastJob?.status === 'RUNNING';
@@ -362,8 +385,14 @@ export default function SyncPage() {
                     <th className="px-5 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
                       Durum
                     </th>
-                    <th className="px-5 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
+                    <th className="px-5 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
                       Son Senkronizasyon
+                    </th>
+                    <th className="px-5 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
+                      Aç / Kapat
+                    </th>
+                    <th className="px-5 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">
+                      İşlem
                     </th>
                   </tr>
                 </thead>
@@ -378,8 +407,41 @@ export default function SyncPage() {
                           {r.isActive ? 'Aktif' : 'Pasif'}
                         </Badge>
                       </td>
-                      <td className="px-5 py-3 text-right text-[13px] text-text-tertiary">
+                      <td className="px-5 py-3 text-center text-[13px] text-text-tertiary">
                         {r.lastSyncedAt ? formatRelativeDate(r.lastSyncedAt) : 'Henüz yok'}
+                      </td>
+                      <td className="px-5 py-3 text-center">
+                        <button
+                          onClick={() => toggleRetailer(r.slug)}
+                          disabled={togglingSlug === r.slug}
+                          className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                          style={{ backgroundColor: r.isActive ? '#10b981' : '#d1d5db' }}
+                          title={r.isActive ? `${r.name} kapat` : `${r.name} aç`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${
+                              r.isActive ? 'translate-x-[18px]' : 'translate-x-[2px]'
+                            }`}
+                          />
+                          {togglingSlug === r.slug && (
+                            <Loader2 className="absolute inset-0 m-auto h-3 w-3 animate-spin text-white" />
+                          )}
+                        </button>
+                      </td>
+                      <td className="px-5 py-3 text-right">
+                        <button
+                          onClick={() => syncRetailer(r.slug)}
+                          disabled={syncingSlug === r.slug || !r.isActive}
+                          className="inline-flex items-center gap-1.5 rounded-md bg-primary/10 px-2.5 py-1.5 text-[11px] font-medium text-primary transition-all hover:bg-primary/20 disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.97]"
+                          title={!r.isActive ? 'Mağaza pasif' : `${r.name} senkronize et`}
+                        >
+                          {syncingSlug === r.slug ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <RefreshCw className="h-3 w-3" />
+                          )}
+                          Sync
+                        </button>
                       </td>
                     </tr>
                   ))}

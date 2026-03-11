@@ -121,34 +121,41 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    // Read body to get optional variantId
+    // Read body to get optional variantId or retailerSlug
     let body = '';
     req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
     req.on('end', () => {
       let variantId: string | undefined;
+      let retailerSlug: string | undefined;
       try {
         const parsed = JSON.parse(body);
         if (parsed.variantId && typeof parsed.variantId === 'string') {
           variantId = parsed.variantId;
         }
+        if (parsed.retailerSlug && typeof parsed.retailerSlug === 'string') {
+          retailerSlug = parsed.retailerSlug;
+        }
       } catch {
         // No body or invalid JSON — full sync
       }
 
+      const label = retailerSlug ? `Retailer(${retailerSlug})` : variantId ? 'Variant' : 'Manual';
+
       isSyncing = true;
       res.writeHead(202);
       res.end(JSON.stringify({
-        message: variantId ? 'Variant sync triggered' : 'Sync triggered',
+        message: retailerSlug ? `Retailer sync triggered: ${retailerSlug}` : variantId ? 'Variant sync triggered' : 'Sync triggered',
         variantId: variantId ?? null,
+        retailerSlug: retailerSlug ?? null,
         startedAt: new Date().toISOString(),
       }));
 
-      runSync(undefined, variantId)
+      runSync(retailerSlug, variantId)
         .then((result) => {
-          console.log(`[trigger] ${variantId ? 'Variant' : 'Manual'} sync completed: ${result.itemsScanned} scanned, ${result.itemsMatched} matched`);
+          console.log(`[trigger] ${label} sync completed: ${result.itemsScanned} scanned, ${result.itemsMatched} matched`);
         })
         .catch((err) => {
-          console.error(`[trigger] ${variantId ? 'Variant' : 'Manual'} sync failed:`, err);
+          console.error(`[trigger] ${label} sync failed:`, err);
         })
         .finally(() => {
           isSyncing = false;

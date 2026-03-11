@@ -29,12 +29,24 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // Forward optional retailerSlug from request body
+    let forwardBody: string | undefined;
+    try {
+      const reqBody = await req.json();
+      if (reqBody && typeof reqBody === 'object') {
+        forwardBody = JSON.stringify(reqBody);
+      }
+    } catch {
+      // No body or invalid JSON — full sync
+    }
+
     const workerRes = await fetch(`${WORKER_URL}/trigger-sync`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(SYNC_TRIGGER_SECRET ? { Authorization: `Bearer ${SYNC_TRIGGER_SECRET}` } : {}),
       },
+      ...(forwardBody ? { body: forwardBody } : {}),
       signal: AbortSignal.timeout(10_000),
     });
 
