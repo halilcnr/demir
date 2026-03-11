@@ -611,6 +611,111 @@ export default function TelegramSettingsPage() {
         </div>
       )}
 
+      {/* ── Notification Pipeline Diagram ── */}
+      {!settingsLoading && effectiveSettings && (
+        <Card>
+          <div className="mb-4 flex items-center gap-2">
+            <Activity className="h-4 w-4 text-text-tertiary" />
+            <h2 className="text-sm font-semibold text-text-primary">Bildirim Akışı</h2>
+            <p className="text-[11px] text-text-tertiary ml-1">Fiyat düşüşlerinde hangi bildirim yolları aktif</p>
+          </div>
+
+          <div className="space-y-3">
+            {/* Pipeline step 1: Price drop detected */}
+            <div className="flex items-start gap-3">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-50 text-sky-600 text-xs font-bold">1</div>
+              <div className="flex-1 rounded-lg border border-border px-3 py-2">
+                <p className="text-xs font-semibold text-text-primary">Fiyat Düşüşü Algılandı</p>
+                <p className="text-[11px] text-text-tertiary">Scrape sonrası yeni fiyat &lt; eski fiyat</p>
+              </div>
+            </div>
+
+            <div className="ml-3.5 h-4 border-l-2 border-dashed border-slate-200" />
+
+            {/* Pipeline step 2: Two parallel paths */}
+            <div className="grid gap-3 sm:grid-cols-2">
+              {/* Path A: Smart Deal */}
+              <div className={cn(
+                'rounded-lg border-2 px-3 py-2.5 transition-colors',
+                effectiveSettings.notifySmartDeal && effectiveSettings.notifyEnabled
+                  ? 'border-amber-200 bg-amber-50/50'
+                  : 'border-slate-200 bg-slate-50/50 opacity-60'
+              )}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <Zap className={cn('h-3.5 w-3.5', effectiveSettings.notifySmartDeal && effectiveSettings.notifyEnabled ? 'text-amber-500' : 'text-slate-400')} />
+                  <span className="text-xs font-semibold text-text-primary">Akıllı Fırsat Bildirimi</span>
+                  <Badge
+                    variant={effectiveSettings.notifySmartDeal && effectiveSettings.notifyEnabled ? 'success' : 'default'}
+                    size="sm"
+                  >
+                    {effectiveSettings.notifySmartDeal && effectiveSettings.notifyEnabled ? 'Aktif' : 'Kapalı'}
+                  </Badge>
+                </div>
+                <div className="space-y-1 text-[11px] text-text-tertiary">
+                  <p>Piyasa analizi yapılır, skor hesaplanır</p>
+                  <p>Eşik: <span className="font-semibold text-text-secondary">≥ {effectiveSettings.smartDealMinScore}/100</span></p>
+                  <p>Bekleme: <span className="font-semibold text-text-secondary">{effectiveSettings.smartDealCooldownMin} dk</span></p>
+                  <p className="text-[10px] italic">
+                    {effectiveSettings.smartDealMinScore >= 80
+                      ? 'Yüksek eşik — sadece olağanüstü fırsatlar tetiklenir'
+                      : effectiveSettings.smartDealMinScore >= 50
+                        ? 'Orta eşik — iyi fırsatlar tetiklenir'
+                        : 'Düşük eşik — çoğu düşüş tetiklenir'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Path B: Simple Price Drop */}
+              <div className={cn(
+                'rounded-lg border-2 px-3 py-2.5 transition-colors',
+                effectiveSettings.notifyPriceDrop && effectiveSettings.notifyEnabled
+                  ? 'border-sky-200 bg-sky-50/50'
+                  : 'border-slate-200 bg-slate-50/50 opacity-60'
+              )}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <TrendingDown className={cn('h-3.5 w-3.5', effectiveSettings.notifyPriceDrop && effectiveSettings.notifyEnabled ? 'text-sky-500' : 'text-slate-400')} />
+                  <span className="text-xs font-semibold text-text-primary">Fiyat Düşüşü Bildirimi</span>
+                  <Badge
+                    variant={effectiveSettings.notifyPriceDrop && effectiveSettings.notifyEnabled ? 'success' : 'default'}
+                    size="sm"
+                  >
+                    {effectiveSettings.notifyPriceDrop && effectiveSettings.notifyEnabled ? 'Aktif' : 'Kapalı'}
+                  </Badge>
+                </div>
+                <div className="space-y-1 text-[11px] text-text-tertiary">
+                  <p>Basit eşik kontrolü yapılır</p>
+                  <p>Min: <span className="font-semibold text-text-secondary">%{effectiveSettings.notifyDropPercent} veya {effectiveSettings.notifyDropAmount.toLocaleString('tr-TR')} ₺</span></p>
+                  <p>Bekleme: <span className="font-semibold text-text-secondary">{effectiveSettings.notifyCooldownMinutes} dk</span></p>
+                  <p className="text-[10px] italic">Akıllı fırsat gönderildiyse bu atlanır (çift bildirim engeli)</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="ml-3.5 h-4 border-l-2 border-dashed border-slate-200" />
+
+            {/* Pipeline step 3: Anti-spam */}
+            <div className="flex items-start gap-3">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-600 text-xs font-bold">3</div>
+              <div className="flex-1 rounded-lg border border-border px-3 py-2">
+                <p className="text-xs font-semibold text-text-primary">Anti-Spam Kontrolleri</p>
+                <p className="text-[11px] text-text-tertiary">Aynı fiyattan tekrar gönderilmez &#x2022; Bekleme süresi &#x2022; Atomic claim (replika koruması)</p>
+              </div>
+            </div>
+
+            <div className="ml-3.5 h-4 border-l-2 border-dashed border-slate-200" />
+
+            {/* Pipeline step 4: Broadcast */}
+            <div className="flex items-start gap-3">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 text-xs font-bold">4</div>
+              <div className="flex-1 rounded-lg border border-border px-3 py-2">
+                <p className="text-xs font-semibold text-text-primary">Telegram Broadcast</p>
+                <p className="text-[11px] text-text-tertiary">Tüm aktif abonelere gönderilir ({status?.subscriberCount ?? 0} abone)</p>
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
+
       {/* ── Notification Settings Form ── */}
       <Card>
         <div className="mb-5 flex items-center justify-between">
@@ -1112,9 +1217,10 @@ function HealthRow({ label, ok, detail }: { label: string; ok: boolean; detail: 
 }
 
 function MsgTypeBadge({ type }: { type: string }) {
-  const map: Record<string, { label: string; variant: 'info' | 'warning' | 'default' }> = {
+  const map: Record<string, { label: string; variant: 'info' | 'warning' | 'default' | 'success' }> = {
     PRICE_DROP: { label: 'Fiyat Düşüşü', variant: 'info' },
     ALL_TIME_LOW: { label: 'En Düşük', variant: 'warning' },
+    DEAL_ALERT: { label: 'Akıllı Fırsat', variant: 'success' },
     TEST_MESSAGE: { label: 'Test', variant: 'default' },
   };
   const cfg = map[type] ?? { label: type, variant: 'default' as const };

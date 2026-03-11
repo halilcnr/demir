@@ -22,20 +22,20 @@ import { cn } from '@repo/shared';
 import { useLiveUpdates } from '@/components/live-updates-context';
 
 interface ProviderHealthRow {
-  retailerSlug: string;
-  retailerName: string;
+  slug: string;
+  name: string;
   isActive: boolean;
   status: 'healthy' | 'unstable' | 'failing';
   totalAttempts: number;
-  successCount: number;
-  failureCount: number;
-  blockedCount: number;
   successRate: number;
-  avgResponseTimeMs: number;
-  listingsUpdated: number;
-  listingsFailed: number;
+  avgScrapeTimeMs: number;
+  listingsUpdatedToday: number;
+  listingsFailedToday: number;
   lastSuccessAt: string | null;
   lastFailureAt: string | null;
+  consecutiveFailures: number;
+  blockedRecently: boolean;
+  httpStatusBreakdown: Record<string, number>;
 }
 
 interface StaleListingRow {
@@ -43,24 +43,23 @@ interface StaleListingRow {
   retailerSlug: string;
   retailerName: string;
   variantName: string;
-  productUrl: string;
-  lastSeenAt: string;
+  familyName: string;
+  lastCheckedAt: string | null;
   hoursSinceUpdate: number;
-  currentPrice: number | null;
-  severity: 'warning' | 'critical';
+  lastPrice: number | null;
+  staleness: 'warning' | 'critical';
 }
 
 interface ScrapeHealthDashboard {
   providers: ProviderHealthRow[];
   staleListings: StaleListingRow[];
   summary: {
-    totalProviders: number;
-    healthyProviders: number;
-    failingProviders: number;
-    totalListingsTracked: number;
-    listingsUpdatedToday: number;
-    listingsFailedToday: number;
-    staleListingCount: number;
+    totalListings: number;
+    updatedToday: number;
+    failedToday: number;
+    staleCount: number;
+    overallSuccessRate: number;
+    lastSyncAt: string | null;
   };
 }
 
@@ -117,8 +116,8 @@ export default function ScrapeHealthPage() {
   const providers = data.providers ?? [];
   const staleListings = data.staleListings ?? [];
   const summary = data.summary ?? {
-    totalProviders: 0, healthyProviders: 0, failingProviders: 0,
-    totalListingsTracked: 0, listingsUpdatedToday: 0, listingsFailedToday: 0, staleListingCount: 0,
+    totalListings: 0, updatedToday: 0, failedToday: 0,
+    staleCount: 0, overallSuccessRate: 100, lastSyncAt: null,
   };
 
   return (
@@ -156,29 +155,29 @@ export default function ScrapeHealthPage() {
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
           title="Toplam Provider"
-          value={summary.totalProviders}
-          subtitle={`${summary.healthyProviders} sağlıklı`}
+          value={providers.length}
+          subtitle={`${providers.filter(p => p.status === 'healthy').length} sağlıklı`}
           icon={<Wifi className="h-4 w-4" />}
           accentColor="var(--color-primary)"
         />
         <StatCard
           title="Bugün Güncellenen"
-          value={summary.listingsUpdatedToday}
-          subtitle={`/ ${summary.totalListingsTracked} listing`}
+          value={summary.updatedToday}
+          subtitle={`/ ${summary.totalListings} listing`}
           icon={<CheckCircle2 className="h-4 w-4" />}
           accentColor="#10b981"
         />
         <StatCard
           title="Başarısız"
-          value={summary.listingsFailedToday}
+          value={summary.failedToday}
           subtitle="bugün"
           icon={<XCircle className="h-4 w-4" />}
           accentColor="#f43f5e"
         />
         <StatCard
           title="Bayat Listing"
-          value={summary.staleListingCount}
-          subtitle={staleListings.filter((s) => s.severity === 'critical').length + ' kritik'}
+          value={summary.staleCount}
+          subtitle={staleListings.filter((s) => s.staleness === 'critical').length + ' kritik'}
           icon={<AlertTriangle className="h-4 w-4" />}
           accentColor="#f59e0b"
         />
@@ -207,12 +206,15 @@ export default function ScrapeHealthPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {providers.map((p) => (
-                <tr key={p.retailerSlug} className={cn(!p.isActive && 'opacity-40')}>
+              {providers.map((p) => {
+                const successCount = Math.round(p.totalAttempts * p.successRate / 100);
+                const failureCount = p.totalAttempts - successCount;
+                return (
+                <tr key={p.slug} className={cn(!p.isActive && 'opacity-40')}>
                   <td className="py-3 pr-4">
                     <div className="flex items-center gap-2">
                       <StatusDot status={p.status} />
-                      <span className="font-medium text-text-primary">{p.retailerName}</span>
+                      <span className="font-medium text-text-primary">{p.name}</span>
                       {!p.isActive && (
                         <Badge variant="default" size="sm">Pasif</Badge>
                       )}
@@ -243,25 +245,26 @@ export default function ScrapeHealthPage() {
                     {p.totalAttempts}
                   </td>
                   <td className="py-3 pr-4 text-right font-mono text-xs text-emerald-600">
-                    {p.successCount}
+                    {successCount}
                   </td>
                   <td className="py-3 pr-4 text-right font-mono text-xs text-rose-600">
-                    {p.failureCount}
+                    {failureCount}
                   </td>
                   <td className="py-3 pr-4 text-right font-mono text-xs text-amber-600">
-                    {p.blockedCount}
+                    {p.blockedRecently ? 'Evet' : '—'}
                   </td>
                   <td className="py-3 pr-4 text-right font-mono text-xs text-text-secondary">
-                    {formatDuration(p.avgResponseTimeMs)}
+                    {p.avgScrapeTimeMs > 0 ? formatDuration(p.avgScrapeTimeMs) : '—'}
                   </td>
                   <td className="py-3 pr-4 text-right font-mono text-xs text-text-secondary">
-                    {p.listingsUpdated}
+                    {p.listingsUpdatedToday}
                   </td>
                   <td className="py-3 text-right text-xs text-text-tertiary">
                     {formatTimeAgo(p.lastSuccessAt)}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -291,29 +294,24 @@ export default function ScrapeHealthPage() {
                 {staleListings.map((s) => (
                   <tr key={s.listingId}>
                     <td className="py-3 pr-4">
-                      <a
-                        href={s.productUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-medium text-primary hover:underline"
-                      >
+                      <span className="font-medium text-text-primary">
                         {s.variantName}
-                      </a>
+                      </span>
                     </td>
                     <td className="py-3 pr-4 text-text-secondary">{s.retailerName}</td>
                     <td className="py-3 pr-4 text-right font-mono text-xs text-text-secondary">
-                      {s.currentPrice ? `₺${s.currentPrice.toLocaleString('tr-TR')}` : '—'}
+                      {s.lastPrice ? `₺${s.lastPrice.toLocaleString('tr-TR')}` : '—'}
                     </td>
                     <td className="py-3 pr-4 text-right text-xs text-text-tertiary">
                       {Math.round(s.hoursSinceUpdate)}sa önce
                     </td>
                     <td className="py-3 text-right">
                       <Badge
-                        variant={s.severity === 'critical' ? 'danger' : 'warning'}
+                        variant={s.staleness === 'critical' ? 'danger' : 'warning'}
                         size="sm"
                         dot
                       >
-                        {s.severity === 'critical' ? 'Kritik' : 'Uyarı'}
+                        {s.staleness === 'critical' ? 'Kritik' : 'Uyarı'}
                       </Badge>
                     </td>
                   </tr>

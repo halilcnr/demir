@@ -28,6 +28,7 @@ export async function GET() {
         include: {
           variant: {
             select: {
+              id: true,
               normalizedName: true,
               slug: true,
               color: true,
@@ -78,7 +79,7 @@ export async function GET() {
       const { familyName, familySlug, storageGb, variants } = group;
 
       // Collect all listings across all colors for this storage group
-      const allListings: { price: number; color: string; retailerName: string; retailerSlug: string; productUrl: string; variantSlug: string }[] = [];
+      const allListings: { price: number; color: string; retailerName: string; retailerSlug: string; productUrl: string; variantId: string; variantSlug: string }[] = [];
 
       for (const v of variants) {
         for (const l of v.variant.listings) {
@@ -89,6 +90,7 @@ export async function GET() {
               retailerName: l.retailer.name,
               retailerSlug: l.retailer.slug,
               productUrl: l.productUrl,
+              variantId: v.variant.id,
               variantSlug: v.variant.slug,
             });
           }
@@ -153,6 +155,7 @@ export async function GET() {
         groupLabel: `${familyName} ${storageGb}GB`,
         cheapestPrice: cheapest.price,
         cheapestColor: cheapest.color,
+        cheapestVariantId: cheapest.variantId,
         cheapestVariantSlug: cheapest.variantSlug,
         cheapestRetailerName: cheapest.retailerName,
         cheapestRetailerSlug: cheapest.retailerSlug,
@@ -178,8 +181,8 @@ export async function GET() {
       });
     }
 
-    // Sort by deal probability descending
-    grouped.sort((a, b) => b.dealProbability - a.dealProbability);
+    // Sort: deal probability desc, then cheapest price asc
+    grouped.sort((a, b) => b.dealProbability - a.dealProbability || a.cheapestPrice - b.cheapestPrice);
 
     return NextResponse.json({
       deals: workerRes?.deals ?? [],

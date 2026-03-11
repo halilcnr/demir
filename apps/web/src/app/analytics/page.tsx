@@ -62,6 +62,7 @@ interface StorageGroupRow {
   groupLabel: string;
   cheapestPrice: number;
   cheapestColor: string;
+  cheapestVariantId: string;
   cheapestVariantSlug: string;
   cheapestRetailerName: string;
   cheapestRetailerSlug: string;
@@ -144,8 +145,10 @@ export default function AnalyticsPage() {
   if (error) return <ErrorState description="Analitik verileri yüklenemedi" onRetry={refetch} />;
   if (!data) return null;
 
-  const deals = data.deals ?? [];
-  const analytics = data.analytics ?? [];
+  const deals = (data.deals ?? [])
+    .filter((d: SmartDealAlert) => d.dealScore >= 30)
+    .sort((a: SmartDealAlert, b: SmartDealAlert) => b.dealScore - a.dealScore || b.savingsVsMarket - a.savingsVsMarket);
+  const analytics = (data.analytics ?? []);
 
   // Data for the top deals bar chart
   const topDealsChart = deals.slice(0, 8).map((d) => ({
@@ -371,7 +374,7 @@ export default function AnalyticsPage() {
                     <tr key={a.groupKey} className="hover:bg-slate-50/50">
                       <td className="py-3 pr-4">
                         <Link
-                          href={`/variants/${a.cheapestVariantSlug}`}
+                          href={`/variants/${a.cheapestVariantId}`}
                           className="font-medium text-primary hover:underline"
                         >
                           {a.groupLabel}

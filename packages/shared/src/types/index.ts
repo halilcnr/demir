@@ -515,6 +515,7 @@ export interface StorageGroupAnalytics {
   groupLabel: string;          // "iPhone 13 128GB"
   cheapestPrice: number;
   cheapestColor: string;
+  cheapestVariantId: string;
   cheapestVariantSlug: string;
   cheapestRetailerName: string;
   cheapestRetailerSlug: string;
