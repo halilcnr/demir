@@ -25,6 +25,7 @@ import { clearSyncLogs, addSyncLog, finishSyncLogs, updateSyncProgress, logScrap
 import type { ScrapeStatus } from './sync-logger';
 import { queryFallbackSourcesDetailed } from './discovery';
 import { notifySmartDeal } from './services/telegram';
+import { recordPriceSnapshot } from './services/smart-snapshot';
 import { recordMetricEvent, recordCircuitSuccess, recordCircuitFailure, isCircuitOpen, incrementProviderCounter } from './metrics-collector';
 import { getAdaptiveDelay } from './provider-queue';
 
@@ -215,22 +216,20 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
               },
             });
 
-            await prisma.priceSnapshot.create({
-              data: {
-                listingId: listing.id,
-                observedPrice: result.price,
-                previousPrice,
-                currency: 'TRY',
-                changePercent: previousPrice
-                  ? calculateChangePercent(previousPrice, result.price)
-                  : null,
-                changeAmount: previousPrice ? result.price - previousPrice : null,
-                source: 'direct',
-                strategyUsed: (meta?.strategyUsed as string) ?? null,
-                parseConfidence: meta?.parseConfidence
-                  ? ({ high: 0.95, medium: 0.7, low: 0.4 } as Record<string, number>)[String(meta.parseConfidence)] ?? null
-                  : null,
-              },
+            await recordPriceSnapshot({
+              listingId: listing.id,
+              observedPrice: result.price,
+              previousPrice,
+              currency: 'TRY',
+              changePercent: previousPrice
+                ? calculateChangePercent(previousPrice, result.price)
+                : null,
+              changeAmount: previousPrice ? result.price - previousPrice : null,
+              source: 'direct',
+              strategyUsed: (meta?.strategyUsed as string) ?? null,
+              parseConfidence: meta?.parseConfidence
+                ? ({ high: 0.95, medium: 0.7, low: 0.4 } as Record<string, number>)[String(meta.parseConfidence)] ?? null
+                : null,
             });
 
             const deal = await detectDeal({
@@ -342,18 +341,16 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
                       lastSuccessAt: new Date(),
                     },
                   });
-                  await prisma.priceSnapshot.create({
-                    data: {
-                      listingId: listing.id,
-                      observedPrice: retryResult.price,
-                      previousPrice,
-                      currency: 'TRY',
-                      changePercent: previousPrice ? calculateChangePercent(previousPrice, retryResult.price) : null,
-                      changeAmount: previousPrice ? retryResult.price - previousPrice : null,
-                      source: 'fallback',
-                      strategyUsed: discoveryForRetailer.source,
-                      parseConfidence: discoveryForRetailer.confidence,
-                    },
+                  await recordPriceSnapshot({
+                    listingId: listing.id,
+                    observedPrice: retryResult.price,
+                    previousPrice,
+                    currency: 'TRY',
+                    changePercent: previousPrice ? calculateChangePercent(previousPrice, retryResult.price) : null,
+                    changeAmount: previousPrice ? retryResult.price - previousPrice : null,
+                    source: 'fallback',
+                    strategyUsed: discoveryForRetailer.source,
+                    parseConfidence: discoveryForRetailer.confidence,
                   });
                   itemsMatched++;
                   successCount++;
@@ -687,14 +684,12 @@ async function upsertListing(
     : null;
   const changeAmount = previousPrice ? result.price - previousPrice : null;
 
-  await prisma.priceSnapshot.create({
-    data: {
-      listingId: listing.id,
-      observedPrice: result.price,
-      previousPrice,
-      changePercent,
-      changeAmount,
-    },
+  await recordPriceSnapshot({
+    listingId: listing.id,
+    observedPrice: result.price,
+    previousPrice,
+    changePercent,
+    changeAmount,
   });
 
   const deal = await detectDeal({

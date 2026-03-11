@@ -115,6 +115,7 @@ model Listing {
   priceSnapshots  PriceSnapshot[]
   dealEvents      DealEvent[]
   alertEvents     AlertEvent[]
+  priceDailyStats PriceDailyStats[]
 
   @@unique([variantId, retailerId])
   @@index([variantId])
@@ -144,6 +145,8 @@ model PriceSnapshot {
   strategyUsed    String?  // hangi scrape stratejisi kullanıldı
   parseConfidence Float?   // 0-1 parse güvenilirliği
   observedAt      DateTime @default(now())
+  lastSeenAt      DateTime @default(now()) // Updated when same price is observed again
+  isSignificant   Boolean  @default(false) // Protected from cleanup (big drops, etc.)
 
   listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
 
@@ -151,6 +154,7 @@ model PriceSnapshot {
   @@index([observedAt])
   @@index([listingId, observedAt])
   @@index([changePercent])
+  @@index([isSignificant])
 }
 
 // ─── Fırsat/Deal Olayları ────────────────────────────────────────
@@ -622,4 +626,23 @@ model VariantPriceAnalytics {
   @@index([variantId])
   @@index([dealProbability])
   @@index([computedAt])
+}
+
+// ─── Günlük Fiyat Özeti (Aggregated Daily Stats) ────────────────
+model PriceDailyStats {
+  id          String   @id @default(cuid())
+  listingId   String
+  date        DateTime @db.Date
+  minPrice    Float
+  maxPrice    Float
+  avgPrice    Float
+  openPrice   Float    // First price of the day
+  closePrice  Float    // Last price of the day
+  sampleCount Int      @default(1)
+
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([listingId, date])
+  @@index([listingId])
+  @@index([date])
 }

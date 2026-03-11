@@ -165,21 +165,34 @@ async function upsertListing(
     },
   });
 
-  // PriceSnapshot kaydet
+  // PriceSnapshot kaydet (smart dedup)
   const changePercent = previousPrice
     ? calculateChangePercent(previousPrice, result.price)
     : null;
   const changeAmount = previousPrice ? result.price - previousPrice : null;
 
-  await prisma.priceSnapshot.create({
-    data: {
-      listingId: listing.id,
-      observedPrice: result.price,
-      previousPrice,
-      changePercent,
-      changeAmount,
-    },
+  const lastSnapshot = await prisma.priceSnapshot.findFirst({
+    where: { listingId: listing.id },
+    orderBy: { observedAt: 'desc' },
+    select: { id: true, observedPrice: true },
   });
+
+  if (lastSnapshot && lastSnapshot.observedPrice === result.price) {
+    await prisma.priceSnapshot.update({
+      where: { id: lastSnapshot.id },
+      data: { lastSeenAt: new Date() },
+    });
+  } else {
+    await prisma.priceSnapshot.create({
+      data: {
+        listingId: listing.id,
+        observedPrice: result.price,
+        previousPrice,
+        changePercent,
+        changeAmount,
+      },
+    });
+  }
 
   // Deal tespiti
   const deal = await detectDeal({

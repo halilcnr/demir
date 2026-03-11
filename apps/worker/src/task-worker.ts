@@ -34,6 +34,7 @@ import {
 } from './provider-health';
 import { addSyncLog, logScrapeAttempt, updateSyncProgress } from './sync-logger';
 import { notifySmartDeal } from './services/telegram';
+import { recordPriceSnapshot } from './services/smart-snapshot';
 import {
   recordMetricEvent,
   recordCircuitSuccess,
@@ -268,23 +269,21 @@ async function processOneTask(task: ClaimedTask): Promise<'success' | 'failure' 
         },
       });
 
-      // Create price snapshot
-      await prisma.priceSnapshot.create({
-        data: {
-          listingId,
-          observedPrice: result.price,
-          previousPrice,
-          currency: 'TRY',
-          changePercent: previousPrice
-            ? calculateChangePercent(previousPrice, result.price)
-            : null,
-          changeAmount: previousPrice ? result.price - previousPrice : null,
-          source: 'direct',
-          strategyUsed: (meta?.strategyUsed as string) ?? null,
-          parseConfidence: meta?.parseConfidence
-            ? ({ high: 0.95, medium: 0.7, low: 0.4 } as Record<string, number>)[String(meta.parseConfidence)] ?? null
-            : null,
-        },
+      // Create price snapshot (smart dedup)
+      await recordPriceSnapshot({
+        listingId,
+        observedPrice: result.price,
+        previousPrice,
+        currency: 'TRY',
+        changePercent: previousPrice
+          ? calculateChangePercent(previousPrice, result.price)
+          : null,
+        changeAmount: previousPrice ? result.price - previousPrice : null,
+        source: 'direct',
+        strategyUsed: (meta?.strategyUsed as string) ?? null,
+        parseConfidence: meta?.parseConfidence
+          ? ({ high: 0.95, medium: 0.7, low: 0.4 } as Record<string, number>)[String(meta.parseConfidence)] ?? null
+          : null,
       });
 
       // Deal detection
@@ -426,18 +425,16 @@ async function tryFallback(
       },
     });
 
-    await prisma.priceSnapshot.create({
-      data: {
-        listingId: listing.id,
-        observedPrice: retryResult.price,
-        previousPrice,
-        currency: 'TRY',
-        changePercent: previousPrice ? calculateChangePercent(previousPrice, retryResult.price) : null,
-        changeAmount: previousPrice ? retryResult.price - previousPrice : null,
-        source: 'fallback',
-        strategyUsed: match.source,
-        parseConfidence: match.confidence,
-      },
+    await recordPriceSnapshot({
+      listingId: listing.id,
+      observedPrice: retryResult.price,
+      previousPrice,
+      currency: 'TRY',
+      changePercent: previousPrice ? calculateChangePercent(previousPrice, retryResult.price) : null,
+      changeAmount: previousPrice ? retryResult.price - previousPrice : null,
+      source: 'fallback',
+      strategyUsed: match.source,
+      parseConfidence: match.confidence,
     });
 
     await completeTask(task.id, { price: retryResult.price });

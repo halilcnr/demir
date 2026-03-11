@@ -13,6 +13,7 @@ import { getTaskQueueStats, cleanupOldTasks } from './task-queue';
 import { getTaskWorkerState } from './task-worker';
 import { getScrapeHealthDashboard, generateDailyReport, buildHealthReportMessage, flushHourlySnapshots, cleanupOldSnapshots } from './services/scrape-health';
 import { computeAllVariantAnalytics, detectSmartDeals, buildSmartDealMessage } from './services/price-analytics';
+import { runPriceMaintenance, getPriceStorageStats } from './services/price-maintenance';
 
 const startedAt = new Date().toISOString();
 console.log('=== iPhone Price Tracker Worker ===');
@@ -442,6 +443,38 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // ─── Price Storage Stats ─────────────────────────────────
+  if (req.method === 'GET' && req.url === '/price-storage') {
+    try {
+      const stats = await getPriceStorageStats();
+      res.writeHead(200);
+      res.end(JSON.stringify(stats));
+    } catch (err) {
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: err instanceof Error ? err.message : 'Internal error' }));
+    }
+    return;
+  }
+
+  // ─── Trigger Price Maintenance ───────────────────────────
+  if (req.method === 'POST' && req.url === '/price-maintenance') {
+    const authHeader = req.headers['authorization'] ?? '';
+    if (TRIGGER_SECRET && authHeader !== `Bearer ${TRIGGER_SECRET}`) {
+      res.writeHead(401);
+      res.end(JSON.stringify({ error: 'Unauthorized' }));
+      return;
+    }
+    try {
+      const report = await runPriceMaintenance();
+      res.writeHead(200);
+      res.end(JSON.stringify({ ok: true, ...report }));
+    } catch (err) {
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: err instanceof Error ? err.message : 'Internal error' }));
+    }
+    return;
+  }
+
   res.writeHead(404);
   res.end(JSON.stringify({ error: 'Not found' }));
 });
@@ -502,9 +535,10 @@ setInterval(async () => {
   }
 }, 60 * 60_000);
 
-// Cleanup old snapshots (daily)
+// Cleanup old snapshots + price maintenance (daily)
 setInterval(() => {
   cleanupOldSnapshots().catch(() => {});
+  runPriceMaintenance().catch((err) => console.error('[worker] Price maintenance failed:', err));
 }, 24 * 60 * 60_000);
 
 // Periodic housekeeping — dead workers + old tasks (every 10 min)
