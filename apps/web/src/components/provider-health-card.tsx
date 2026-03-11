@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { formatRelativeDate } from '@repo/shared';
 import { Activity } from 'lucide-react';
+import { useLiveUpdates } from './live-updates-context';
 
 interface ProviderInfo {
   slug: string;
@@ -44,10 +45,11 @@ const statusConfig: Record<string, { label: string; variant: 'success' | 'warnin
 };
 
 export function ProviderHealthCard() {
+  const { interval } = useLiveUpdates();
   const { data, isLoading } = useQuery<HealthData>({
     queryKey: ['provider-health'],
     queryFn: () => fetch('/api/health/providers').then((r) => r.json()),
-    refetchInterval: 60_000,
+    refetchInterval: interval(60_000),
   });
 
   if (isLoading || !data) {

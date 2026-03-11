@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Shield, Monitor, Cpu, Database, RefreshCw } from 'lucide-react';
 import type { SystemHealthInfo, HealthStatus } from '@repo/shared';
+import { useLiveUpdates } from './live-updates-context';
 
 const statusConfig: Record<HealthStatus, { label: string; variant: 'success' | 'warning' | 'danger' | 'default'; dotColor: string }> = {
   healthy: { label: 'Sağlıklı', variant: 'success', dotColor: 'bg-emerald-500' },
@@ -21,10 +22,11 @@ const systemParts = [
 ];
 
 export function SystemHealthCard() {
+  const { interval } = useLiveUpdates();
   const { data, isLoading } = useQuery<SystemHealthInfo>({
     queryKey: ['system-health'],
     queryFn: () => fetch('/api/health/system').then((r) => r.json()),
-    refetchInterval: 60_000,
+    refetchInterval: interval(60_000),
   });
 
   if (isLoading || !data) {

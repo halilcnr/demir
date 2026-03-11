@@ -10,6 +10,7 @@ import { CardSkeleton } from '@/components/ui/skeleton';
 import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 import { formatRelativeDate } from '@repo/shared';
 import type { SyncStatusResponse } from '@repo/shared';
+import { useLiveUpdates } from '@/components/live-updates-context';
 
 interface SyncLogEntry {
   timestamp: string;
@@ -44,11 +45,12 @@ export default function SyncPage() {
   const logFetchedCount = useRef(0);
   const [togglingSlug, setTogglingSlug] = useState<string | null>(null);
   const [syncingSlug, setSyncingSlug] = useState<string | null>(null);
+  const { conditionalInterval } = useLiveUpdates();
 
   const { data, isLoading, error, refetch } = useQuery<SyncStatusResponse>({
     queryKey: ['sync-status'],
     queryFn: () => fetch('/api/sync/status').then((r) => r.json()),
-    refetchInterval: syncState === 'running' ? 5_000 : 30_000,
+    refetchInterval: conditionalInterval(syncState === 'running', 5_000, 30_000),
   });
 
   const triggerSync = useCallback(async () => {
@@ -129,7 +131,7 @@ export default function SyncPage() {
       }
       return data;
     },
-    refetchInterval: isRunning ? 2_000 : false,
+    refetchInterval: conditionalInterval(isRunning, 2_000, false),
     enabled: isRunning || syncLogs.length > 0,
   });
 

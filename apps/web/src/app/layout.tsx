@@ -5,6 +5,7 @@ import './globals.css';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 import { QueryProvider } from './providers';
+import { LiveUpdatesProvider } from '@/components/live-updates-context';
 
 export const metadata: Metadata = {
   title: 'iPhone Fiyat Takip - Deal Dashboard',
@@ -20,15 +21,17 @@ export default function RootLayout({
     <html lang="tr" className={`${GeistSans.variable} ${GeistMono.variable}`}>
       <body>
         <QueryProvider>
-          <div className="flex h-screen overflow-hidden">
-            <Sidebar />
-            <div className="flex flex-1 flex-col overflow-hidden">
-              <Header />
-              <main className="flex-1 overflow-y-auto px-4 py-6 md:px-8 md:py-8">
-                {children}
-              </main>
+          <LiveUpdatesProvider>
+            <div className="flex h-screen overflow-hidden">
+              <Sidebar />
+              <div className="flex flex-1 flex-col overflow-hidden">
+                <Header />
+                <main className="flex-1 overflow-y-auto px-4 py-6 md:px-8 md:py-8">
+                  {children}
+                </main>
+              </div>
             </div>
-          </div>
+          </LiveUpdatesProvider>
         </QueryProvider>
       </body>
     </html>

@@ -30,6 +30,7 @@ import {
   Play,
   CircleDot,
 } from 'lucide-react';
+import { useLiveUpdates } from '@/components/live-updates-context';
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -242,16 +243,17 @@ export default function SyncControlPage() {
   const [saved, setSaved] = useState(false);
 
   // ── Data Fetching ──
+  const { interval } = useLiveUpdates();
   const { data: stats, isLoading } = useQuery<OpsStats>({
     queryKey: ['ops-stats'],
     queryFn: () => fetch('/api/ops/stats').then(r => r.json()),
-    refetchInterval: 5000,
+    refetchInterval: interval(5000),
   });
 
   const { data: logsData } = useQuery<{ logs: SyncLogEntry[]; running: boolean }>({
     queryKey: ['ops-logs'],
     queryFn: () => fetch('/api/ops/logs').then(r => r.json()),
-    refetchInterval: 3000,
+    refetchInterval: interval(3000),
   });
 
   // Initialize form from fetched config

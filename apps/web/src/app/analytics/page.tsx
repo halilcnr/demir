@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DashboardSkeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/ui/empty-state';
+import { useLiveUpdates } from '@/components/live-updates-context';
 import {
   BarChart3,
   Calculator,
@@ -120,6 +121,7 @@ function DealScoreBar({ score }: { score: number }) {
 export default function AnalyticsPage() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<'deals' | 'analytics'>('deals');
+  const { interval } = useLiveUpdates();
 
   const { data, isLoading, error, refetch } = useQuery<AnalyticsData>({
     queryKey: ['analytics'],
@@ -128,7 +130,7 @@ export default function AnalyticsPage() {
       if (!r.ok) throw new Error('Analytics API error');
       return r.json();
     },
-    refetchInterval: 120_000,
+    refetchInterval: interval(120_000),
   });
 
   const recompute = useMutation({

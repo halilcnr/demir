@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { RefreshCw, ShieldAlert, Pause, CheckCircle2 } from 'lucide-react';
+import { useLiveUpdates } from './live-updates-context';
 
 type SyncState = 'idle' | 'syncing' | 'throttled' | 'alert';
 
@@ -12,6 +13,7 @@ interface PillData {
 }
 
 export function SyncStatusPill() {
+  const { interval } = useLiveUpdates();
   const { data } = useQuery<PillData>({
     queryKey: ['sync-pill'],
     queryFn: async () => {
@@ -33,7 +35,7 @@ export function SyncStatusPill() {
       }
       return { state: 'idle', label: 'Idle', detail: 'Sync bekleniyor' };
     },
-    refetchInterval: 5000,
+    refetchInterval: interval(5000),
   });
 
   const pill = data ?? { state: 'idle' as SyncState, label: 'Idle', detail: '' };

@@ -35,6 +35,7 @@ import { Button } from '@/components/ui/button';
 import { CardSkeleton } from '@/components/ui/skeleton';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatPrice, formatRelativeDate, cn } from '@repo/shared';
+import { useLiveUpdates } from '@/components/live-updates-context';
 import {
   BarChart,
   Bar,
@@ -137,6 +138,7 @@ function MutationFeedback({ data }: { data: { ok: boolean; sent?: number; error?
 
 export default function TelegramSettingsPage() {
   const queryClient = useQueryClient();
+  const { interval } = useLiveUpdates();
   const [selectedLog, setSelectedLog] = useState<NotificationLog | null>(null);
   const [period, setPeriod] = useState('7d');
   const [searchTerm, setSearchTerm] = useState('');
@@ -151,7 +153,7 @@ export default function TelegramSettingsPage() {
   const { data: status, isLoading: statusLoading } = useQuery<TelegramStatus>({
     queryKey: ['telegram-status'],
     queryFn: () => fetch('/api/telegram/status').then(r => r.json()),
-    refetchInterval: 30_000,
+    refetchInterval: interval(30_000),
   });
 
   const { data: historyData, isLoading: historyLoading } = useQuery<{ logs: NotificationLog[]; total: number }>({
@@ -168,7 +170,7 @@ export default function TelegramSettingsPage() {
   const { data: subscriberData } = useQuery<{ subscribers: Subscriber[]; activeCount: number; totalCount: number }>({
     queryKey: ['telegram-subscribers'],
     queryFn: () => fetch('/api/telegram/subscribers').then(r => r.json()),
-    refetchInterval: 60_000,
+    refetchInterval: interval(60_000),
   });
 
   const { data: dailyStats } = useQuery<DailyStats[]>({

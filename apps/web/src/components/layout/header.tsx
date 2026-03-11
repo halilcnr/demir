@@ -14,9 +14,12 @@ import {
   Settings,
   Search,
   Gauge,
+  Zap,
+  ZapOff,
 } from 'lucide-react';
 import { cn } from '@repo/shared';
 import { SyncStatusPill } from '../sync-status-pill';
+import { useLiveUpdates } from '../live-updates-context';
 
 const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -31,6 +34,7 @@ const navItems = [
 export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const pathname = usePathname();
+  const { enabled: liveEnabled, toggle: toggleLive } = useLiveUpdates();
 
   const currentPage = navItems.find(
     (item) =>
@@ -68,6 +72,24 @@ export function Header() {
           </div>
 
           <SyncStatusPill />
+
+          <button
+            onClick={toggleLive}
+            className={`group relative flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium cursor-pointer transition-colors ${
+              liveEnabled
+                ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20 hover:bg-emerald-500/20'
+                : 'bg-surface-secondary text-text-tertiary border-border hover:bg-surface-secondary/80'
+            }`}
+            title={liveEnabled ? 'Canlı güncellemeler açık — kapat' : 'Canlı güncellemeler kapalı — aç'}
+          >
+            {liveEnabled ? <Zap className="h-3 w-3" /> : <ZapOff className="h-3 w-3" />}
+            <span className="hidden sm:inline">{liveEnabled ? 'Canlı' : 'Durdur.'}</span>
+            <div className="absolute top-full right-0 mt-1 hidden group-hover:block z-50">
+              <div className="rounded-lg border border-border bg-surface px-3 py-2 text-xs text-text-secondary shadow-lg whitespace-nowrap">
+                {liveEnabled ? 'Otomatik yenileme açık — tıkla kapat' : 'Otomatik yenileme kapalı — tıkla aç'}
+              </div>
+            </div>
+          </button>
 
           <Link
             href="/alerts"

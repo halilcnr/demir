@@ -24,11 +24,13 @@ import { DashboardSkeleton } from '@/components/ui/skeleton';
 import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 import { ProviderHealthCard } from '@/components/provider-health-card';
 import { SystemHealthCard } from '@/components/system-health-card';
+import { useLiveUpdates } from '@/components/live-updates-context';
 import { formatPrice, formatRelativeDate } from '@repo/shared';
 import type { DashboardSummary, LiveSyncProgress, DealEventItem } from '@repo/shared';
 import Link from 'next/link';
 
 export default function DashboardPage() {
+  const { enabled: liveEnabled } = useLiveUpdates();
   const { data, isLoading, error, refetch } = useQuery<DashboardSummary>({
     queryKey: ['dashboard-summary'],
     queryFn: () => fetch('/api/dashboard/summary').then((r) => r.json()),
@@ -37,7 +39,9 @@ export default function DashboardPage() {
   const { data: syncProgress } = useQuery<LiveSyncProgress>({
     queryKey: ['sync-progress'],
     queryFn: () => fetch('/api/sync/progress').then((r) => r.json()),
-    refetchInterval: (query) => query.state.data?.running ? 2000 : 10000,
+    refetchInterval: liveEnabled
+      ? (query) => (query.state.data?.running ? 2000 : 10000)
+      : false,
   });
 
   const { data: dealEventsData } = useQuery<{ events: DealEventItem[] }>({

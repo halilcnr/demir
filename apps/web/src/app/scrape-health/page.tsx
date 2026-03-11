@@ -19,6 +19,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { cn } from '@repo/shared';
+import { useLiveUpdates } from '@/components/live-updates-context';
 
 interface ProviderHealthRow {
   retailerSlug: string;
@@ -94,6 +95,7 @@ function StatusDot({ status }: { status: 'healthy' | 'unstable' | 'failing' }) {
 }
 
 export default function ScrapeHealthPage() {
+  const { interval } = useLiveUpdates();
   const { data, isLoading, error, refetch } = useQuery<ScrapeHealthDashboard>({
     queryKey: ['scrape-health'],
     queryFn: async () => {
@@ -101,7 +103,7 @@ export default function ScrapeHealthPage() {
       if (!r.ok) throw new Error('Scrape health API error');
       return r.json();
     },
-    refetchInterval: 60_000,
+    refetchInterval: interval(60_000),
   });
 
   const sendReport = useMutation({
