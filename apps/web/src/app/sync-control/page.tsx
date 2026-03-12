@@ -29,8 +29,11 @@ import {
   Minus,
   Play,
   CircleDot,
+  VolumeX,
 } from 'lucide-react';
 import { useLiveUpdates } from '@/components/live-updates-context';
+import { useLogBuffer } from '@/components/use-log-buffer';
+import { LogTerminal } from '@/components/log-terminal';
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -243,7 +246,7 @@ export default function SyncControlPage() {
   const [saved, setSaved] = useState(false);
 
   // ── Data Fetching ──
-  const { interval } = useLiveUpdates();
+  const { interval, logInterval, logsSilent, toggleLogsSilent } = useLiveUpdates();
   const { data: stats, isLoading } = useQuery<OpsStats>({
     queryKey: ['ops-stats'],
     queryFn: () => fetch('/api/ops/stats').then(r => r.json()),
@@ -253,7 +256,7 @@ export default function SyncControlPage() {
   const { data: logsData } = useQuery<{ logs: SyncLogEntry[]; running: boolean }>({
     queryKey: ['ops-logs'],
     queryFn: () => fetch('/api/ops/logs').then(r => r.json()),
-    refetchInterval: interval(3000),
+    refetchInterval: logInterval(3000),
   });
 
   // Initialize form from fetched config
@@ -288,6 +291,7 @@ export default function SyncControlPage() {
   const lastJob = stats?.lastJob;
   const logs = logsData?.logs ?? [];
   const recentLogs = logs.slice(-30).reverse();
+  const logBuffer = useLogBuffer(recentLogs);
 
   // Merge live + DB metrics
   const providerList = useMemo(() => {
@@ -731,27 +735,32 @@ export default function SyncControlPage() {
           <div className="rounded-xl border border-border bg-surface p-5">
             <h2 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2">
               <Radio className="h-4 w-4 text-primary" /> Canlı Aktivite
-              {logsData?.running && <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />}
+              {logsData?.running && !logsSilent && <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />}
             </h2>
-            <div className="rounded-lg bg-[#0d1117] border border-[#30363d] p-3 font-mono text-[11px] max-h-[300px] overflow-y-auto">
-              {recentLogs.length === 0 ? (
-                <div className="text-[#8b949e] text-center py-4">Henüz log yok...</div>
-              ) : (
-                recentLogs.map((log, i) => (
-                  <div key={i} className="flex gap-2 py-0.5 leading-relaxed">
-                    <span className="text-[#8b949e] shrink-0">{new Date(log.timestamp).toLocaleTimeString('tr-TR')}</span>
-                    {log.type === 'success' && <span className="text-[#3fb950]">✓</span>}
-                    {log.type === 'error' && <span className="text-[#f85149]">✗</span>}
-                    {log.type === 'warn' && <span className="text-[#d29922]">⚠</span>}
-                    {log.type === 'info' && <span className="text-[#58a6ff]">ℹ</span>}
-                    {log.type === 'progress' && <span className="text-[#8b949e]">→</span>}
-                    {log.retailer && <span className="text-[#d2a8ff]">[{log.retailer}]</span>}
-                    <span className="text-[#c9d1d9]">{log.message}</span>
-                    {log.responseTimeMs != null && <span className="text-[#8b949e]">{log.responseTimeMs}ms</span>}
-                  </div>
-                ))
-              )}
-            </div>
+            {logsSilent && (
+              <div className="flex items-center gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2 mb-2">
+                <VolumeX className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                <span className="text-xs text-amber-600">Log akışı sessiz modda</span>
+                <button onClick={toggleLogsSilent} className="ml-auto text-xs font-medium text-amber-600 hover:text-amber-700 underline cursor-pointer">
+                  Aktifleştir
+                </button>
+              </div>
+            )}
+            <LogTerminal scrollRef={logBuffer.scrollRef} maxHeight="300px" isEmpty={logBuffer.items.length === 0}>
+              {logBuffer.items.map((log, i) => (
+                <div key={i} className="flex gap-2 py-0.5 leading-relaxed">
+                  <span className="text-[#8b949e] shrink-0">{new Date(log.timestamp).toLocaleTimeString('tr-TR')}</span>
+                  {log.type === 'success' && <span className="text-[#3fb950]">✓</span>}
+                  {log.type === 'error' && <span className="text-[#f85149]">✗</span>}
+                  {log.type === 'warn' && <span className="text-[#d29922]">⚠</span>}
+                  {log.type === 'info' && <span className="text-[#58a6ff]">ℹ</span>}
+                  {log.type === 'progress' && <span className="text-[#8b949e]">→</span>}
+                  {log.retailer && <span className="text-[#d2a8ff]">[{log.retailer}]</span>}
+                  <span className="text-[#c9d1d9]">{log.message}</span>
+                  {log.responseTimeMs != null && <span className="text-[#8b949e]">{log.responseTimeMs}ms</span>}
+                </div>
+              ))}
+            </LogTerminal>
           </div>
         </div>
 

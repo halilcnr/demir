@@ -4,12 +4,16 @@ import { DistributedLock, INSTANCE_ID } from '../distributed-lock';
 // ─── Configuration ───────────────────────────────────────────────
 const TELEGRAM_ENABLED = process.env.TELEGRAM_ENABLED === 'true';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
-
-// Env vars as fallback defaults (DB settings override these)
-const ENV_MIN_DROP_PERCENT = parseFloat(process.env.NOTIFY_DROP_PERCENT ?? '1');
-const ENV_MIN_DROP_AMOUNT = parseFloat(process.env.NOTIFY_DROP_AMOUNT ?? '100');
-const ENV_COOLDOWN_MS = parseInt(process.env.NOTIFY_COOLDOWN_MS ?? String(4 * 60 * 60 * 1000), 10);
 const POLL_INTERVAL_MS = 30_000; // getUpdates polling interval
+
+// ─── Intelligent Filtering Constants ─────────────────────────────
+const STALE_BENCHMARK_MS = 12 * 60 * 60 * 1000;  // 12h — suppress if benchmark is stale
+const VELOCITY_COOLDOWN_MS = 4 * 60 * 60 * 1000;  // 4h — cooldown for oscillating variants
+const VELOCITY_WINDOW_MS = 4 * 60 * 60 * 1000;    // 4h — look-back for oscillation detection
+const VELOCITY_FLIP_THRESHOLD = 2;                 // ≥2 direction changes = oscillating
+const DEFAULT_CONFIDENCE_GATE = 85;                // Only push if score ≥ 85
+const SIBLING_DISCOUNT_THRESHOLD = 0.90;           // Tier 2: price < siblingAvg * 0.90
+const GLOBAL_FLOOR_PROXIMITY = 1.02;               // Tier 2: price <= globalFloor * 1.02
 
 const telegramPollLock = new DistributedLock('telegram-poll', 60_000);
 
@@ -70,34 +74,20 @@ export async function getNotifySettings(): Promise<CachedSettings> {
 
   // Env var fallback
   return {
-    notifyDropPercent: ENV_MIN_DROP_PERCENT,
-    notifyDropAmount: ENV_MIN_DROP_AMOUNT,
-    notifyCooldownMinutes: Math.round(ENV_COOLDOWN_MS / 60_000),
+    notifyDropPercent: 5,
+    notifyDropAmount: 500,
+    notifyCooldownMinutes: 240,
     notifyAllTimeLow: true,
     notifyEnabled: true,
     notifyMinPrice: null,
     notifyMaxPrice: null,
-    notifyPriceDrop: true,
+    notifyPriceDrop: false,
     notifySmartDeal: true,
     notifyDailyReport: true,
-    smartDealMinScore: 80,
+    smartDealMinScore: DEFAULT_CONFIDENCE_GATE,
     smartDealCooldownMin: 60,
     notifyTimingBreakdown: false,
   };
-}
-
-// ─── Types ───────────────────────────────────────────────────────
-export interface PriceDropPayload {
-  listingId: string;
-  variantLabel: string;      // "iPhone 15 Pro Max 256GB Natural Titanium"
-  retailerName: string;      // "Hepsiburada"
-  retailerSlug: string;
-  productUrl: string;
-  newPrice: number;
-  oldPrice: number;
-  lowestPrice: number | null;
-  isAllTimeLow: boolean;
-  discoveredAt: number;      // Date.now() at scrape time
 }
 
 // ─── Smart Deal Types ────────────────────────────────────────────
@@ -188,193 +178,81 @@ async function broadcast(text: string): Promise<{ sent: number; failed: number }
   return { sent, failed };
 }
 
-// ─── Build Turkish price drop message ────────────────────────────
-function buildPriceDropMessage(payload: PriceDropPayload, showBreakdown: boolean): string {
-  const { variantLabel, retailerName, productUrl, newPrice, oldPrice, lowestPrice, isAllTimeLow, discoveredAt } = payload;
+// ═══════════════════════════════════════════════════════════════════
+//  FRESHNESS & VELOCITY FILTERS
+//  Suppress noise: stale benchmarks, oscillating variants
+// ═══════════════════════════════════════════════════════════════════
 
-  const dropAmount = oldPrice - newPrice;
-  const dropPercent = ((dropAmount / oldPrice) * 100).toFixed(1);
-
-  const fmtPrice = (p: number) => p.toLocaleString('tr-TR', { maximumFractionDigits: 0 });
-
-  const lines: string[] = [];
-
-  if (isAllTimeLow) {
-    lines.push('🔥 <b>YENİ EN DÜŞÜK FİYAT!</b>');
-  } else {
-    lines.push('📉 <b>Fiyat Düşüşü Tespit Edildi</b>');
-  }
-
-  lines.push('');
-  lines.push(`📱 <b>${variantLabel}</b>`);
-  lines.push(`🏪 ${retailerName}`);
-  lines.push('');
-  lines.push(`💰 <s>${fmtPrice(oldPrice)} TL</s>  →  <b>${fmtPrice(newPrice)} TL</b>`);
-  lines.push('');
-  lines.push(`📉 <b>%${dropPercent} düşüş</b> (${fmtPrice(dropAmount)} TL fark)`);
-  lines.push('');
-
-  // ── Timing info ──
-  const totalMs = Date.now() - discoveredAt;
-  const totalSec = (totalMs / 1000).toFixed(1);
-  lines.push(`⏱ <b>Bildirim ulaşma süresi:</b> ${totalSec} saniye`);
-  if (showBreakdown) {
-    lines.push(`  📡 Keşiften bildirime: ${totalSec}s`);
-  }
-  lines.push('');
-
-  lines.push(`🔗 <a href="${productUrl}">Ürüne Git</a>`);
-
-  return lines.join('\n');
+/**
+ * Freshness Filter: Returns true if the benchmark (previous price snapshot
+ * used for comparison) is stale (>12h old) and thus unreliable.
+ */
+async function isBenchmarkStale(listingId: string): Promise<boolean> {
+  const threshold = new Date(Date.now() - STALE_BENCHMARK_MS);
+  const recent = await prisma.priceSnapshot.findFirst({
+    where: { listingId, observedAt: { gte: threshold } },
+    orderBy: { observedAt: 'desc' },
+    select: { observedAt: true },
+  });
+  // If no snapshot within the window, the benchmark is stale
+  return !recent;
 }
 
-// ─── Anti-spam / deduplication checks ────────────────────────────
-async function shouldNotify(payload: PriceDropPayload): Promise<{ send: boolean; reason?: string }> {
-  const { listingId, newPrice, oldPrice, isAllTimeLow } = payload;
-  const settings = await getNotifySettings();
-
-  // Master switch from DB
-  if (!settings.notifyEnabled) {
-    return { send: false, reason: 'Notifications disabled in settings' };
-  }
-
-  // Price drop toggle
-  if (!settings.notifyPriceDrop) {
-    return { send: false, reason: 'Price drop notifications disabled in settings' };
-  }
-
-  const dropAmount = oldPrice - newPrice;
-  const dropPercent = ((dropAmount / oldPrice) * 100);
-
-  // All-time low bypass: skip threshold check if enabled
-  const allTimeLowBypass = isAllTimeLow && settings.notifyAllTimeLow;
-
-  if (!allTimeLowBypass && dropPercent < settings.notifyDropPercent && dropAmount < settings.notifyDropAmount) {
-    return { send: false, reason: `Drop too small: ${dropAmount.toFixed(0)} TL (${dropPercent.toFixed(1)}%) — min %${settings.notifyDropPercent} or ${settings.notifyDropAmount} TL` };
-  }
-
-  // Price range filter
-  if (settings.notifyMinPrice != null && newPrice < settings.notifyMinPrice) {
-    return { send: false, reason: `Price ${newPrice} TL below min filter ${settings.notifyMinPrice} TL` };
-  }
-  if (settings.notifyMaxPrice != null && newPrice > settings.notifyMaxPrice) {
-    return { send: false, reason: `Price ${newPrice} TL above max filter ${settings.notifyMaxPrice} TL` };
-  }
-
-  const listing = await prisma.listing.findUnique({
-    where: { id: listingId },
-    select: { lastNotifiedPrice: true, notificationSentAt: true },
+/**
+ * Velocity Check: Returns true if this variant is oscillating
+ * (≥2 direction changes within the last 4 hours) — suppress to prevent spam.
+ */
+async function isVariantOscillating(listingId: string): Promise<boolean> {
+  const since = new Date(Date.now() - VELOCITY_WINDOW_MS);
+  const snapshots = await prisma.priceSnapshot.findMany({
+    where: { listingId, observedAt: { gte: since }, changeAmount: { not: null } },
+    orderBy: { observedAt: 'asc' },
+    select: { changeAmount: true },
   });
 
-  if (listing?.lastNotifiedPrice === newPrice) {
-    return { send: false, reason: `Already notified for this price (${newPrice} TL)` };
-  }
+  if (snapshots.length < 3) return false;
 
-  const cooldownMs = settings.notifyCooldownMinutes * 60_000;
-  if (listing?.notificationSentAt) {
-    const elapsed = Date.now() - listing.notificationSentAt.getTime();
-    if (elapsed < cooldownMs) {
-      const remainingMin = Math.round((cooldownMs - elapsed) / 60_000);
-      return { send: false, reason: `Cooldown active (${remainingMin}m remaining)` };
+  let flips = 0;
+  let lastDir = 0; // -1 = down, +1 = up, 0 = flat
+  for (const snap of snapshots) {
+    const amt = snap.changeAmount ?? 0;
+    const dir = amt > 0 ? 1 : amt < 0 ? -1 : 0;
+    if (dir !== 0 && lastDir !== 0 && dir !== lastDir) {
+      flips++;
     }
+    if (dir !== 0) lastDir = dir;
   }
 
-  return { send: true };
+  return flips >= VELOCITY_FLIP_THRESHOLD;
 }
 
-// ─── Public: Attempt to send price drop notification ─────────────
-export async function notifyPriceDrop(payload: PriceDropPayload): Promise<void> {
-  if (!TELEGRAM_ENABLED) {
-    return;
+/**
+ * Determine the notification tier:
+ * - Tier 1: Global Floor (ATL or absolute cheapest in market)
+ * - Tier 2: Family Arbitrage (color drops below sibling avg AND within 2% of floor)
+ * - null: Does not qualify for any notification tier
+ */
+function classifyNotificationTier(
+  arb: ArbitrageResult,
+  market: GlobalMarketSnapshot,
+  currentPrice: number,
+): 'GLOBAL_FLOOR' | 'FAMILY_ARBITRAGE' | null {
+  // Tier 1: ATL or market leader
+  if (arb.isMarketLeader) return 'GLOBAL_FLOOR';
+  if (arb.distanceFromATL != null && arb.distanceFromATL <= 0) return 'GLOBAL_FLOOR';
+
+  // Tier 2: Sibling arbitrage — price significantly below siblings AND near global floor
+  if (market.localSiblings.length > 0) {
+    const siblingAvg = market.localSiblings.reduce((s, p) => s + p.price, 0) / market.localSiblings.length;
+    const isBelowSiblingThreshold = currentPrice < siblingAvg * SIBLING_DISCOUNT_THRESHOLD;
+    const isNearGlobalFloor = currentPrice <= market.globalFloor * GLOBAL_FLOOR_PROXIMITY;
+    if (isBelowSiblingThreshold && isNearGlobalFloor) return 'FAMILY_ARBITRAGE';
   }
 
-  const check = await shouldNotify(payload);
-  if (!check.send) {
-    skippedCount++;
-    console.log(`[telegram] Skipped ${payload.retailerSlug} ${payload.variantLabel}: ${check.reason}`);
-    return;
-  }
+  // Fallback: if score is high enough, it may still be a good global floor candidate
+  if (arb.score >= 90 && currentPrice <= market.globalFloor * GLOBAL_FLOOR_PROXIMITY) return 'GLOBAL_FLOOR';
 
-  // ── Atomic claim: prevent duplicate sends across replicas ──
-  // Only proceed if we successfully mark this listing as "notification claimed"
-  // The WHERE clause ensures only one replica wins the race.
-  const cooldownMs = (await getNotifySettings()).notifyCooldownMinutes * 60_000;
-  const cooldownThreshold = new Date(Date.now() - cooldownMs);
-
-  const claimed = await prisma.listing.updateMany({
-    where: {
-      id: payload.listingId,
-      OR: [
-        { lastNotifiedPrice: { not: payload.newPrice } },
-        { lastNotifiedPrice: null },
-      ],
-      AND: [
-        {
-          OR: [
-            { notificationSentAt: null },
-            { notificationSentAt: { lt: cooldownThreshold } },
-          ],
-        },
-      ],
-    },
-    data: {
-      lastNotifiedPrice: payload.newPrice,
-      notificationSentAt: new Date(),
-    },
-  });
-
-  if (claimed.count === 0) {
-    skippedCount++;
-    console.log(`[telegram] Skipped ${payload.retailerSlug} ${payload.variantLabel}: already claimed by another replica`);
-    return;
-  }
-
-  const settings = await getNotifySettings();
-  const message = buildPriceDropMessage(payload, settings.notifyTimingBreakdown);
-  const result = await broadcast(message);
-
-  const msgType = payload.isAllTimeLow ? 'ALL_TIME_LOW' : 'PRICE_DROP';
-
-  if (result.sent > 0) {
-    sentCount++;
-    console.log(`[telegram] ✓ Broadcast price drop: ${payload.retailerSlug} — ${payload.variantLabel} (${payload.newPrice} TL) → ${result.sent} subscriber(s)`);
-
-    await prisma.notificationLog.create({
-      data: {
-        messageType: msgType as never,
-        status: result.failed > 0 ? 'PARTIAL' : 'SENT',
-        productName: payload.variantLabel,
-        retailer: payload.retailerName,
-        oldPrice: payload.oldPrice,
-        newPrice: payload.newPrice,
-        dropPercent: ((payload.oldPrice - payload.newPrice) / payload.oldPrice) * 100,
-        messageText: message,
-        sentTo: result.sent,
-        failedTo: result.failed,
-        listingId: payload.listingId,
-      },
-    }).catch(() => {});
-  } else {
-    failCount++;
-    console.error(`[telegram] ✗ Broadcast failed: ${result.failed} failure(s), 0 sent`);
-
-    await prisma.notificationLog.create({
-      data: {
-        messageType: msgType as never,
-        status: 'FAILED',
-        productName: payload.variantLabel,
-        retailer: payload.retailerName,
-        oldPrice: payload.oldPrice,
-        newPrice: payload.newPrice,
-        dropPercent: ((payload.oldPrice - payload.newPrice) / payload.oldPrice) * 100,
-        messageText: message,
-        sentTo: 0,
-        failedTo: result.failed,
-        errorMessage: 'All subscribers failed',
-        listingId: payload.listingId,
-      },
-    }).catch(() => {});
-  }
+  return null;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -428,24 +306,32 @@ async function shouldSendSmartAlert(listingId: string, newPrice: number): Promis
   return { send: true };
 }
 
-// ─── Turkish Telegram Message 3.0 (Arbitrage-Powered) ────────────
+// ─── Turkish Telegram Message 4.0 (Tier-Based Arbitrage) ─────────
+
+type NotificationTier = 'GLOBAL_FLOOR' | 'FAMILY_ARBITRAGE';
+
 function buildArbitrageAlertMessage(
   payload: SmartDealPayload,
   arb: ArbitrageResult,
   market: GlobalMarketSnapshot,
-  showBreakdown: boolean,
+  tier: NotificationTier,
   timings?: { analysisMs: number; totalMs: number },
 ): string {
   const fmtPrice = (p: number) => p.toLocaleString('tr-TR', { maximumFractionDigits: 0 });
   const lines: string[] = [];
 
-  // ── Header based on verdict ──
-  if (arb.isMarketLeader) {
-    lines.push('🔥 <b>PİYASA LİDERİ FIRSAT!</b>');
-  } else if (arb.score >= 80) {
-    lines.push('🔥🔥 <b>SÜPER FIRSAT TESPİT EDİLDİ!</b>');
+  // ── Header — distinctive per tier ──
+  if (tier === 'GLOBAL_FLOOR') {
+    const isATL = market.groupAllTimeLow != null && payload.newPrice <= market.groupAllTimeLow;
+    if (isATL) {
+      lines.push('🏆 <b>TÜM ZAMANLARIN EN DÜŞÜĞÜ!</b>');
+    } else if (arb.isMarketLeader) {
+      lines.push('🔥 <b>PİYASA LİDERİ — EN UCUZ SEÇENEK</b>');
+    } else {
+      lines.push('🔥 <b>GLOBAL TABAN FIRSATI</b>');
+    }
   } else {
-    lines.push('📉 <b>İYİ FIRSAT TESPİT EDİLDİ</b>');
+    lines.push('💡 <b>RENK ARBİTRAJI FIRSATI</b>');
   }
   lines.push('');
 
@@ -454,100 +340,103 @@ function buildArbitrageAlertMessage(
   lines.push('');
 
   // ── Price + Retailer ──
-  lines.push(`💰 <b>Fiyat:</b> <b>${fmtPrice(payload.newPrice)} TL</b> (@${payload.retailerName})`);
+  lines.push(`💰 <b>${fmtPrice(payload.newPrice)} TL</b> — ${payload.retailerName}`);
   if (payload.oldPrice != null && payload.oldPrice !== payload.newPrice) {
     const dropPct = ((payload.oldPrice - payload.newPrice) / payload.oldPrice * 100).toFixed(1);
     lines.push(`   <s>${fmtPrice(payload.oldPrice)} TL</s> → <b>${fmtPrice(payload.newPrice)} TL</b> (-%${dropPct})`);
   }
   lines.push('');
 
-  // ── Market status ──
-  if (arb.isMarketLeader) {
-    lines.push('🏆 <b>Durum:</b> PİYASADAKİ EN UCUZ SEÇENEK');
-  } else {
-    lines.push(`🏆 <b>Durum:</b> Piyasa tabanına çok yakın (en ucuz: ${fmtPrice(arb.globalFloor)} TL)`);
-  }
-  lines.push('');
+  // ── Tier-specific body ──
+  if (tier === 'GLOBAL_FLOOR') {
+    // Market leadership focus
+    if (arb.isMarketLeader) {
+      lines.push('🏆 <b>Durum:</b> Tüm mağaza ve renklerde en ucuz');
+    } else {
+      lines.push(`🏆 <b>Durum:</b> Piyasa tabanına çok yakın (en ucuz: ${fmtPrice(arb.globalFloor)} TL)`);
+    }
+    lines.push('');
 
-  // ── Market Comparison ──
-  lines.push('📊 <b>Piyasa Karşılaştırması:</b>');
+    // Net savings vs nearest competitor
+    const closestCompetitorPrice = market.allInStockPrices
+      .filter(p => p.listingId !== payload.listingId && p.price > payload.newPrice)
+      .sort((a, b) => a.price - b.price)[0]?.price;
 
-  // Local siblings (other colors at this store)
-  if (market.localSiblings.length > 0) {
-    const siblingLines = market.localSiblings
-      .slice(0, 3) // show top 3
-      .map(s => {
-        const diff = s.price - payload.newPrice;
-        return `${s.color}: ${fmtPrice(s.price)} TL (+${fmtPrice(diff)} TL fark)`;
-      })
-      .join(', ');
-    lines.push(`🔹 <b>Diğer Renkler (Bu Mağaza):</b> ${siblingLines}`);
-  }
+    if (closestCompetitorPrice != null) {
+      const savings = closestCompetitorPrice - payload.newPrice;
+      lines.push(`📉 <b>Kazanç:</b> En yakın rakibe göre <b>${fmtPrice(savings)} TL</b> avantajlı`);
+      lines.push('');
+    }
 
-  // Global competitors (other retailers)
-  if (market.globalCompetitors.length > 0) {
-    // Group by retailer, show cheapest per retailer
-    const byRetailer = new Map<string, { name: string; price: number }>();
-    for (const c of market.globalCompetitors) {
-      const existing = byRetailer.get(c.retailerSlug);
-      if (!existing || c.price < existing.price) {
-        byRetailer.set(c.retailerSlug, { name: c.retailerName, price: c.price });
+    // Global competitors
+    if (market.globalCompetitors.length > 0) {
+      const byRetailer = new Map<string, { name: string; price: number }>();
+      for (const c of market.globalCompetitors) {
+        const existing = byRetailer.get(c.retailerSlug);
+        if (!existing || c.price < existing.price) {
+          byRetailer.set(c.retailerSlug, { name: c.retailerName, price: c.price });
+        }
+      }
+      const competitorParts = [...byRetailer.values()]
+        .sort((a, b) => a.price - b.price)
+        .slice(0, 4)
+        .map(c => `${c.name} ${fmtPrice(c.price)} TL`);
+      if (competitorParts.length > 0) {
+        lines.push(`📊 <b>Diğer Mağazalar:</b> ${competitorParts.join(', ')}`);
+        lines.push('');
       }
     }
-    const competitorParts = [...byRetailer.values()]
-      .sort((a, b) => a.price - b.price)
-      .slice(0, 4)
-      .map(c => `${c.name} ${fmtPrice(c.price)} TL`);
-    if (competitorParts.length > 0) {
-      lines.push(`🔹 <b>Diğer Mağazalar:</b> ${competitorParts.join(', ')}`);
+  } else {
+    // FAMILY_ARBITRAGE — sibling comparison focus
+    if (market.localSiblings.length > 0) {
+      const siblingAvg = market.localSiblings.reduce((s, p) => s + p.price, 0) / market.localSiblings.length;
+      const savingsVsSiblings = siblingAvg - payload.newPrice;
+      const savingsPct = ((savingsVsSiblings / siblingAvg) * 100).toFixed(1);
+      lines.push(`🎨 <b>Renk karşılaştırması:</b> Kardeş ortalama <b>${fmtPrice(Math.round(siblingAvg))} TL</b>`);
+      lines.push(`📉 <b>Bu renk %${savingsPct} daha ucuz</b> (${fmtPrice(Math.round(savingsVsSiblings))} TL fark)`);
+      lines.push('');
+
+      const siblingLines = market.localSiblings
+        .slice(0, 3)
+        .map(s => `${s.color}: ${fmtPrice(s.price)} TL`)
+        .join(', ');
+      lines.push(`🔹 <b>Diğer Renkler:</b> ${siblingLines}`);
+      lines.push('');
     }
-  }
-  lines.push('');
 
-  // ── Net savings ──
-  const closestCompetitorPrice = market.allInStockPrices
-    .filter(p => p.listingId !== payload.listingId && p.price > payload.newPrice)
-    .sort((a, b) => a.price - b.price)[0]?.price;
-
-  if (closestCompetitorPrice != null && arb.isMarketLeader) {
-    const savings = closestCompetitorPrice - payload.newPrice;
-    lines.push(`📉 <b>Net Kazanç:</b> Piyasadaki en yakın rakibine göre <b>${fmtPrice(savings)} TL</b> daha avantajlı.`);
+    // How close to global floor
+    lines.push(`🏆 <b>Global taban:</b> ${fmtPrice(arb.globalFloor)} TL (${market.globalFloorRetailer}/${market.globalFloorColor})`);
     lines.push('');
   }
 
-  // ── Market average context ──
+  // ── Market average (both tiers) ──
   if (market.marketAverage > 0) {
-    lines.push(`⚠️ <b>Not:</b> Diğer renkler ve satıcılarda fiyatlar <b>${fmtPrice(Math.round(market.marketAverage))} TL</b> seviyesinde seyrediyor.`);
+    lines.push(`⚠️ Piyasa ortalaması: <b>${fmtPrice(Math.round(market.marketAverage))} TL</b>`);
     lines.push('');
   }
 
-  // ── Historical context ──
-  if (market.groupAllTimeLow != null) {
+  // ── Historical context (both tiers) ──
+  if (market.groupAllTimeLow != null && tier === 'GLOBAL_FLOOR') {
     if (payload.newPrice <= market.groupAllTimeLow) {
       lines.push('🏅 <b>TÜM ZAMANLARIN EN DÜŞÜK FİYATI!</b>');
     } else {
       const distPct = (((payload.newPrice - market.groupAllTimeLow) / market.groupAllTimeLow) * 100).toFixed(1);
-      lines.push(`📈 <b>Tüm zamanların en düşüğü:</b> ${fmtPrice(market.groupAllTimeLow)} TL (%${distPct} üstünde)`);
+      lines.push(`📈 Tüm zamanların en düşüğü: ${fmtPrice(market.groupAllTimeLow)} TL (%${distPct} üstünde)`);
     }
     lines.push('');
   }
 
-  // ── Score ──
-  lines.push(`🎯 <b>Fırsat Skoru:</b> ${arb.score}/100`);
+  // ── Score + market correction warning ──
+  lines.push(`🎯 <b>Skor:</b> ${arb.score}/100`);
   if (market.isMarketCorrection) {
     lines.push('⚠️ Piyasa genelinde düzeltme tespit edildi');
   }
   lines.push('');
 
-  // ── Timing ──
+  // ── Timing (internalized — only total, no breakdown shown) ──
   if (timings) {
     const totalSec = (timings.totalMs / 1000).toFixed(1);
-    lines.push(`⏱ <b>Bildirim süresi:</b> ${totalSec}s`);
-    if (showBreakdown) {
-      const scrapeSec = ((timings.totalMs - timings.analysisMs) / 1000).toFixed(1);
-      const analysisSec = (timings.analysisMs / 1000).toFixed(1);
-      lines.push(`  📡 Veri: ${scrapeSec}s | 🧠 Analiz: ${analysisSec}s`);
-    }
+    lines.push(`⏱ ${totalSec}s`);
     lines.push('');
   }
 
@@ -557,7 +446,7 @@ function buildArbitrageAlertMessage(
   return lines.join('\n');
 }
 
-// ─── Public: Smart Deal Notification (Arbitrage-Powered) ─────────
+// ─── Public: Smart Deal Notification (Tier-Based Arbitrage) ──────
 export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> {
   if (!TELEGRAM_ENABLED) return;
 
@@ -569,10 +458,27 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
     return;
   }
 
-  const minScore = settings.smartDealMinScore;
+  // Enforce minimum confidence gate (never below DEFAULT_CONFIDENCE_GATE)
+  const minScore = Math.max(settings.smartDealMinScore, DEFAULT_CONFIDENCE_GATE);
   const smartCooldownMs = settings.smartDealCooldownMin * 60_000;
 
-  // 1) Fetch global market snapshot (single optimized query)
+  // ── Filter 0: Freshness — suppress if benchmark data is stale (>12h) ──
+  const stale = await isBenchmarkStale(payload.listingId);
+  if (stale) {
+    skippedCount++;
+    console.log(`[telegram-arb] Stale benchmark (>12h), suppressed: ${payload.variantLabel}`);
+    return;
+  }
+
+  // ── Filter 1: Velocity — suppress oscillating variants ──
+  const oscillating = await isVariantOscillating(payload.listingId);
+  if (oscillating) {
+    skippedCount++;
+    console.log(`[telegram-arb] Oscillating variant (≥${VELOCITY_FLIP_THRESHOLD} flips in ${VELOCITY_WINDOW_MS / 3_600_000}h), suppressed: ${payload.variantLabel}`);
+    return;
+  }
+
+  // ── Step 1: Fetch global market snapshot ──
   const analysisStartMs = Date.now();
   const market = await fetchGlobalMarketSnapshot(payload.variantId);
   if (!market) {
@@ -581,35 +487,43 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
     return;
   }
 
-  // 2) Run arbitrage algorithm
+  // ── Step 2: Run arbitrage algorithm ──
   const arb = computeArbitrage(payload.newPrice, payload.retailerSlug, market);
   const analysisMs = Date.now() - analysisStartMs;
 
   console.log(`[telegram-arb] ${payload.retailerSlug} ${payload.variantLabel}: verdict=${arb.verdict} score=${arb.score}`);
 
-  // 3) DISCARD: a cheaper option exists elsewhere → suppress
+  // ── Step 3: DISCARD — a cheaper option exists elsewhere ──
   if (arb.verdict === 'DISCARD') {
     skippedCount++;
     console.log(`[telegram-arb] DISCARD: ${payload.newPrice} TL > floor ${arb.globalFloor} TL @ ${arb.globalFloorRetailer}/${arb.globalFloorColor}`);
     return;
   }
 
-  // 4) Score gate: only high-quality deals get through
+  // ── Step 4: Confidence gate ──
   if (arb.score < minScore) {
     skippedCount++;
-    console.log(`[telegram-arb] Atlandı (skor ${arb.score} < ${minScore}): ${payload.variantLabel}`);
+    console.log(`[telegram-arb] Low score (${arb.score} < ${minScore}): ${payload.variantLabel}`);
     return;
   }
 
-  // 5) Anti-spam check
+  // ── Step 5: Tier classification ──
+  const tier = classifyNotificationTier(arb, market, payload.newPrice);
+  if (!tier) {
+    skippedCount++;
+    console.log(`[telegram-arb] No qualifying tier for ${payload.variantLabel} (score=${arb.score})`);
+    return;
+  }
+
+  // ── Step 6: Anti-spam check ──
   const spam = await shouldSendSmartAlert(payload.listingId, payload.newPrice);
   if (!spam.send) {
     skippedCount++;
-    console.log(`[telegram-arb] Anti-spam engeli: ${spam.reason}`);
+    console.log(`[telegram-arb] Anti-spam: ${spam.reason}`);
     return;
   }
 
-  // 6) Atomic claim — prevent duplicate sends across replicas
+  // ── Step 7: Atomic claim — prevent duplicate sends across replicas ──
   const cooldownThreshold = new Date(Date.now() - smartCooldownMs);
   const claimed = await prisma.listing.updateMany({
     where: {
@@ -633,27 +547,29 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
 
   if (claimed.count === 0) {
     skippedCount++;
-    console.log(`[telegram-arb] Başka replika tarafından talep edilmiş`);
+    console.log(`[telegram-arb] Already claimed by another replica`);
     return;
   }
 
-  // 7) Build & broadcast
+  // ── Step 8: Build & broadcast ──
   const totalMs = Date.now() - payload.discoveredAt;
-  const message = buildArbitrageAlertMessage(payload, arb, market, settings.notifyTimingBreakdown, { analysisMs, totalMs });
+  const message = buildArbitrageAlertMessage(payload, arb, market, tier, { analysisMs, totalMs });
   const result = await broadcast(message);
 
-  // 8) Log
+  // ── Step 9: Log ──
   const dropPercent = payload.oldPrice != null && payload.oldPrice > 0
     ? ((payload.oldPrice - payload.newPrice) / payload.oldPrice) * 100
     : null;
 
+  const msgType = tier === 'GLOBAL_FLOOR' ? 'DEAL_ALERT' : 'DEAL_ALERT';
+
   if (result.sent > 0) {
     sentCount++;
-    console.log(`[telegram-arb] ✓ ${arb.verdict} gönderildi: ${payload.variantLabel} (${payload.newPrice} TL, skor=${arb.score}) → ${result.sent} abone`);
+    console.log(`[telegram-arb] ✓ ${tier} sent: ${payload.variantLabel} (${payload.newPrice} TL, score=${arb.score}) → ${result.sent} subscriber(s)`);
 
     await prisma.notificationLog.create({
       data: {
-        messageType: 'DEAL_ALERT' as never,
+        messageType: msgType as never,
         status: result.failed > 0 ? 'PARTIAL' : 'SENT',
         productName: payload.variantLabel,
         retailer: payload.retailerName,
@@ -668,11 +584,11 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
     }).catch(() => {});
   } else {
     failCount++;
-    console.error(`[telegram-arb] ✗ Yayın başarısız: ${result.failed} hata`);
+    console.error(`[telegram-arb] ✗ Broadcast failed: ${result.failed} failure(s)`);
 
     await prisma.notificationLog.create({
       data: {
-        messageType: 'DEAL_ALERT' as never,
+        messageType: msgType as never,
         status: 'FAILED',
         productName: payload.variantLabel,
         retailer: payload.retailerName,
@@ -682,7 +598,7 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
         messageText: message,
         sentTo: 0,
         failedTo: result.failed,
-        errorMessage: 'Tüm abonelere gönderilemedi',
+        errorMessage: 'All subscribers failed',
         listingId: payload.listingId,
       },
     }).catch(() => {});
@@ -845,7 +761,7 @@ export async function sendSmartDealTest(listingId?: string): Promise<{ ok: boole
 
   const arb = computeArbitrage(listing.currentPrice, listing.retailer.slug, market);
 
-  const tier = arb.score >= 80 ? 'super' : arb.score >= 60 ? 'good' : arb.score >= 40 ? 'minor' : 'ignore';
+  const tier = classifyNotificationTier(arb, market, listing.currentPrice) ?? 'GLOBAL_FLOOR';
 
   const settings = await getNotifySettings();
   const payload: SmartDealPayload = {
@@ -860,15 +776,18 @@ export async function sendSmartDealTest(listingId?: string): Promise<{ ok: boole
     discoveredAt: Date.now(),
   };
 
+  const tierLabel = tier === 'GLOBAL_FLOOR' ? 'Tier 1 — Global Taban' : 'Tier 2 — Renk Arbitrajı';
+
   const message = [
     '🧪 <b>ARBİTRAJ FIRSAT TESTİ</b>',
     '',
-    buildArbitrageAlertMessage(payload, arb, market, settings.notifyTimingBreakdown),
+    buildArbitrageAlertMessage(payload, arb, market, tier),
     '',
     '─────────────',
+    `⚙️ Tier: ${tierLabel}`,
     `⚙️ Karar: ${arb.verdict} | Skor: ${arb.score}/100`,
     `⚙️ Global taban: ${market.globalFloor.toLocaleString('tr-TR')} TL (${market.globalFloorRetailer}/${market.globalFloorColor})`,
-    `⚙️ Gerçek bildirimler yalnızca skor ≥ ${settings.smartDealMinScore} ve DISCARD olmayan fırsatlarda gönderilir.`,
+    `⚙️ Min skor: ${Math.max(settings.smartDealMinScore, DEFAULT_CONFIDENCE_GATE)}`,
   ].join('\n');
 
   const result = await broadcast(message);

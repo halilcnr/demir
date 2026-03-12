@@ -24,7 +24,7 @@ import {
 import { clearSyncLogs, addSyncLog, finishSyncLogs, updateSyncProgress, logScrapeAttempt, logDiscoveryAttempt } from './sync-logger';
 import type { ScrapeStatus } from './sync-logger';
 import { queryFallbackSourcesDetailed } from './discovery';
-import { notifySmartDeal, notifyPriceDrop } from './services/telegram';
+import { notifySmartDeal } from './services/telegram';
 import { recordPriceSnapshot } from './services/smart-snapshot';
 import { recordMetricEvent, recordCircuitSuccess, recordCircuitFailure, isCircuitOpen, incrementProviderCounter } from './metrics-collector';
 import { getAdaptiveDelay } from './provider-queue';
@@ -276,25 +276,6 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
                 });
               } catch (tgErr) {
                 console.error('[telegram] Notification error (non-fatal):', tgErr instanceof Error ? tgErr.message : tgErr);
-              }
-
-              // Simple price drop notification (lower threshold than smart deal)
-              if (previousPrice && result.price < previousPrice) {
-                const updatedLowest = listing.lowestPrice
-                  ? Math.min(listing.lowestPrice, result.price)
-                  : result.price;
-                await notifyPriceDrop({
-                  listingId: listing.id,
-                  variantLabel,
-                  retailerName: listing.retailer.name,
-                  retailerSlug: slug,
-                  productUrl: listing.productUrl,
-                  newPrice: result.price,
-                  oldPrice: previousPrice,
-                  lowestPrice: updatedLowest,
-                  isAllTimeLow: result.price <= updatedLowest,
-                  discoveredAt: scrapeStartMs,
-                }).catch(() => {});
               }
             }
 

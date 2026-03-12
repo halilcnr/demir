@@ -33,7 +33,7 @@ import {
   recordBlocked,
 } from './provider-health';
 import { addSyncLog, logScrapeAttempt, updateSyncProgress } from './sync-logger';
-import { notifySmartDeal, notifyPriceDrop } from './services/telegram';
+import { notifySmartDeal } from './services/telegram';
 import { recordPriceSnapshot } from './services/smart-snapshot';
 import {
   recordMetricEvent,
@@ -325,25 +325,6 @@ async function processOneTask(task: ClaimedTask): Promise<'success' | 'failure' 
         } catch {
           // Non-fatal
         }
-
-        // Simple price drop notification (lower threshold than smart deal)
-        if (previousPrice && result.price < previousPrice) {
-          const updatedLowest = listing.lowestPrice
-            ? Math.min(listing.lowestPrice, result.price)
-            : result.price;
-          await notifyPriceDrop({
-            listingId,
-            variantLabel,
-            retailerName: listing.retailer.name,
-            retailerSlug: slug,
-            productUrl,
-            newPrice: result.price,
-            oldPrice: previousPrice,
-            lowestPrice: updatedLowest,
-            isAllTimeLow: result.price <= updatedLowest,
-            discoveredAt: startMs,
-          }).catch(() => {});
-        }
       }
 
       // Record success
@@ -476,25 +457,6 @@ async function tryFallback(
         oldPrice: previousPrice ?? null,
         discoveredAt: fallbackScrapeStartMs,
       }).catch(() => {});
-
-      // Simple price drop notification (fallback)
-      if (previousPrice && retryResult.price < previousPrice) {
-        const updatedLowest = listing.lowestPrice
-          ? Math.min(listing.lowestPrice, retryResult.price)
-          : retryResult.price;
-        await notifyPriceDrop({
-          listingId: listing.id,
-          variantLabel: task.variantLabel,
-          retailerName: listing.retailer.name,
-          retailerSlug: task.retailerSlug,
-          productUrl: match.productUrl,
-          newPrice: retryResult.price,
-          oldPrice: previousPrice,
-          lowestPrice: updatedLowest,
-          isAllTimeLow: retryResult.price <= updatedLowest,
-          discoveredAt: fallbackScrapeStartMs,
-        }).catch(() => {});
-      }
     }
 
     addSyncLog({

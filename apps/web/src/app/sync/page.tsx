@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { RefreshCw, Server, CheckCircle2, XCircle, Clock, Activity, Play, Loader2, AlertTriangle, Shield, Terminal } from 'lucide-react';
+import { RefreshCw, Server, CheckCircle2, XCircle, Clock, Activity, Play, Loader2, AlertTriangle, Shield, Terminal, VolumeX } from 'lucide-react';
 
 import { Card, StatCard } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +11,8 @@ import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 import { formatRelativeDate } from '@repo/shared';
 import type { SyncStatusResponse } from '@repo/shared';
 import { useLiveUpdates } from '@/components/live-updates-context';
+import { useLogBuffer } from '@/components/use-log-buffer';
+import { LogTerminal } from '@/components/log-terminal';
 
 interface SyncLogEntry {
   timestamp: string;
@@ -41,11 +43,11 @@ export default function SyncPage() {
   const [syncState, setSyncState] = useState<'idle' | 'triggering' | 'running' | 'error'>('idle');
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [syncLogs, setSyncLogs] = useState<SyncLogEntry[]>([]);
-  const logEndRef = useRef<HTMLDivElement>(null);
   const logFetchedCount = useRef(0);
   const [togglingSlug, setTogglingSlug] = useState<string | null>(null);
   const [syncingSlug, setSyncingSlug] = useState<string | null>(null);
-  const { conditionalInterval } = useLiveUpdates();
+  const { conditionalInterval, conditionalLogInterval, logsSilent, toggleLogsSilent } = useLiveUpdates();
+  const logBuffer = useLogBuffer(syncLogs);
 
   const { data, isLoading, error, refetch } = useQuery<SyncStatusResponse>({
     queryKey: ['sync-status'],
@@ -131,16 +133,11 @@ export default function SyncPage() {
       }
       return data;
     },
-    refetchInterval: conditionalInterval(isRunning, 2_000, false),
+    refetchInterval: conditionalLogInterval(isRunning, 2_000, false),
     enabled: isRunning || syncLogs.length > 0,
   });
 
-  // Auto-scroll log panel
-  useEffect(() => {
-    if (logEndRef.current && isRunning) {
-      logEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [syncLogs.length, isRunning]);
+  // Auto-scroll handled by useLogBuffer
 
   if (isLoading) return <CardSkeleton />;
   if (error) return <ErrorState onRetry={() => refetch()} />;
@@ -193,7 +190,7 @@ export default function SyncPage() {
       )}
 
       {/* Live Sync Logs */}
-      {syncLogs.length > 0 && (
+      {(logBuffer.items.length > 0 || logsSilent) && (
         <Card>
           <div className="relative overflow-hidden">
             <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-emerald-500 to-cyan-500" />
@@ -201,7 +198,7 @@ export default function SyncPage() {
               <div className="flex items-center gap-2">
                 <Terminal className="h-4 w-4 text-emerald-500" />
                 <h2 className="text-sm font-semibold text-text-primary">Canlı Sync Günlüğü</h2>
-                {isRunning && (
+                {isRunning && !logsSilent && (
                   <span className="relative flex h-2 w-2">
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                     <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
@@ -210,12 +207,21 @@ export default function SyncPage() {
               </div>
               <span className="text-[11px] text-text-tertiary">{syncLogs.length} kayıt</span>
             </div>
-            <div className="rounded-lg bg-gray-950 p-3 max-h-80 overflow-y-auto font-mono text-[11px] leading-relaxed space-y-0.5">
-              {syncLogs.map((log, i) => {
+            {logsSilent && (
+              <div className="flex items-center gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2 mb-2">
+                <VolumeX className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                <span className="text-xs text-amber-600">Log akışı sessiz modda</span>
+                <button onClick={toggleLogsSilent} className="ml-auto text-xs font-medium text-amber-600 hover:text-amber-700 underline cursor-pointer">
+                  Aktifleştir
+                </button>
+              </div>
+            )}
+            <LogTerminal scrollRef={logBuffer.scrollRef} maxHeight="320px" isEmpty={logBuffer.items.length === 0}>
+              {logBuffer.items.map((log, i) => {
                 const time = new Date(log.timestamp).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                 return (
-                  <div key={i} className="flex items-start gap-2">
-                    <span className="text-gray-600 shrink-0 select-none">{time}</span>
+                  <div key={i} className="flex items-start gap-2 py-0.5">
+                    <span className="text-[#8b949e] shrink-0 select-none">{time}</span>
                     <span className="shrink-0">{LOG_ICONS[log.type]}</span>
                     {log.retailer && (
                       <span className="text-cyan-400 shrink-0 font-semibold">[{log.retailer}]</span>
@@ -224,8 +230,7 @@ export default function SyncPage() {
                   </div>
                 );
               })}
-              <div ref={logEndRef} />
-            </div>
+            </LogTerminal>
           </div>
         </Card>
       )}

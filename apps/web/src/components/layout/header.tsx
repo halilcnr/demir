@@ -16,6 +16,8 @@ import {
   Gauge,
   Zap,
   ZapOff,
+  Terminal,
+  VolumeX,
 } from 'lucide-react';
 import { cn } from '@repo/shared';
 import { SyncStatusPill } from '../sync-status-pill';
@@ -34,7 +36,7 @@ const navItems = [
 export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const pathname = usePathname();
-  const { enabled: liveEnabled, toggle: toggleLive } = useLiveUpdates();
+  const { enabled: liveEnabled, toggle: toggleLive, logsSilent, toggleLogsSilent } = useLiveUpdates();
 
   const currentPage = navItems.find(
     (item) =>
@@ -87,6 +89,24 @@ export function Header() {
             <div className="absolute top-full right-0 mt-1 hidden group-hover:block z-50">
               <div className="rounded-lg border border-border bg-surface px-3 py-2 text-xs text-text-secondary shadow-lg whitespace-nowrap">
                 {liveEnabled ? 'Otomatik yenileme açık — tıkla kapat' : 'Otomatik yenileme kapalı — tıkla aç'}
+              </div>
+            </div>
+          </button>
+
+          <button
+            onClick={toggleLogsSilent}
+            className={`group relative flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium cursor-pointer transition-colors ${
+              !logsSilent
+                ? 'bg-cyan-500/10 text-cyan-600 border-cyan-500/20 hover:bg-cyan-500/20'
+                : 'bg-amber-500/10 text-amber-600 border-amber-500/20 hover:bg-amber-500/20'
+            }`}
+            title={logsSilent ? 'Log akışı sessiz — tıkla aç' : 'Log akışı aktif — sessiz moda al'}
+          >
+            {logsSilent ? <VolumeX className="h-3 w-3" /> : <Terminal className="h-3 w-3" />}
+            <span className="hidden sm:inline">{logsSilent ? 'Sessiz' : 'Loglar'}</span>
+            <div className="absolute top-full right-0 mt-1 hidden group-hover:block z-50">
+              <div className="rounded-lg border border-border bg-surface px-3 py-2 text-xs text-text-secondary shadow-lg whitespace-nowrap">
+                {logsSilent ? 'Log akışı sessiz — tıkla aktifleştir' : 'Log akışı aktif — tıkla sessiz moda al'}
               </div>
             </div>
           </button>

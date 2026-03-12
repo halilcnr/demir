@@ -203,10 +203,10 @@ export default function TelegramSettingsPage() {
         notifyEnabled: true,
         notifyMinPrice: null,
         notifyMaxPrice: null,
-        notifyPriceDrop: true,
+        notifyPriceDrop: false,
         notifySmartDeal: true,
         notifyDailyReport: true,
-        smartDealMinScore: 80,
+        smartDealMinScore: 85,
         smartDealCooldownMin: 60,
         notifyTimingBreakdown: false,
         updatedAt: new Date().toISOString(),
@@ -546,11 +546,9 @@ export default function TelegramSettingsPage() {
               </div>
             </div>
             <div className="space-y-1.5">
-              <SettingPill label="Fiyat Düşüşü" active={effectiveSettings.notifyPriceDrop && effectiveSettings.notifyEnabled} icon={<TrendingDown className="h-3 w-3" />} />
-              <SettingPill label="Akıllı Fırsat" active={effectiveSettings.notifySmartDeal && effectiveSettings.notifyEnabled} icon={<Zap className="h-3 w-3" />} />
-              <SettingPill label="Günlük Rapor" active={effectiveSettings.notifyDailyReport && effectiveSettings.notifyEnabled} icon={<FileText className="h-3 w-3" />} />
-              <SettingPill label="En Düşük Fiyat" active={effectiveSettings.notifyAllTimeLow && effectiveSettings.notifyEnabled} icon={<Target className="h-3 w-3" />} />
-              <SettingPill label="Zamanlama Detayı" active={effectiveSettings.notifyTimingBreakdown && effectiveSettings.notifyEnabled} icon={<Clock className="h-3 w-3" />} />
+              <SettingPill label="Global Taban (Tier 1)" active={effectiveSettings.notifySmartDeal && effectiveSettings.notifyEnabled} icon={<Zap className="h-3 w-3" />} />
+              <SettingPill label="Renk Arbitrajı (Tier 2)" active={effectiveSettings.notifySmartDeal && effectiveSettings.notifyEnabled} icon={<Target className="h-3 w-3" />} />
+              <SettingPill label="Günlük Rapor (Tier 3)" active={effectiveSettings.notifyDailyReport && effectiveSettings.notifyEnabled} icon={<FileText className="h-3 w-3" />} />
             </div>
           </Card>
 
@@ -567,12 +565,8 @@ export default function TelegramSettingsPage() {
             </div>
             <div className="space-y-2 text-xs">
               <div className="flex items-center justify-between rounded-md bg-surface-secondary/60 px-2.5 py-1.5">
-                <span className="text-text-secondary">Min. düşüş</span>
-                <span className="font-semibold text-text-primary tabular-nums">%{effectiveSettings.notifyDropPercent} veya {effectiveSettings.notifyDropAmount.toLocaleString('tr-TR')} ₺</span>
-              </div>
-              <div className="flex items-center justify-between rounded-md bg-surface-secondary/60 px-2.5 py-1.5">
-                <span className="text-text-secondary">Akıllı fırsat skoru</span>
-                <span className="font-semibold text-text-primary tabular-nums">≥ {effectiveSettings.smartDealMinScore}/100</span>
+                <span className="text-text-secondary">Güven skoru eşiği</span>
+                <span className="font-semibold text-text-primary tabular-nums">≥ {Math.max(effectiveSettings.smartDealMinScore, 85)}/100</span>
               </div>
               <div className="flex items-center justify-between rounded-md bg-surface-secondary/60 px-2.5 py-1.5">
                 <span className="text-text-secondary">Fiyat aralığı</span>
@@ -598,12 +592,16 @@ export default function TelegramSettingsPage() {
             </div>
             <div className="space-y-2 text-xs">
               <div className="flex items-center justify-between rounded-md bg-surface-secondary/60 px-2.5 py-1.5">
-                <span className="text-text-secondary">Fiyat düşüşü bekleme</span>
-                <span className="font-semibold text-text-primary tabular-nums">{effectiveSettings.notifyCooldownMinutes} dk ({(effectiveSettings.notifyCooldownMinutes / 60).toFixed(1)} saat)</span>
+                <span className="text-text-secondary">Bildirim bekleme</span>
+                <span className="font-semibold text-text-primary tabular-nums">{effectiveSettings.smartDealCooldownMin} dk ({(effectiveSettings.smartDealCooldownMin / 60).toFixed(1)} saat)</span>
               </div>
               <div className="flex items-center justify-between rounded-md bg-surface-secondary/60 px-2.5 py-1.5">
-                <span className="text-text-secondary">Akıllı fırsat bekleme</span>
-                <span className="font-semibold text-text-primary tabular-nums">{effectiveSettings.smartDealCooldownMin} dk ({(effectiveSettings.smartDealCooldownMin / 60).toFixed(1)} saat)</span>
+                <span className="text-text-secondary">Tazelik filtresi</span>
+                <span className="font-semibold text-text-primary tabular-nums">12 saat (benchmark)</span>
+              </div>
+              <div className="flex items-center justify-between rounded-md bg-surface-secondary/60 px-2.5 py-1.5">
+                <span className="text-text-secondary">Hız kontrolü</span>
+                <span className="font-semibold text-text-primary tabular-nums">4 saat (osilasyon)</span>
               </div>
               {effectiveSettings.updatedAt && (
                 <div className="mt-1 text-[11px] text-text-tertiary text-right">
@@ -636,9 +634,20 @@ export default function TelegramSettingsPage() {
 
             <div className="ml-3.5 h-4 border-l-2 border-dashed border-slate-200" />
 
-            {/* Pipeline step 2: Two parallel paths */}
+            {/* Pipeline step 2: Intelligent filters */}
+            <div className="flex items-start gap-3">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-600 text-xs font-bold">2</div>
+              <div className="flex-1 rounded-lg border border-border px-3 py-2">
+                <p className="text-xs font-semibold text-text-primary">Akıllı Filtreler</p>
+                <p className="text-[11px] text-text-tertiary">Tazelik kontrolü (12s) &#x2022; Hız kontrolü (4s osilasyon) &#x2022; Güven skoru ≥ {Math.max(effectiveSettings.smartDealMinScore, 85)}</p>
+              </div>
+            </div>
+
+            <div className="ml-3.5 h-4 border-l-2 border-dashed border-slate-200" />
+
+            {/* Pipeline step 3: Tier classification */}
             <div className="grid gap-3 sm:grid-cols-2">
-              {/* Path A: Smart Deal */}
+              {/* Tier 1: Global Floor */}
               <div className={cn(
                 'rounded-lg border-2 px-3 py-2.5 transition-colors',
                 effectiveSettings.notifySmartDeal && effectiveSettings.notifyEnabled
@@ -647,7 +656,7 @@ export default function TelegramSettingsPage() {
               )}>
                 <div className="flex items-center gap-2 mb-1.5">
                   <Zap className={cn('h-3.5 w-3.5', effectiveSettings.notifySmartDeal && effectiveSettings.notifyEnabled ? 'text-amber-500' : 'text-slate-400')} />
-                  <span className="text-xs font-semibold text-text-primary">Akıllı Fırsat Bildirimi</span>
+                  <span className="text-xs font-semibold text-text-primary">Tier 1 — Global Taban</span>
                   <Badge
                     variant={effectiveSettings.notifySmartDeal && effectiveSettings.notifyEnabled ? 'success' : 'default'}
                     size="sm"
@@ -656,61 +665,53 @@ export default function TelegramSettingsPage() {
                   </Badge>
                 </div>
                 <div className="space-y-1 text-[11px] text-text-tertiary">
-                  <p>Piyasa analizi yapılır, skor hesaplanır</p>
-                  <p>Eşik: <span className="font-semibold text-text-secondary">≥ {effectiveSettings.smartDealMinScore}/100</span></p>
-                  <p>Bekleme: <span className="font-semibold text-text-secondary">{effectiveSettings.smartDealCooldownMin} dk</span></p>
-                  <p className="text-[10px] italic">
-                    {effectiveSettings.smartDealMinScore >= 80
-                      ? 'Yüksek eşik — sadece olağanüstü fırsatlar tetiklenir'
-                      : effectiveSettings.smartDealMinScore >= 50
-                        ? 'Orta eşik — iyi fırsatlar tetiklenir'
-                        : 'Düşük eşik — çoğu düşüş tetiklenir'}
-                  </p>
+                  <p>ATL veya piyasadaki en ucuz seçenek</p>
+                  <p>Skor ≥ 90 ve global taban yakınlığı</p>
+                  <p className="text-[10px] italic">🏆 Tüm zamanların en düşüğü / 🔥 Piyasa lideri</p>
                 </div>
               </div>
 
-              {/* Path B: Simple Price Drop */}
+              {/* Tier 2: Family Arbitrage */}
               <div className={cn(
                 'rounded-lg border-2 px-3 py-2.5 transition-colors',
-                effectiveSettings.notifyPriceDrop && effectiveSettings.notifyEnabled
-                  ? 'border-sky-200 bg-sky-50/50'
+                effectiveSettings.notifySmartDeal && effectiveSettings.notifyEnabled
+                  ? 'border-violet-200 bg-violet-50/50'
                   : 'border-slate-200 bg-slate-50/50 opacity-60'
               )}>
                 <div className="flex items-center gap-2 mb-1.5">
-                  <TrendingDown className={cn('h-3.5 w-3.5', effectiveSettings.notifyPriceDrop && effectiveSettings.notifyEnabled ? 'text-sky-500' : 'text-slate-400')} />
-                  <span className="text-xs font-semibold text-text-primary">Fiyat Düşüşü Bildirimi</span>
+                  <Target className={cn('h-3.5 w-3.5', effectiveSettings.notifySmartDeal && effectiveSettings.notifyEnabled ? 'text-violet-500' : 'text-slate-400')} />
+                  <span className="text-xs font-semibold text-text-primary">Tier 2 — Renk Arbitrajı</span>
                   <Badge
-                    variant={effectiveSettings.notifyPriceDrop && effectiveSettings.notifyEnabled ? 'success' : 'default'}
+                    variant={effectiveSettings.notifySmartDeal && effectiveSettings.notifyEnabled ? 'success' : 'default'}
                     size="sm"
                   >
-                    {effectiveSettings.notifyPriceDrop && effectiveSettings.notifyEnabled ? 'Aktif' : 'Kapalı'}
+                    {effectiveSettings.notifySmartDeal && effectiveSettings.notifyEnabled ? 'Aktif' : 'Kapalı'}
                   </Badge>
                 </div>
                 <div className="space-y-1 text-[11px] text-text-tertiary">
-                  <p>Basit eşik kontrolü yapılır</p>
-                  <p>Min: <span className="font-semibold text-text-secondary">%{effectiveSettings.notifyDropPercent} veya {effectiveSettings.notifyDropAmount.toLocaleString('tr-TR')} ₺</span></p>
-                  <p>Bekleme: <span className="font-semibold text-text-secondary">{effectiveSettings.notifyCooldownMinutes} dk</span></p>
-                  <p className="text-[10px] italic">Akıllı fırsat gönderildiyse bu atlanır (çift bildirim engeli)</p>
+                  <p>Renk, kardeş ortalamadan %10+ ucuz</p>
+                  <p>Global tabana %2 yakınlık koşulu</p>
+                  <p className="text-[10px] italic">💡 Renk arbitrajı fırsatı</p>
                 </div>
               </div>
             </div>
 
             <div className="ml-3.5 h-4 border-l-2 border-dashed border-slate-200" />
 
-            {/* Pipeline step 3: Anti-spam */}
+            {/* Pipeline step 4: Anti-spam */}
             <div className="flex items-start gap-3">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-600 text-xs font-bold">3</div>
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-600 text-xs font-bold">4</div>
               <div className="flex-1 rounded-lg border border-border px-3 py-2">
-                <p className="text-xs font-semibold text-text-primary">Anti-Spam Kontrolleri</p>
-                <p className="text-[11px] text-text-tertiary">Aynı fiyattan tekrar gönderilmez &#x2022; Bekleme süresi &#x2022; Atomic claim (replika koruması)</p>
+                <p className="text-xs font-semibold text-text-primary">Anti-Spam &amp; Atomic Claim</p>
+                <p className="text-[11px] text-text-tertiary">Duplicate engeli &#x2022; Bekleme süresi ({effectiveSettings.smartDealCooldownMin} dk) &#x2022; Replika koruması</p>
               </div>
             </div>
 
             <div className="ml-3.5 h-4 border-l-2 border-dashed border-slate-200" />
 
-            {/* Pipeline step 4: Broadcast */}
+            {/* Pipeline step 5: Broadcast */}
             <div className="flex items-start gap-3">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 text-xs font-bold">4</div>
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 text-xs font-bold">5</div>
               <div className="flex-1 rounded-lg border border-border px-3 py-2">
                 <p className="text-xs font-semibold text-text-primary">Telegram Broadcast</p>
                 <p className="text-[11px] text-text-tertiary">Tüm aktif abonelere gönderilir ({status?.subscriberCount ?? 0} abone)</p>
@@ -765,39 +766,18 @@ export default function TelegramSettingsPage() {
 
               <div className={cn('mt-3 space-y-2 transition-opacity', !effectiveSettings.notifyEnabled && 'opacity-50 pointer-events-none')}>
                 <ToggleRow
-                  label="Fiyat Düşüşü Bildirimleri"
-                  description="Fiyat düşüşlerinde otomatik bildirim gönderir"
-                  icon={<TrendingDown className="h-3.5 w-3.5 text-sky-500" />}
-                  checked={effectiveSettings.notifyPriceDrop}
-                  onChange={v => updateSettingsField('notifyPriceDrop', v)}
-                />
-                <ToggleRow
-                  label="Akıllı Fırsat Bildirimleri"
-                  description="Yüksek skorlu fırsatlarda otomatik bildirim gönderir"
+                  label="Fırsat Bildirimleri (Tier 1 + 2)"
+                  description="Global taban ve renk arbitrajı uyarıları gönderir"
                   icon={<Zap className="h-3.5 w-3.5 text-amber-500" />}
                   checked={effectiveSettings.notifySmartDeal}
                   onChange={v => updateSettingsField('notifySmartDeal', v)}
                 />
                 <ToggleRow
-                  label="Günlük Sağlık Raporu"
+                  label="Günlük Sağlık Raporu (Tier 3)"
                   description="Her sabah 09:00'da sistem durumu ve top 3 fırsat gönderir"
                   icon={<FileText className="h-3.5 w-3.5 text-violet-500" />}
                   checked={effectiveSettings.notifyDailyReport}
                   onChange={v => updateSettingsField('notifyDailyReport', v)}
-                />
-                <ToggleRow
-                  label="En Düşük Fiyat Bildirimi"
-                  description="Tüm zamanların en düşük fiyatına ulaşıldığında ayrıca bildir"
-                  icon={<Target className="h-3.5 w-3.5 text-emerald-500" />}
-                  checked={effectiveSettings.notifyAllTimeLow}
-                  onChange={v => updateSettingsField('notifyAllTimeLow', v)}
-                />
-                <ToggleRow
-                  label="Zamanlama Detayı"
-                  description="Bildirimlerde keşiften gönderime kadar geçen süreyi göster"
-                  icon={<Clock className="h-3.5 w-3.5 text-cyan-500" />}
-                  checked={effectiveSettings.notifyTimingBreakdown}
-                  onChange={v => updateSettingsField('notifyTimingBreakdown', v)}
                 />
               </div>
             </div>
@@ -808,59 +788,22 @@ export default function TelegramSettingsPage() {
             <div>
               <p className="mb-3 text-xs font-medium uppercase tracking-wider text-text-tertiary">Eşik Değerleri</p>
               <div className="grid gap-4 sm:grid-cols-2">
-                {/* Drop percent */}
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-text-secondary">
-                    Minimum Düşüş Yüzdesi (%)
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    step={0.5}
-                    value={effectiveSettings.notifyDropPercent}
-                    onChange={e => updateSettingsField('notifyDropPercent', parseFloat(e.target.value) || 0)}
-                    className="w-full rounded-lg border border-border bg-surface-secondary px-3 py-2 text-sm text-text-primary tabular-nums focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
-                  />
-                  <p className="mt-1 text-[11px] text-text-tertiary">
-                    Bu yüzdenin altındaki düşüşlerde bildirim gönderilmez
-                  </p>
-                </div>
-
-                {/* Drop amount */}
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-text-secondary">
-                    Minimum Düşüş Tutarı (₺)
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    step={10}
-                    value={effectiveSettings.notifyDropAmount}
-                    onChange={e => updateSettingsField('notifyDropAmount', parseFloat(e.target.value) || 0)}
-                    className="w-full rounded-lg border border-border bg-surface-secondary px-3 py-2 text-sm text-text-primary tabular-nums focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
-                  />
-                  <p className="mt-1 text-[11px] text-text-tertiary">
-                    Bu tutarın altındaki düşüşlerde bildirim gönderilmez
-                  </p>
-                </div>
-
                 {/* Smart deal min score */}
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-text-secondary">
-                    Akıllı Fırsat Minimum Skoru
+                    Güven Skoru Eşiği (min 85)
                   </label>
                   <input
                     type="number"
-                    min={0}
+                    min={85}
                     max={100}
                     step={5}
-                    value={effectiveSettings.smartDealMinScore}
-                    onChange={e => updateSettingsField('smartDealMinScore', parseInt(e.target.value, 10) || 0)}
+                    value={Math.max(effectiveSettings.smartDealMinScore, 85)}
+                    onChange={e => updateSettingsField('smartDealMinScore', Math.max(parseInt(e.target.value, 10) || 85, 85))}
                     className="w-full rounded-lg border border-border bg-surface-secondary px-3 py-2 text-sm text-text-primary tabular-nums focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
                   />
                   <p className="mt-1 text-[11px] text-text-tertiary">
-                    {effectiveSettings.smartDealMinScore >= 80 ? 'Sadece SÜPER fırsatlar' : effectiveSettings.smartDealMinScore >= 50 ? 'İYİ ve üstü fırsatlar' : 'Düşük eşik — çok bildirim gelebilir'}
+                    Sadece bu skorun üstündeki fırsatlar bildirilir (min 85)
                   </p>
                 </div>
 
@@ -868,11 +811,11 @@ export default function TelegramSettingsPage() {
                 <div className="flex items-start gap-3 rounded-lg border border-border px-4 py-3">
                   <Target className="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
                   <div className="text-[11px] text-text-tertiary space-y-0.5">
-                    <p className="font-medium text-text-secondary">Skor Açıklaması</p>
-                    <p>80+ = Süper Fırsat (varsayılan)</p>
-                    <p>50-79 = İyi Fırsat</p>
-                    <p>20-49 = Küçük Fırsat</p>
-                    <p>0-19 = Yok sayılır</p>
+                    <p className="font-medium text-text-secondary">Tier Sistemi</p>
+                    <p>🏆 <b>Tier 1:</b> ATL veya piyasa lideri</p>
+                    <p>💡 <b>Tier 2:</b> Renk arbitrajı (%10+ ucuz)</p>
+                    <p>📊 <b>Tier 3:</b> Günlük sağlık raporu</p>
+                    <p className="mt-1">Tazelik: 12s &#x2022; Osilasyon: 4s &#x2022; Skor ≥ 85</p>
                   </div>
                 </div>
               </div>
@@ -884,29 +827,10 @@ export default function TelegramSettingsPage() {
             <div>
               <p className="mb-3 text-xs font-medium uppercase tracking-wider text-text-tertiary">Anti-Spam Ayarları</p>
               <div className="grid gap-4 sm:grid-cols-2">
-                {/* Price drop cooldown */}
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-text-secondary">
-                    Fiyat Düşüşü Bekleme Süresi (dk)
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={1440}
-                    step={15}
-                    value={effectiveSettings.notifyCooldownMinutes}
-                    onChange={e => updateSettingsField('notifyCooldownMinutes', parseInt(e.target.value, 10) || 0)}
-                    className="w-full rounded-lg border border-border bg-surface-secondary px-3 py-2 text-sm text-text-primary tabular-nums focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
-                  />
-                  <p className="mt-1 text-[11px] text-text-tertiary">
-                    Aynı ürün için tekrar fiyat düşüşü bildirimi göndermeden önce bekleme
-                  </p>
-                </div>
-
                 {/* Smart deal cooldown */}
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-text-secondary">
-                    Akıllı Fırsat Bekleme Süresi (dk)
+                    Bildirim Bekleme Süresi (dk)
                   </label>
                   <input
                     type="number"
@@ -918,7 +842,7 @@ export default function TelegramSettingsPage() {
                     className="w-full rounded-lg border border-border bg-surface-secondary px-3 py-2 text-sm text-text-primary tabular-nums focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/30"
                   />
                   <p className="mt-1 text-[11px] text-text-tertiary">
-                    Aynı ürün için tekrar akıllı fırsat bildirimi göndermeden önce bekleme
+                    Aynı ürün için tekrar bildirim göndermeden önce bekleme süresi
                   </p>
                 </div>
               </div>
