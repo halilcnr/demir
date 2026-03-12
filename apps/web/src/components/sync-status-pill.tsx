@@ -14,31 +14,30 @@ interface PillData {
 
 export function SyncStatusPill() {
   const { interval } = useLiveUpdates();
-  const { data } = useQuery<PillData>({
-    queryKey: ['sync-pill'],
-    queryFn: async () => {
-      const res = await fetch('/api/ops/stats');
-      if (!res.ok) return { state: 'idle' as SyncState, label: 'Idle', detail: 'Bağlantı hatası' };
-      const stats = await res.json();
-      const progress = stats?.worker?.progress;
-      const risk = stats?.worker?.globalRisk;
 
-      if (risk && risk.score >= 55) {
-        return { state: 'alert', label: 'Risk!', detail: `Risk skoru: ${risk.score}` };
-      }
-      if (progress?.running) {
-        return {
-          state: 'syncing',
-          label: `%${progress.progress}`,
-          detail: progress.currentRetailer ? `${progress.currentRetailer} taraniyor` : 'Sync devam ediyor',
-        };
-      }
-      return { state: 'idle', label: 'Idle', detail: 'Sync bekleniyor' };
-    },
-    refetchInterval: interval(5000),
+  // Share queryKey with sync-control page for React Query dedup
+  const { data: stats } = useQuery({
+    queryKey: ['ops-stats'],
+    queryFn: () => fetch('/api/ops/stats').then(r => r.ok ? r.json() : null),
+    refetchInterval: interval(30_000),
   });
 
-  const pill = data ?? { state: 'idle' as SyncState, label: 'Idle', detail: '' };
+  const pill: PillData = (() => {
+    if (!stats) return { state: 'idle' as SyncState, label: 'Idle', detail: 'Bağlantı hatası' };
+    const progress = stats?.worker?.progress;
+    const risk = stats?.worker?.globalRisk;
+    if (risk && risk.score >= 55) {
+      return { state: 'alert', label: 'Risk!', detail: `Risk skoru: ${risk.score}` };
+    }
+    if (progress?.running) {
+      return {
+        state: 'syncing',
+        label: `%${progress.progress}`,
+        detail: progress.currentRetailer ? `${progress.currentRetailer} taraniyor` : 'Sync devam ediyor',
+      };
+    }
+    return { state: 'idle', label: 'Idle', detail: 'Sync bekleniyor' };
+  })();
 
   const styles: Record<SyncState, string> = {
     idle: 'bg-surface-secondary text-text-secondary border-border',

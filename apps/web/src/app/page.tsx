@@ -40,7 +40,7 @@ export default function DashboardPage() {
     queryKey: ['sync-progress'],
     queryFn: () => fetch('/api/sync/progress').then((r) => r.json()),
     refetchInterval: liveEnabled
-      ? (query) => (query.state.data?.running ? 2000 : 10000)
+      ? (query) => (query.state.data?.running ? 5000 : 10000)
       : false,
   });
 

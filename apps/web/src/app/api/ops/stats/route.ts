@@ -33,7 +33,7 @@ export async function GET() {
       prisma.listing.count({ where: { isActive: true } }),
     ]);
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       // Live from worker (real-time)
       worker: workerStats,
       // DB-persisted metrics (slightly delayed)
@@ -74,6 +74,8 @@ export async function GET() {
       totalListings: listingCount,
       cluster: clusterStatus,
     });
+    res.headers.set('Cache-Control', 's-maxage=10, stale-while-revalidate=20');
+    return res;
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Internal error' },

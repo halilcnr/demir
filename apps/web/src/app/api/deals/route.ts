@@ -10,42 +10,43 @@ export async function GET(req: NextRequest) {
   const oneDayAgo = new Date();
   oneDayAgo.setDate(oneDayAgo.getDate() - 1);
 
-  const deals = await prisma.listing.findMany({
-    where: {
-      isDeal: true,
-      currentPrice: { not: null },
-      stockStatus: 'IN_STOCK',
-    },
-    include: {
-      variant: { include: { family: true } },
-      retailer: true,
-    },
-    orderBy: sort === 'price_asc'
-      ? { currentPrice: 'asc' }
-      : sort === 'price_desc'
-        ? { currentPrice: 'desc' }
-        : { dealScore: 'desc' },
-    take: limit,
-  });
-
-  const biggestDrops = await prisma.priceSnapshot.findMany({
-    where: {
-      observedAt: { gte: oneDayAgo },
-      changePercent: { lt: -2 },
-    },
-    include: {
-      listing: {
-        include: {
-          variant: { include: { family: true } },
-          retailer: true,
+  const [deals, biggestDrops] = await Promise.all([
+    prisma.listing.findMany({
+      where: {
+        isDeal: true,
+        currentPrice: { not: null },
+        stockStatus: 'IN_STOCK',
+      },
+      include: {
+        variant: { include: { family: true } },
+        retailer: true,
+      },
+      orderBy: sort === 'price_asc'
+        ? { currentPrice: 'asc' }
+        : sort === 'price_desc'
+          ? { currentPrice: 'desc' }
+          : { dealScore: 'desc' },
+      take: limit,
+    }),
+    prisma.priceSnapshot.findMany({
+      where: {
+        observedAt: { gte: oneDayAgo },
+        changePercent: { lt: -2 },
+      },
+      include: {
+        listing: {
+          include: {
+            variant: { include: { family: true } },
+            retailer: true,
+          },
         },
       },
-    },
-    orderBy: { changePercent: 'asc' },
-    take: 10,
-  });
+      orderBy: { changePercent: 'asc' },
+      take: 10,
+    }),
+  ]);
 
-  return NextResponse.json({
+  const res = NextResponse.json({
     deals: deals.map((l) => ({
       listingId: l.id,
       variantId: l.variant.id,
@@ -79,4 +80,6 @@ export async function GET(req: NextRequest) {
       lastSeenAt: s.observedAt.toISOString(),
     })),
   });
+  res.headers.set('Cache-Control', 's-maxage=30, stale-while-revalidate=60');
+  return res;
 }

@@ -14,9 +14,7 @@ export async function GET() {
     last24hDeals,
     lastSync,
     topDeals,
-    biggestDrops,
     unreadAlerts,
-    recentlyUpdated,
   ] = await Promise.all([
     prisma.productFamily.count({ where: { isActive: true } }),
     prisma.productVariant.count(),
@@ -35,16 +33,6 @@ export async function GET() {
       orderBy: { dealScore: 'desc' },
       take: 5,
     }),
-    prisma.priceSnapshot.findMany({
-      where: { observedAt: { gte: oneDayAgo }, changePercent: { lt: -2 } },
-      include: {
-        listing: {
-          include: { variant: { include: { family: true } }, retailer: true },
-        },
-      },
-      orderBy: { changePercent: 'asc' },
-      take: 5,
-    }),
     prisma.alertEvent.findMany({
       where: { isRead: false },
       include: {
@@ -56,15 +44,9 @@ export async function GET() {
       orderBy: { triggeredAt: 'desc' },
       take: 10,
     }),
-    prisma.listing.findMany({
-      where: { lastSeenAt: { not: null } },
-      include: { variant: { include: { family: true } }, retailer: true },
-      orderBy: { lastSeenAt: 'desc' },
-      take: 5,
-    }),
   ]);
 
-  return NextResponse.json({
+  const res = NextResponse.json({
     totalFamilies,
     totalVariants,
     totalListings,
@@ -87,22 +69,6 @@ export async function GET() {
       productUrl: l.productUrl,
       lastSeenAt: l.lastSeenAt?.toISOString() ?? null,
     })),
-    biggestDrops: biggestDrops.map((s) => ({
-      listingId: s.listing.id,
-      variantId: s.listing.variant.id,
-      familyName: s.listing.variant.family.name,
-      variantName: s.listing.variant.normalizedName,
-      color: s.listing.variant.color,
-      storageGb: s.listing.variant.storageGb,
-      retailerName: s.listing.retailer.name,
-      retailerSlug: s.listing.retailer.slug,
-      currentPrice: s.observedPrice,
-      previousPrice: s.previousPrice,
-      changePercent: s.changePercent,
-      changeAmount: s.changeAmount,
-      productUrl: s.listing.productUrl,
-      lastSeenAt: s.observedAt.toISOString(),
-    })),
     cheapestByVariant: [],
     recentAlerts: unreadAlerts.map((e) => ({
       id: e.id,
@@ -117,19 +83,8 @@ export async function GET() {
       triggeredAt: e.triggeredAt.toISOString(),
       productUrl: e.listing?.productUrl ?? null,
     })),
-    recentlyUpdated: recentlyUpdated.map((l) => ({
-      listingId: l.id,
-      variantId: l.variant.id,
-      familyName: l.variant.family.name,
-      variantName: l.variant.normalizedName,
-      color: l.variant.color,
-      storageGb: l.variant.storageGb,
-      retailerName: l.retailer.name,
-      currentPrice: l.currentPrice,
-      isDeal: l.isDeal,
-      productUrl: l.productUrl,
-      lastSeenAt: l.lastSeenAt?.toISOString() ?? null,
-    })),
     syncErrors: lastSync?.errors ?? null,
   });
+  res.headers.set('Cache-Control', 's-maxage=30, stale-while-revalidate=60');
+  return res;
 }

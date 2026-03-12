@@ -123,7 +123,10 @@ export default function SyncPage() {
       const res = await fetch(`/api/sync/logs?since=${logFetchedCount.current}`);
       const data = await res.json();
       if (data.logs?.length > 0) {
-        setSyncLogs((prev) => [...prev, ...data.logs]);
+        setSyncLogs((prev) => {
+          const merged = [...prev, ...data.logs];
+          return merged.length > 500 ? merged.slice(-500) : merged;
+        });
         logFetchedCount.current = data.total;
       }
       if (!data.running && syncState === 'running') {
