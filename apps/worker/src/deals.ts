@@ -121,6 +121,193 @@ const WEIGHT_FRESHNESS = 0.30;
 const GLOBAL_FLOOR_TOLERANCE = 1.02;  // 2% tolerance for discard
 const NOISE_THRESHOLD = 0.01;         // 1% noise range
 
+// ═══════════════════════════════════════════════════════════════════
+//  GENERATIONAL BARRIER (BAKİ PROTOCOL)
+//
+//  Suppresses alerts when an older model's price is too close to
+//  the next generation's cheapest price in the same product line.
+//
+//  Product lines (each compared within itself only):
+//    base:     iPhone 13 → 14 → 15 → 16 → 17
+//    pro:      iPhone 16 Pro → 17 Pro
+//    pro-max:  iPhone 16 Pro Max → 17 Pro Max
+//    air:      iPhone 17 Air (no cross-gen comparison)
+//
+//  Formula: ALLOW only if BOTH:
+//    1) Price(N) <= AnchorPrice(N+1) × 0.90   (≥10% gap)
+//    2) AnchorPrice(N+1) − Price(N) >= 4,000 TL
+// ═══════════════════════════════════════════════════════════════════
+
+interface ProductLineInfo {
+  line: 'base' | 'air' | 'pro' | 'pro-max';
+  gen: number;
+}
+
+export function parseProductLine(familyName: string): ProductLineInfo | null {
+  const match = familyName.match(/^iPhone\s+(\d+)\s*(Pro\s+Max|Pro|Air)?$/i);
+  if (!match) return null;
+
+  const gen = parseInt(match[1], 10);
+  const suffix = (match[2] ?? '').trim().toLowerCase();
+
+  let line: ProductLineInfo['line'];
+  if (suffix === 'pro max') line = 'pro-max';
+  else if (suffix === 'pro') line = 'pro';
+  else if (suffix === 'air') line = 'air';
+  else line = 'base';
+
+  return { line, gen };
+}
+
+export interface GenerationalContext {
+  currentLine: ProductLineInfo;
+  currentFamilyName: string;
+  nextGenFamilyName: string | null;
+  nextGenPrice: number | null;
+  latestGenFamilyName: string | null;
+  latestGenPrice: number | null;
+  isLatestGen: boolean;
+  barrierPassed: boolean;
+  gapPercent: number | null;
+  gapAmount: number | null;
+  reason: string;
+}
+
+const GENERATIONAL_GAP_PERCENT = 0.10;
+const GENERATIONAL_GAP_MIN_TL = 4000;
+
+export async function checkGenerationalBarrier(
+  variantId: string,
+  currentPrice: number,
+): Promise<GenerationalContext | null> {
+  const variant = await prisma.productVariant.findUnique({
+    where: { id: variantId },
+    select: {
+      storageGb: true,
+      family: { select: { id: true, name: true, sortOrder: true, brand: true } },
+    },
+  });
+  if (!variant) return null;
+
+  const currentLineInfo = parseProductLine(variant.family.name);
+  if (!currentLineInfo) return null;
+
+  // Air serisi — nesil kıyaslaması yok
+  if (currentLineInfo.line === 'air') {
+    return {
+      currentLine: currentLineInfo,
+      currentFamilyName: variant.family.name,
+      nextGenFamilyName: null, nextGenPrice: null,
+      latestGenFamilyName: variant.family.name, latestGenPrice: null,
+      isLatestGen: true, barrierPassed: true,
+      gapPercent: null, gapAmount: null,
+      reason: 'Air serisi — nesil kıyaslaması yok',
+    };
+  }
+
+  // Aynı hattaki tüm aileleri bul
+  const allFamilies = await prisma.productFamily.findMany({
+    where: { brand: variant.family.brand, isActive: true },
+    select: { id: true, name: true, sortOrder: true },
+    orderBy: { sortOrder: 'asc' },
+  });
+
+  const sameLine = allFamilies
+    .map(f => ({ ...f, parsed: parseProductLine(f.name) }))
+    .filter((f): f is typeof f & { parsed: ProductLineInfo } =>
+      f.parsed != null && f.parsed.line === currentLineInfo.line)
+    .sort((a, b) => b.parsed.gen - a.parsed.gen); // en yeni ilk
+
+  if (sameLine.length === 0) return null;
+
+  const latestGen = sameLine[0];
+  const isLatestGen = latestGen.id === variant.family.id;
+
+  // En yeni nesil — bariyer yok
+  if (isLatestGen) {
+    return {
+      currentLine: currentLineInfo,
+      currentFamilyName: variant.family.name,
+      nextGenFamilyName: null, nextGenPrice: null,
+      latestGenFamilyName: latestGen.name, latestGenPrice: null,
+      isLatestGen: true, barrierPassed: true,
+      gapPercent: null, gapAmount: null,
+      reason: 'En yeni nesil — bariyer kontrolü gerekmiyor',
+    };
+  }
+
+  // Bir üst nesli bul (aynı hat, bir adım yeni)
+  const currentIdx = sameLine.findIndex(f => f.id === variant.family.id);
+  const nextGenFamily = currentIdx > 0 ? sameLine[currentIdx - 1] : null;
+
+  // Bir aile+depolama için en ucuz stokta fiyatı getir (BAYAT hariç)
+  async function getCheapestPrice(familyId: string): Promise<number | null> {
+    const cheapest = await prisma.listing.findFirst({
+      where: {
+        variant: { familyId, storageGb: variant!.storageGb, isActive: true },
+        isActive: true,
+        currentPrice: { not: null, gt: 0 },
+        stockStatus: { in: ['IN_STOCK', 'LIMITED'] },
+        lastSeenAt: { gte: new Date(Date.now() - 12 * 60 * 60 * 1000) },
+      },
+      orderBy: { currentPrice: 'asc' },
+      select: { currentPrice: true },
+    });
+    return cheapest?.currentPrice ?? null;
+  }
+
+  const nextGenId = nextGenFamily?.id ?? null;
+  const [nextGenPrice, latestGenPrice] = await Promise.all([
+    nextGenId ? getCheapestPrice(nextGenId) : Promise.resolve(null),
+    latestGen.id !== nextGenId ? getCheapestPrice(latestGen.id) : Promise.resolve(null),
+  ]);
+
+  // Bariyer kontrolü için üst nesil fiyatı; yoksa en yeni nesil fiyatı
+  const anchorPrice = nextGenPrice ?? latestGenPrice;
+  const anchorFamilyName = nextGenPrice != null ? nextGenFamily!.name : latestGen.name;
+
+  if (anchorPrice == null) {
+    return {
+      currentLine: currentLineInfo,
+      currentFamilyName: variant.family.name,
+      nextGenFamilyName: nextGenFamily?.name ?? null, nextGenPrice: null,
+      latestGenFamilyName: latestGen.name, latestGenPrice: null,
+      isLatestGen: false, barrierPassed: true,
+      gapPercent: null, gapAmount: null,
+      reason: 'Üst nesil fiyat verisi bulunamadı — bariyer devre dışı',
+    };
+  }
+
+  // Baki Protocol
+  const gapAmount = anchorPrice - currentPrice;
+  const gapPercent = anchorPrice > 0 ? (gapAmount / anchorPrice) * 100 : 0;
+  const passesPercentGate = currentPrice <= anchorPrice * (1 - GENERATIONAL_GAP_PERCENT);
+  const passesCashGate = gapAmount >= GENERATIONAL_GAP_MIN_TL;
+  const barrierPassed = passesPercentGate && passesCashGate;
+
+  const fmtPrice = (p: number) => p.toLocaleString('tr-TR', { maximumFractionDigits: 0 });
+
+  const reason = barrierPassed
+    ? `${variant.family.name} (${fmtPrice(currentPrice)} TL) → ${anchorFamilyName} (${fmtPrice(anchorPrice)} TL): ${fmtPrice(gapAmount)} TL fark (%${gapPercent.toFixed(1)}) ✓`
+    : `DEĞER TUZAĞI: ${variant.family.name} (${fmtPrice(currentPrice)} TL) → ${anchorFamilyName} (${fmtPrice(anchorPrice)} TL): sadece ${fmtPrice(gapAmount)} TL fark (%${gapPercent.toFixed(1)})`;
+
+  const resolvedLatestGenPrice = latestGen.id === nextGenId ? nextGenPrice : latestGenPrice;
+
+  return {
+    currentLine: currentLineInfo,
+    currentFamilyName: variant.family.name,
+    nextGenFamilyName: nextGenFamily?.name ?? null,
+    nextGenPrice,
+    latestGenFamilyName: latestGen.name,
+    latestGenPrice: resolvedLatestGenPrice,
+    isLatestGen: false,
+    barrierPassed,
+    gapPercent,
+    gapAmount,
+    reason,
+  };
+}
+
 /**
  * Fetch the ENTIRE market state for this variant's global group
  * (same model + storage, all colors, all in-stock retailers) in optimized queries.

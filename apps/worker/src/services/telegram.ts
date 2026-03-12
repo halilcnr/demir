@@ -261,8 +261,8 @@ function classifyNotificationTier(
 //  Settings read from DB (AppSettings) via getNotifySettings()
 // ═══════════════════════════════════════════════════════════════════
 
-import { fetchGlobalMarketSnapshot, computeArbitrage } from '../deals';
-import type { ArbitrageResult, GlobalMarketSnapshot } from '../deals';
+import { fetchGlobalMarketSnapshot, computeArbitrage, checkGenerationalBarrier } from '../deals';
+import type { ArbitrageResult, GlobalMarketSnapshot, GenerationalContext } from '../deals';
 import { enqueueEmergencyScrape } from '../task-queue';
 
 // ─── Fallback Constants ──────────────────────────────────────────
@@ -315,134 +315,97 @@ function buildArbitrageAlertMessage(
   payload: SmartDealPayload,
   arb: ArbitrageResult,
   market: GlobalMarketSnapshot,
-  tier: NotificationTier,
+  genContext: GenerationalContext | null,
   timings?: { analysisMs: number; totalMs: number },
 ): string {
   const fmtPrice = (p: number) => p.toLocaleString('tr-TR', { maximumFractionDigits: 0 });
   const lines: string[] = [];
 
-  // ── Header — distinctive per tier ──
-  if (tier === 'GLOBAL_FLOOR') {
-    const isATL = market.groupAllTimeLow != null && payload.newPrice <= market.groupAllTimeLow;
-    if (isATL) {
-      lines.push('🏆 <b>TÜM ZAMANLARIN EN DÜŞÜĞÜ!</b>');
-    } else if (arb.isMarketLeader) {
-      lines.push('🔥 <b>PİYASA LİDERİ — EN UCUZ SEÇENEK</b>');
-    } else {
-      lines.push('🔥 <b>GLOBAL TABAN FIRSATI</b>');
-    }
+  // ── Header ──
+  const isATL = market.groupAllTimeLow != null && payload.newPrice <= market.groupAllTimeLow;
+  if (isATL) {
+    lines.push('🏆 <b>TÜM ZAMANLARIN EN DÜŞÜĞÜ</b>');
+  } else if (arb.isMarketLeader) {
+    lines.push('🔥 <b>PİYASA LİDERİ</b>');
   } else {
-    lines.push('💡 <b>RENK ARBİTRAJI FIRSATI</b>');
+    lines.push('💰 <b>FIRSAT</b>');
   }
   lines.push('');
 
-  // ── Product + Color ──
+  // ── Product + Price ──
   lines.push(`📱 <b>${payload.variantLabel}</b>`);
-  lines.push('');
-
-  // ── Price + Retailer ──
   lines.push(`💰 <b>${fmtPrice(payload.newPrice)} TL</b> — ${payload.retailerName}`);
   if (payload.oldPrice != null && payload.oldPrice !== payload.newPrice) {
     const dropPct = ((payload.oldPrice - payload.newPrice) / payload.oldPrice * 100).toFixed(1);
-    lines.push(`   <s>${fmtPrice(payload.oldPrice)} TL</s> → <b>${fmtPrice(payload.newPrice)} TL</b> (-%${dropPct})`);
+    lines.push(`<s>${fmtPrice(payload.oldPrice)} TL</s> → <b>${fmtPrice(payload.newPrice)} TL</b> (-%${dropPct})`);
   }
   lines.push('');
 
-  // ── Tier-specific body ──
-  if (tier === 'GLOBAL_FLOOR') {
-    // Market leadership focus
-    if (arb.isMarketLeader) {
-      lines.push('🏆 <b>Durum:</b> Tüm mağaza ve renklerde en ucuz');
-    } else {
-      lines.push(`🏆 <b>Durum:</b> Piyasa tabanına çok yakın (en ucuz: ${fmtPrice(arb.globalFloor)} TL)`);
-    }
-    lines.push('');
-
-    // Net savings vs nearest competitor
-    const closestCompetitorPrice = market.allInStockPrices
-      .filter(p => p.listingId !== payload.listingId && p.price > payload.newPrice)
-      .sort((a, b) => a.price - b.price)[0]?.price;
-
-    if (closestCompetitorPrice != null) {
-      const savings = closestCompetitorPrice - payload.newPrice;
-      lines.push(`📉 <b>Kazanç:</b> En yakın rakibe göre <b>${fmtPrice(savings)} TL</b> avantajlı`);
-      lines.push('');
-    }
-
-    // Global competitors
-    if (market.globalCompetitors.length > 0) {
-      const byRetailer = new Map<string, { name: string; price: number }>();
-      for (const c of market.globalCompetitors) {
-        const existing = byRetailer.get(c.retailerSlug);
-        if (!existing || c.price < existing.price) {
-          byRetailer.set(c.retailerSlug, { name: c.retailerName, price: c.price });
-        }
-      }
-      const competitorParts = [...byRetailer.values()]
-        .sort((a, b) => a.price - b.price)
-        .slice(0, 4)
-        .map(c => `${c.name} ${fmtPrice(c.price)} TL`);
-      if (competitorParts.length > 0) {
-        lines.push(`📊 <b>Diğer Mağazalar:</b> ${competitorParts.join(', ')}`);
-        lines.push('');
-      }
-    }
+  // ── Market ──
+  if (arb.isMarketLeader) {
+    lines.push('📊 Tüm mağaza ve renklerde <b>en ucuz</b>');
   } else {
-    // FAMILY_ARBITRAGE — sibling comparison focus
-    if (market.localSiblings.length > 0) {
-      const siblingAvg = market.localSiblings.reduce((s, p) => s + p.price, 0) / market.localSiblings.length;
-      const savingsVsSiblings = siblingAvg - payload.newPrice;
-      const savingsPct = ((savingsVsSiblings / siblingAvg) * 100).toFixed(1);
-      lines.push(`🎨 <b>Renk karşılaştırması:</b> Kardeş ortalama <b>${fmtPrice(Math.round(siblingAvg))} TL</b>`);
-      lines.push(`📉 <b>Bu renk %${savingsPct} daha ucuz</b> (${fmtPrice(Math.round(savingsVsSiblings))} TL fark)`);
-      lines.push('');
-
-      const siblingLines = market.localSiblings
-        .slice(0, 3)
-        .map(s => `${s.color}: ${fmtPrice(s.price)} TL`)
-        .join(', ');
-      lines.push(`🔹 <b>Diğer Renkler:</b> ${siblingLines}`);
-      lines.push('');
-    }
-
-    // How close to global floor
-    lines.push(`🏆 <b>Global taban:</b> ${fmtPrice(arb.globalFloor)} TL (${market.globalFloorRetailer}/${market.globalFloorColor})`);
-    lines.push('');
+    lines.push(`📊 En ucuz: <b>${fmtPrice(arb.globalFloor)} TL</b> (${market.globalFloorRetailer})`);
   }
-
-  // ── Market average (both tiers) ──
   if (market.marketAverage > 0) {
-    lines.push(`⚠️ Piyasa ortalaması: <b>${fmtPrice(Math.round(market.marketAverage))} TL</b>`);
-    lines.push('');
+    lines.push(`   Piyasa ort: <b>${fmtPrice(Math.round(market.marketAverage))} TL</b>`);
   }
-
-  // ── Historical context (both tiers) ──
-  if (market.groupAllTimeLow != null && tier === 'GLOBAL_FLOOR') {
-    if (payload.newPrice <= market.groupAllTimeLow) {
-      lines.push('🏅 <b>TÜM ZAMANLARIN EN DÜŞÜK FİYATI!</b>');
+  if (market.groupAllTimeLow != null) {
+    if (isATL) {
+      lines.push('   🏅 Tüm zamanların en düşük fiyatı!');
     } else {
-      const distPct = (((payload.newPrice - market.groupAllTimeLow) / market.groupAllTimeLow) * 100).toFixed(1);
-      lines.push(`📈 Tüm zamanların en düşüğü: ${fmtPrice(market.groupAllTimeLow)} TL (%${distPct} üstünde)`);
+      lines.push(`   ATL: ${fmtPrice(market.groupAllTimeLow)} TL`);
     }
+  }
+  if (market.globalCompetitors.length > 0) {
+    const byRetailer = new Map<string, { name: string; price: number }>();
+    for (const c of market.globalCompetitors) {
+      const existing = byRetailer.get(c.retailerSlug);
+      if (!existing || c.price < existing.price) {
+        byRetailer.set(c.retailerSlug, { name: c.retailerName, price: c.price });
+      }
+    }
+    const parts = [...byRetailer.values()]
+      .sort((a, b) => a.price - b.price)
+      .slice(0, 3)
+      .map(c => `${c.name} ${fmtPrice(c.price)}`);
+    if (parts.length > 0) {
+      lines.push(`   Rakipler: ${parts.join(', ')}`);
+    }
+  }
+  lines.push('');
+
+  // ── Generational Comparison ──
+  if (genContext && !genContext.isLatestGen && (genContext.nextGenPrice != null || genContext.latestGenPrice != null)) {
+    lines.push('━━━ NESİL KIYASLAMASI ━━━');
+    lines.push(`  ${genContext.currentFamilyName}: <b>${fmtPrice(payload.newPrice)} TL</b> ← bu fırsat`);
+    if (genContext.nextGenPrice != null && genContext.nextGenFamilyName) {
+      const gap = genContext.nextGenPrice - payload.newPrice;
+      lines.push(`  ${genContext.nextGenFamilyName}: ${fmtPrice(genContext.nextGenPrice)} TL (+${fmtPrice(gap)} TL)`);
+    }
+    if (genContext.latestGenPrice != null && genContext.latestGenFamilyName !== genContext.nextGenFamilyName) {
+      const gap = genContext.latestGenPrice - payload.newPrice;
+      lines.push(`  ${genContext.latestGenFamilyName}: ${fmtPrice(genContext.latestGenPrice)} TL (+${fmtPrice(gap)} TL)`);
+    }
+    lines.push('✅ Yeterli nesil farkı — değerli alım');
+    lines.push('');
+  } else if (genContext?.isLatestGen) {
+    lines.push('⚡ En güncel nesil');
     lines.push('');
   }
 
-  // ── Score + market correction warning ──
-  lines.push(`🎯 <b>Skor:</b> ${arb.score}/100`);
+  // ── Score ──
+  lines.push(`🎯 <b>${arb.score}/100</b>`);
   if (market.isMarketCorrection) {
     lines.push('⚠️ Piyasa genelinde düzeltme tespit edildi');
   }
+  if (timings) {
+    lines.push(`⏱ ${(timings.totalMs / 1000).toFixed(1)}s`);
+  }
   lines.push('');
 
-  // ── Timing (internalized — only total, no breakdown shown) ──
-  if (timings) {
-    const totalSec = (timings.totalMs / 1000).toFixed(1);
-    lines.push(`⏱ ${totalSec}s`);
-    lines.push('');
-  }
-
   // ── Link ──
-  lines.push(`🔗 <a href="${payload.productUrl}">Fırsatı Gör &amp; Satın Al →</a>`);
+  lines.push(`🔗 <a href="${payload.productUrl}">Satın Al →</a>`);
 
   return lines.join('\n');
 }
@@ -520,6 +483,14 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
     return;
   }
 
+  // ── Step 4.5: Generational Barrier (Baki Protocol) ──
+  const genContext = await checkGenerationalBarrier(payload.variantId, payload.newPrice);
+  if (genContext && !genContext.barrierPassed) {
+    skippedCount++;
+    console.log(`[telegram-arb] Generational barrier: ${genContext.reason}`);
+    return;
+  }
+
   // ── Step 5: Tier classification ──
   const tier = classifyNotificationTier(arb, market, payload.newPrice);
   if (!tier) {
@@ -566,7 +537,7 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
 
   // ── Step 8: Build & broadcast ──
   const totalMs = Date.now() - payload.discoveredAt;
-  const message = buildArbitrageAlertMessage(payload, arb, market, tier, { analysisMs, totalMs });
+  const message = buildArbitrageAlertMessage(payload, arb, market, genContext, { analysisMs, totalMs });
   const result = await broadcast(message);
 
   // ── Step 9: Log ──
@@ -775,6 +746,7 @@ export async function sendSmartDealTest(listingId?: string): Promise<{ ok: boole
   const arb = computeArbitrage(listing.currentPrice, listing.retailer.slug, market);
 
   const tier = classifyNotificationTier(arb, market, listing.currentPrice) ?? 'GLOBAL_FLOOR';
+  const genContext = await checkGenerationalBarrier(listing.variantId, listing.currentPrice);
 
   const settings = await getNotifySettings();
   const payload: SmartDealPayload = {
@@ -790,14 +762,18 @@ export async function sendSmartDealTest(listingId?: string): Promise<{ ok: boole
   };
 
   const tierLabel = tier === 'GLOBAL_FLOOR' ? 'Tier 1 — Global Taban' : 'Tier 2 — Renk Arbitrajı';
+  const barrierLabel = genContext
+    ? (genContext.barrierPassed ? '✅ Geçti' : `🚫 ${genContext.reason}`)
+    : '— (veri yok)';
 
   const message = [
     '🧪 <b>ARBİTRAJ FIRSAT TESTİ</b>',
     '',
-    buildArbitrageAlertMessage(payload, arb, market, tier),
+    buildArbitrageAlertMessage(payload, arb, market, genContext),
     '',
     '─────────────',
     `⚙️ Tier: ${tierLabel}`,
+    `⚙️ Bariyer: ${barrierLabel}`,
     `⚙️ Karar: ${arb.verdict} | Skor: ${arb.score}/100`,
     `⚙️ Global taban: ${market.globalFloor.toLocaleString('tr-TR')} TL (${market.globalFloorRetailer}/${market.globalFloorColor})`,
     `⚙️ Min skor: ${Math.max(settings.smartDealMinScore, DEFAULT_CONFIDENCE_GATE)}`,
