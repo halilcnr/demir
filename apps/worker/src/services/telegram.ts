@@ -121,6 +121,8 @@ interface DealScoreResult {
     savingsVsMarket: number | null;
     savingsVsTop3: number | null;
     clusterGapPercent: number | null;
+    crossColorCheapest: number | null;
+    isCheapestInGroup: boolean;
   };
 }
 
@@ -524,7 +526,7 @@ async function computeLiveMarketAnalysis(variantId: string): Promise<MarketAnaly
 async function computeDealScore(variantId: string, newPrice: number, oldPrice: number | null): Promise<DealScoreResult> {
   const empty: DealScoreResult = {
     score: 0, tier: 'ignore', reasons: [], indicators: [],
-    metrics: { lowestPrice: null, top3Average: null, marketAverage: null, historicalLowest: null, priceStandardDeviation: null, savingsVsMarket: null, savingsVsTop3: null, clusterGapPercent: null },
+    metrics: { lowestPrice: null, top3Average: null, marketAverage: null, historicalLowest: null, priceStandardDeviation: null, savingsVsMarket: null, savingsVsTop3: null, clusterGapPercent: null, crossColorCheapest: null, isCheapestInGroup: true },
   };
 
   const market = await computeLiveMarketAnalysis(variantId);
@@ -571,13 +573,19 @@ async function computeDealScore(variantId: string, newPrice: number, oldPrice: n
     }
   }
 
-  // ══ NEW ENHANCEMENT 1: Cross-color comparison (+15) ══
+  // ══ NEW ENHANCEMENT 1: Cross-color comparison (+15 / -20 penalty) ══
   // If this variant's cheapest price beats all sibling colors of the same model+storage
   if (market.crossColorCheapest != null && newPrice < market.crossColorCheapest) {
     const colorDiffPct = ((market.crossColorCheapest - newPrice) / market.crossColorCheapest * 100).toFixed(1);
     score += 15;
     reasons.push(`Diğer renklere göre %${colorDiffPct} daha ucuz`);
     indicators.push('🎨');
+  } else if (market.crossColorCheapest != null && newPrice > market.crossColorCheapest) {
+    // Penalty: a cheaper color exists — this is likely not a real deal
+    const overPct = ((newPrice - market.crossColorCheapest) / market.crossColorCheapest) * 100;
+    const penalty = Math.min(25, Math.round(overPct * 3));
+    score -= penalty;
+    reasons.push(`Daha ucuz renk mevcut (%${overPct.toFixed(1)} daha pahalı, -${penalty} puan)`);
   }
 
   // ══ NEW ENHANCEMENT 2: Trend momentum (+10) ══
@@ -636,6 +644,8 @@ async function computeDealScore(variantId: string, newPrice: number, oldPrice: n
       savingsVsMarket: savingsVsMarket > 0 ? savingsVsMarket : null,
       savingsVsTop3: savingsVsTop3 > 0 ? savingsVsTop3 : null,
       clusterGapPercent: market.clusterGapPercent,
+      crossColorCheapest: market.crossColorCheapest,
+      isCheapestInGroup: market.crossColorCheapest == null || newPrice <= market.crossColorCheapest,
     },
   };
 }
@@ -728,6 +738,15 @@ function buildSmartAlertMessage(payload: SmartDealPayload, sr: DealScoreResult):
   }
   lines.push('');
 
+  // ── Group context (cross-color comparison) ──
+  if (sr.metrics.isCheapestInGroup && sr.metrics.crossColorCheapest != null) {
+    lines.push(`🎨 <b>Grubun en ucuzu!</b> (diğer renkler ≥ ${fmtPrice(sr.metrics.crossColorCheapest)} TL)`);
+    lines.push('');
+  } else if (sr.metrics.crossColorCheapest != null && !sr.metrics.isCheapestInGroup) {
+    lines.push(`🎨 <b>Not:</b> Daha ucuz renk mevcut (${fmtPrice(sr.metrics.crossColorCheapest)} TL)`);
+    lines.push('');
+  }
+
   // ── Confidence score ──
   lines.push(`🎯 <b>Güven Skoru:</b> ${sr.score} / 100`);
   lines.push('');
@@ -766,6 +785,30 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
   // 1) Compute deal score from live market data
   const sr = await computeDealScore(payload.variantId, payload.newPrice, payload.oldPrice);
   console.log(`[telegram-smart] ${payload.retailerSlug} ${payload.variantLabel}: score=${sr.score} tier=${sr.tier}`);
+
+  // 1.5) Family-level gate: suppress if a cheaper sibling color exists (>2% cheaper)
+  const variant = await prisma.productVariant.findUnique({
+    where: { id: payload.variantId },
+    select: { familyId: true, storageGb: true },
+  });
+  if (variant) {
+    const cheapestSibling = await prisma.listing.findFirst({
+      where: {
+        variant: { familyId: variant.familyId, storageGb: variant.storageGb },
+        variantId: { not: payload.variantId },
+        isActive: true,
+        currentPrice: { not: null, gt: 0 },
+        stockStatus: { in: ['IN_STOCK', 'LIMITED'] },
+      },
+      orderBy: { currentPrice: 'asc' },
+      select: { currentPrice: true, variant: { select: { color: true } } },
+    });
+    if (cheapestSibling?.currentPrice != null && payload.newPrice > cheapestSibling.currentPrice * 1.02) {
+      skippedCount++;
+      console.log(`[telegram-smart] Family gate: ${payload.newPrice} TL > ${cheapestSibling.currentPrice} TL (${cheapestSibling.variant.color}) × 1.02 — suppressed`);
+      return;
+    }
+  }
 
   // 2) Only deals above min score get Telegram notifications
   if (sr.score < minScore) {

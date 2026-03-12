@@ -172,7 +172,44 @@ export async function detectDeal(ctx: ListingContext): Promise<DetectedDeal | nu
   if (candidates.length === 0) return null;
 
   candidates.sort((a, b) => b.score - a.score);
-  return candidates[0];
+  let best = candidates[0];
+
+  // ── Family-Aware Validation: compare across color variants of same model+storage ──
+  const variant = await prisma.productVariant.findUnique({
+    where: { id: ctx.variantId },
+    select: { familyId: true, storageGb: true },
+  });
+
+  if (variant) {
+    const cheapestSibling = await prisma.listing.findFirst({
+      where: {
+        variant: { familyId: variant.familyId, storageGb: variant.storageGb },
+        variantId: { not: ctx.variantId },
+        isActive: true,
+        currentPrice: { not: null, gt: 0 },
+        stockStatus: { in: ['IN_STOCK', 'LIMITED'] },
+      },
+      orderBy: { currentPrice: 'asc' },
+      select: { currentPrice: true },
+    });
+
+    if (cheapestSibling?.currentPrice != null) {
+      const groupLowest = cheapestSibling.currentPrice;
+      // If this price is more than 2% above the cheapest sibling color, suppress the deal
+      if (ctx.currentPrice > groupLowest * 1.02) {
+        console.log(`[deals] Family filter: ${ctx.currentPrice} TL > group lowest ${groupLowest} TL × 1.02 — suppressing deal`);
+        return null;
+      }
+      // If within 2% but not actually cheapest, apply a score penalty
+      if (ctx.currentPrice > groupLowest) {
+        const penalty = Math.round(((ctx.currentPrice - groupLowest) / groupLowest) * 100 * 10); // up to ~20 pts
+        best = { ...best, score: Math.max(0, best.score - penalty) };
+        console.log(`[deals] Family penalty: -${penalty} pts (${ctx.currentPrice} TL vs group lowest ${groupLowest} TL)`);
+      }
+    }
+  }
+
+  return best;
 }
 
 /**
