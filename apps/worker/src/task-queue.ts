@@ -349,3 +349,70 @@ export async function cleanupOldTasks(): Promise<number> {
   });
   return result.count;
 }
+
+// ─── Emergency Scrape Queue ─────────────────────────────────────
+// Rate limit: max 10 emergency scrapes per hour globally
+const EMERGENCY_SCRAPE_MAX_PER_HOUR = 10;
+const EMERGENCY_PRIORITY = 99999;
+
+let emergencyScrapeCount = 0;
+let emergencyScrapeWindowStart = Date.now();
+
+/**
+ * Enqueue high-priority scrape tasks for stale blocker listings.
+ * These are BAYAT listings whose old price might undercut a real deal —
+ * they need immediate verification.
+ */
+export async function enqueueEmergencyScrape(listingIds: string[]): Promise<number> {
+  if (listingIds.length === 0) return 0;
+
+  // Rate limit reset per hour window
+  const now = Date.now();
+  if (now - emergencyScrapeWindowStart > 60 * 60_000) {
+    emergencyScrapeCount = 0;
+    emergencyScrapeWindowStart = now;
+  }
+
+  const remaining = EMERGENCY_SCRAPE_MAX_PER_HOUR - emergencyScrapeCount;
+  if (remaining <= 0) {
+    console.log(`[task-queue] Emergency scrape rate limit hit (${EMERGENCY_SCRAPE_MAX_PER_HOUR}/h), skipping ${listingIds.length} listings`);
+    return 0;
+  }
+
+  const toScrape = listingIds.slice(0, remaining);
+
+  // Fetch listing metadata for task creation
+  const listings = await prisma.listing.findMany({
+    where: { id: { in: toScrape } },
+    include: {
+      retailer: { select: { slug: true } },
+      variant: { include: { family: true } },
+    },
+  });
+
+  if (listings.length === 0) return 0;
+
+  // Get or create an active sync job
+  let syncJobId = await getActiveSyncJobId();
+  if (!syncJobId) {
+    const job = await prisma.syncJob.create({
+      data: { status: 'RUNNING', startedAt: new Date() },
+    });
+    syncJobId = job.id;
+  }
+
+  const taskData = listings.map(l => ({
+    syncJobId: syncJobId!,
+    listingId: l.id,
+    retailerSlug: l.retailer.slug,
+    variantLabel: `[EMERGENCY] ${l.variant.family.name} ${l.variant.color} ${l.variant.storageGb}GB`,
+    productUrl: l.productUrl,
+    priority: EMERGENCY_PRIORITY,
+  }));
+
+  await prisma.scrapeTask.createMany({ data: taskData });
+  emergencyScrapeCount += taskData.length;
+
+  console.log(`[task-queue] Enqueued ${taskData.length} emergency scrape tasks (${emergencyScrapeCount}/${EMERGENCY_SCRAPE_MAX_PER_HOUR} this hour)`);
+  return taskData.length;
+}

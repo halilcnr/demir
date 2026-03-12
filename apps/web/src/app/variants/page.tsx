@@ -13,6 +13,23 @@ import { EmptyState, ErrorState } from '@/components/ui/empty-state';
 import { formatPrice, formatRelativeDate } from '@repo/shared';
 import type { PaginatedResponse, VariantListItem } from '@repo/shared';
 
+// ─── Freshness badge logic ───────────────────────────────────────
+function getFreshnessBadge(lastSeenAt: string | null): { label: string; className: string; isStale: boolean } {
+  if (!lastSeenAt) return { label: '—', className: 'text-text-tertiary', isStale: true };
+
+  const ageMs = Date.now() - new Date(lastSeenAt).getTime();
+  const fifteenMin = 15 * 60 * 1000;
+  const twoHours = 2 * 60 * 60 * 1000;
+
+  if (ageMs < fifteenMin) {
+    return { label: 'Şimdi', className: 'bg-emerald-500/15 text-emerald-600 border-emerald-500/20', isStale: false };
+  } else if (ageMs < twoHours) {
+    return { label: 'Yeni', className: 'bg-lime-500/15 text-lime-600 border-lime-500/20', isStale: false };
+  } else {
+    return { label: 'Bayat', className: 'bg-red-500/15 text-red-500 border-red-500/20', isStale: true };
+  }
+}
+
 const MODEL_FILTERS = [
   { label: 'Tümü', value: '' },
   { label: 'iPhone 13', value: 'iPhone 13' },
@@ -227,8 +244,10 @@ function VariantsContent() {
                 </td>
               </tr>
             ) : (
-              data.data.map((v) => (
-                <tr key={v.id} className="group hover:bg-surface-secondary transition-colors">
+              data.data.map((v) => {
+                const freshness = getFreshnessBadge(v.lastSeenAt);
+                return (
+                <tr key={v.id} className={`group hover:bg-surface-secondary transition-colors ${freshness.isStale ? 'opacity-50' : ''}`}>
                   <td className="px-4 py-3">
                     <Link
                       href={`/variants/${v.id}`}
@@ -256,11 +275,19 @@ function VariantsContent() {
                       <Badge variant="default">Normal</Badge>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-right text-[11px] text-text-tertiary">
-                    {v.lastSeenAt ? formatRelativeDate(v.lastSeenAt) : '—'}
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex items-center justify-end gap-1.5">
+                      <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${freshness.className}`}>
+                        {freshness.label}
+                      </span>
+                      <span className="text-[11px] text-text-tertiary">
+                        {v.lastSeenAt ? formatRelativeDate(v.lastSeenAt) : ''}
+                      </span>
+                    </div>
                   </td>
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>

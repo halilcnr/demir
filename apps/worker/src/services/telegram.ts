@@ -263,6 +263,7 @@ function classifyNotificationTier(
 
 import { fetchGlobalMarketSnapshot, computeArbitrage } from '../deals';
 import type { ArbitrageResult, GlobalMarketSnapshot } from '../deals';
+import { enqueueEmergencyScrape } from '../task-queue';
 
 // ─── Fallback Constants ──────────────────────────────────────────
 const SMART_RE_ALERT_DROP_PERCENT = 1;
@@ -462,11 +463,23 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
   const minScore = Math.max(settings.smartDealMinScore, DEFAULT_CONFIDENCE_GATE);
   const smartCooldownMs = settings.smartDealCooldownMin * 60_000;
 
-  // ── Filter 0: Freshness — suppress if benchmark data is stale (>12h) ──
+  // ── Filter 0: Freshness — deferred alert if benchmark data is stale (>12h) ──
   const stale = await isBenchmarkStale(payload.listingId);
   if (stale) {
     skippedCount++;
-    console.log(`[telegram-arb] Stale benchmark (>12h), suppressed: ${payload.variantLabel}`);
+    console.log(`[telegram-arb] Stale benchmark (>12h), deferred: ${payload.variantLabel}`);
+
+    // Trigger emergency re-scrape for the stale listing
+    enqueueEmergencyScrape([payload.listingId]).catch(err =>
+      console.error('[telegram-arb] Emergency scrape enqueue failed:', err)
+    );
+
+    // Send deferred notice instead of full suppression
+    const deferredMsg =
+      `⏳ <b>Ertelendi: ${payload.variantLabel}</b>\n` +
+      `💰 ${payload.newPrice.toLocaleString('tr-TR')} TL (${payload.retailerName})\n\n` +
+      `Piyasa verileri güncelleniyor, doğrulandığında bildirim gönderilecek.`;
+    await broadcast(deferredMsg);
     return;
   }
 

@@ -2,6 +2,7 @@ import { prisma } from '@repo/shared';
 import type { DetectedDeal } from '@repo/shared';
 import { DEAL_THRESHOLDS } from '@repo/shared';
 import { computePriceIntelligence, detectSuspiciousDiscount } from './price-intelligence';
+import { enqueueEmergencyScrape } from './task-queue';
 
 // ═══════════════════════════════════════════════════════════════════
 //  GLOBAL MARKET-AWARE ARBITRAGE & DEAL ENGINE
@@ -10,8 +11,33 @@ import { computePriceIntelligence, detectSuspiciousDiscount } from './price-inte
 //  multi-provider, color-agnostic arbitrage system.
 //
 //  Key concept: "Global Floor" = min price across ALL in-stock
-//  colors at ALL providers for the same model+storage.
+//  colors at ALL providers for the same model+storage,
+//  filtered by DATA FRESHNESS to avoid ghost prices.
 // ═══════════════════════════════════════════════════════════════════
+
+// ─── Freshness Tiers ─────────────────────────────────────────────
+export type FreshnessTier = 'CANLI' | 'BELIRSIZ' | 'BAYAT';
+
+const CANLI_MS  = 4  * 60 * 60 * 1000;  // 0-4h: Full weight
+const BELIRSIZ_MS = 12 * 60 * 60 * 1000;  // 4-12h: Valid history, may trigger emergency scrape
+// >12h = BAYAT: Ghost price — discard from arbitrage
+
+export function classifyFreshness(lastSeenAt: Date | null): FreshnessTier {
+  if (!lastSeenAt) return 'BAYAT';
+  const age = Date.now() - lastSeenAt.getTime();
+  if (age <= CANLI_MS) return 'CANLI';
+  if (age <= BELIRSIZ_MS) return 'BELIRSIZ';
+  return 'BAYAT';
+}
+
+/** Returns 0-1 weight for freshness (CANLI=1.0, BELIRSIZ=0.5, BAYAT=0.0) */
+function freshnessWeight(tier: FreshnessTier): number {
+  switch (tier) {
+    case 'CANLI': return 1.0;
+    case 'BELIRSIZ': return 0.5;
+    case 'BAYAT': return 0.0;
+  }
+}
 
 interface ListingContext {
   listingId: string;
@@ -26,7 +52,7 @@ interface ListingContext {
 
 // ─── Global Market Snapshot (fetched once per deal check) ────────
 export interface GlobalMarketSnapshot {
-  globalFloor: number;                         // min(all_in_stock_colors_all_providers)
+  globalFloor: number;                         // min(CANLI in_stock colors across all providers)
   globalFloorRetailer: string;                 // which retailer has the floor
   globalFloorColor: string;                    // which color
   localSiblings: SiblingPrice[];               // other colors at SAME retailer
@@ -37,6 +63,8 @@ export interface GlobalMarketSnapshot {
   isMarketCorrection: boolean;                 // >40% providers dropped in 12h
   activeProviderCount: number;
   activeListingCount: number;
+  freshListingCount: number;                   // CANLI listings used for floor calc
+  staleBlockerListings: string[];              // BAYAT listing IDs that are below the new price (need emergency scrape)
 }
 
 export interface SiblingPrice {
@@ -62,6 +90,8 @@ export interface MarketPrice {
   color: string;
   variantId: string;
   listingId: string;
+  freshness: FreshnessTier;
+  lastSeenAt: Date | null;
 }
 
 // ─── Arbitrage Result ────────────────────────────────────────────
@@ -83,9 +113,9 @@ export interface ArbitrageResult {
 }
 
 // ─── Score weights ───────────────────────────────────────────────
-const WEIGHT_MARKET_POSITION = 0.35;
-const WEIGHT_SIBLING_ARBITRAGE = 0.35;
+const WEIGHT_SIBLING_ARBITRAGE = 0.40;
 const WEIGHT_HISTORICAL = 0.30;
+const WEIGHT_FRESHNESS = 0.30;
 
 // ─── Tolerance ───────────────────────────────────────────────────
 const GLOBAL_FLOOR_TOLERANCE = 1.02;  // 2% tolerance for discard
@@ -133,20 +163,38 @@ export async function fetchGlobalMarketSnapshot(
     color: l.variant.color,
     variantId: l.variant.id,
     listingId: l.id,
+    freshness: classifyFreshness(l.lastSeenAt),
+    lastSeenAt: l.lastSeenAt,
   }));
 
-  const cheapest = allPrices[0];
+  // ── Freshness-aware global floor: use ONLY CANLI data ──
+  // BELİRSİZ prices are kept for context but don't set the floor.
+  // BAYAT prices are ghost data — fully excluded.
+  const freshPrices = allPrices.filter(p => p.freshness === 'CANLI');
+  const uncertainPrices = allPrices.filter(p => p.freshness === 'BELIRSIZ');
+  const validPrices = [...freshPrices, ...uncertainPrices]; // for context, not floor
+  
+  // Floor is calculated from CANLI only; fallback to BELIRSIZ if no CANLI data
+  const floorCandidates = freshPrices.length > 0 ? freshPrices : uncertainPrices;
+  
+  if (floorCandidates.length === 0) {
+    // Everyone is stale — can't compute meaningful arbitrage
+    return null;
+  }
+
+  const cheapest = floorCandidates.reduce((min, p) => p.price < min.price ? p : min, floorCandidates[0]);
   const globalFloor = cheapest.price;
 
   // Separate local siblings (same retailer, different color) from global competitors
+  // Use non-BAYAT data for siblings/competitors (CANLI + BELIRSIZ)
   const thisListing = allListings.find(l => l.variantId === variantId);
   const thisRetailerSlug = thisListing?.retailer.slug;
 
-  const localSiblings: SiblingPrice[] = allPrices
+  const localSiblings: SiblingPrice[] = validPrices
     .filter(p => p.retailerSlug === thisRetailerSlug && p.variantId !== variantId)
     .map(p => ({ variantId: p.variantId, color: p.color, price: p.price, listingId: p.listingId }));
 
-  const globalCompetitors: CompetitorPrice[] = allPrices
+  const globalCompetitors: CompetitorPrice[] = validPrices
     .filter(p => p.retailerSlug !== thisRetailerSlug)
     .map(p => ({
       retailerSlug: p.retailerSlug,
@@ -156,6 +204,12 @@ export async function fetchGlobalMarketSnapshot(
       variantId: p.variantId,
       listingId: p.listingId,
     }));
+
+  // Stale blockers: BAYAT listings whose price would be lower than fresh floor
+  // These need emergency re-scrape to verify if they're still valid
+  const staleBlockerListings = allPrices
+    .filter(p => p.freshness === 'BAYAT' && p.price <= globalFloor)
+    .map(p => p.listingId);
 
   // Historical ATL for this global group
   const variantIds = [...new Set(allListings.map(l => l.variantId))];
@@ -220,6 +274,8 @@ export async function fetchGlobalMarketSnapshot(
     isMarketCorrection,
     activeProviderCount: uniqueRetailers.size,
     activeListingCount: allPrices.length,
+    freshListingCount: freshPrices.length,
+    staleBlockerListings,
   };
 }
 
@@ -276,53 +332,31 @@ export function computeArbitrage(
   }
 
   // ═══ MULTI-FACTOR SCORE (0-100) ═══
-  let marketPositionScore = 0;   // 0-100, weight 35%
-  let siblingArbitrageScore = 0; // 0-100, weight 35%
+  // Sibling Arbitrage 40%, Historical 30%, Freshness 30%
+  let siblingArbitrageScore = 0; // 0-100, weight 40%
   let historicalScore = 0;       // 0-100, weight 30%
+  let freshnessScore = 0;        // 0-100, weight 30%
 
-  // ── Market Position (35%) ──
-  // How does this price compare to all tracked shops?
+  // ── Sibling Arbitrage (40%) ──
+  // Combines market position + sibling/competitor analysis
+  // Market leader bonus baked into sibling score
   if (isMarketLeader) {
-    marketPositionScore = 100;
+    siblingArbitrageScore = 100;
     reasons.push('PİYASADAKİ EN UCUZ SEÇENEK');
-  } else if (currentPrice <= globalFloor * 1.01) {
-    // Within 1% of floor
-    marketPositionScore = 85;
-    reasons.push('Piyasa tabanına çok yakın');
-  } else if (currentPrice <= globalFloor * GLOBAL_FLOOR_TOLERANCE) {
-    // Within 2% tolerance
-    const gap = ((currentPrice - globalFloor) / globalFloor) * 100;
-    marketPositionScore = Math.max(0, 70 - Math.round(gap * 15));
-  } else {
-    // Above tolerance — penalize heavily
-    const excess = ((currentPrice - globalFloor) / globalFloor) * 100;
-    marketPositionScore = Math.max(0, 30 - Math.round(excess * 5));
-  }
-
-  // Bonus: below market average
-  if (currentPrice < marketAverage * 0.95) {
-    const pctBelow = ((marketAverage - currentPrice) / marketAverage) * 100;
-    marketPositionScore = Math.min(100, marketPositionScore + Math.round(pctBelow));
-    reasons.push(`Piyasa ortalamasının %${pctBelow.toFixed(1)} altında`);
-  }
-
-  // ── Sibling Arbitrage (35%) ──
-  // How much cheaper is this compared to the next cheapest color at the same store?
-  if (market.localSiblings.length > 0) {
+  } else if (market.localSiblings.length > 0) {
     const cheapestSiblingPrice = market.localSiblings[0].price;
     if (currentPrice < cheapestSiblingPrice) {
       const siblingGap = ((cheapestSiblingPrice - currentPrice) / cheapestSiblingPrice) * 100;
-      siblingArbitrageScore = Math.min(100, Math.round(siblingGap * 10));
+      siblingArbitrageScore = Math.min(95, Math.round(siblingGap * 10));
       reasons.push(`Aynı mağazadaki diğer renklere göre %${siblingGap.toFixed(1)} daha ucuz (+${Math.round(cheapestSiblingPrice - currentPrice)} TL fark)`);
     } else if (currentPrice === cheapestSiblingPrice) {
       siblingArbitrageScore = 50;
     } else {
-      // More expensive than a sibling → penalty
       const overPct = ((currentPrice - cheapestSiblingPrice) / cheapestSiblingPrice) * 100;
       siblingArbitrageScore = Math.max(0, 40 - Math.round(overPct * 5));
     }
   } else {
-    // No siblings at same store → neutral (use global competitor data)
+    // No siblings at same store → use global competitor data
     if (market.globalCompetitors.length > 0) {
       const cheapestCompetitor = Math.min(...market.globalCompetitors.map(c => c.price));
       if (currentPrice <= cheapestCompetitor) {
@@ -337,11 +371,17 @@ export function computeArbitrage(
     }
   }
 
+  // Below-market-average bonus (folded from old market position)
+  if (currentPrice < marketAverage * 0.95) {
+    const pctBelow = ((marketAverage - currentPrice) / marketAverage) * 100;
+    siblingArbitrageScore = Math.min(100, siblingArbitrageScore + Math.round(pctBelow * 0.5));
+    reasons.push(`Piyasa ortalamasının %${pctBelow.toFixed(1)} altında`);
+  }
+
   // ── Historical Context (30%) ──
   // Distance from the group ATL
   if (distanceFromATL != null) {
     if (distanceFromATL <= 0) {
-      // At or below ATL → maximum score
       historicalScore = 100;
       reasons.push('Global grup için tüm zamanların en düşük fiyatı!');
     } else if (distanceFromATL <= 2) {
@@ -361,11 +401,33 @@ export function computeArbitrage(
     historicalScore = 50; // no historical data → neutral
   }
 
+  // ── Freshness Penalty (30%) ──
+  // How much of the market data is actually fresh?
+  // High ratio of fresh data = high confidence = high score
+  const totalListings = market.activeListingCount;
+  const freshCount = market.freshListingCount;
+  if (totalListings > 0) {
+    const freshRatio = freshCount / totalListings;
+    freshnessScore = Math.round(freshRatio * 100);
+    if (freshRatio < 0.5) {
+      reasons.push(`⚠️ Piyasa verilerinin sadece %${Math.round(freshRatio * 100)}'i güncel`);
+    }
+  } else {
+    freshnessScore = 0; // no data at all
+  }
+
+  // Stale blockers penalty: if BAYAT listings might undercut the fresh floor
+  if (market.staleBlockerListings.length > 0) {
+    const penalty = Math.min(30, market.staleBlockerListings.length * 10);
+    freshnessScore = Math.max(0, freshnessScore - penalty);
+    reasons.push(`${market.staleBlockerListings.length} eski fiyat doğrulama bekliyor`);
+  }
+
   // ── Weighted final score ──
   const rawScore = Math.round(
-    marketPositionScore * WEIGHT_MARKET_POSITION +
     siblingArbitrageScore * WEIGHT_SIBLING_ARBITRAGE +
-    historicalScore * WEIGHT_HISTORICAL
+    historicalScore * WEIGHT_HISTORICAL +
+    freshnessScore * WEIGHT_FRESHNESS
   );
 
   // Market correction penalty: reduce priority
@@ -432,6 +494,13 @@ export async function detectDeal(ctx: ListingContext): Promise<DetectedDeal | nu
   if (arb.verdict === 'DISCARD') {
     console.log(`[deals-arb] DISCARD: ${ctx.currentPrice} TL > global floor ${arb.globalFloor} TL × ${GLOBAL_FLOOR_TOLERANCE} (${arb.globalFloorRetailer}/${arb.globalFloorColor})`);
     return null;
+  }
+
+  // ── Emergency scrape: verify stale data that might block this deal ──
+  if (market.staleBlockerListings.length > 0) {
+    enqueueEmergencyScrape(market.staleBlockerListings).catch(err =>
+      console.error('[deals-arb] Emergency scrape enqueue failed:', err)
+    );
   }
 
   // ── Record market correction event if detected ──
