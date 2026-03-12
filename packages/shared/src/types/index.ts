@@ -34,10 +34,8 @@ export interface DashboardSummary {
   lastSyncAt: string | null;
   lastSyncStatus: string | null;
   topDeals: DealItem[];
-  biggestDrops: DealItem[];
   cheapestByVariant: DealItem[];
   recentAlerts: AlertEventItem[];
-  recentlyUpdated: RecentListingItem[];
   syncErrors: string | null;
 }
 

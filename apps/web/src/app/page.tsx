@@ -5,7 +5,6 @@ import {
   Smartphone,
   Store,
   Clock,
-  TrendingDown,
   Zap,
   ExternalLink,
   ArrowRight,
@@ -319,51 +318,6 @@ export default function DashboardPage() {
           )}
         </Card>
 
-        {/* En Büyük Fiyat Düşüşleri */}
-        <Card className="relative overflow-hidden">
-          <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-emerald-400 via-teal-400 to-transparent" />
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50">
-                <TrendingDown className="h-4 w-4 text-emerald-500" />
-              </div>
-              <h2 className="text-sm font-semibold text-text-primary">
-                Bugünün En Büyük Düşüşleri
-              </h2>
-            </div>
-          </div>
-          {data.biggestDrops.length === 0 ? (
-            <EmptyState description="Son 24 saatte önemli bir düşüş yok" />
-          ) : (
-            <div className="space-y-2">
-              {data.biggestDrops.map((drop, i) => (
-                <div
-                  key={i}
-                  className="group flex items-center justify-between rounded-lg border border-border bg-surface p-3 hover:border-emerald-200 hover:bg-emerald-50/30 transition-all duration-150"
-                >
-                  <div className="flex-1 min-w-0">
-                    <Link
-                      href={`/variants/${drop.variantId}`}
-                      className="text-[13px] font-medium text-text-primary hover:text-primary truncate block"
-                    >
-                      {drop.variantName}
-                    </Link>
-                    <p className="text-[11px] text-text-tertiary mt-1">{drop.retailerName}</p>
-                  </div>
-                  <div className="flex items-center gap-2 ml-3">
-                    <span className="text-sm font-bold text-emerald-600 tabular-nums">
-                      {drop.currentPrice != null ? formatPrice(drop.currentPrice) : '—'}
-                    </span>
-                    {drop.changePercent != null && (
-                      <PriceChangeBadge changePercent={drop.changePercent} />
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-
         {/* Son Bildirimler */}
         <Card className="relative overflow-hidden">
           <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-indigo-400 via-violet-400 to-transparent" />
@@ -407,56 +361,7 @@ export default function DashboardPage() {
           )}
         </Card>
 
-        {/* Son Güncellenenler */}
-        <Card className="relative overflow-hidden">
-          <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-cyan-400 via-sky-400 to-transparent" />
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-50">
-                <Clock className="h-4 w-4 text-cyan-500" />
-              </div>
-              <h2 className="text-sm font-semibold text-text-primary">
-                Son Güncellenenler
-              </h2>
-            </div>
-            <Link href="/variants" className="flex items-center gap-1 text-xs font-medium text-text-tertiary hover:text-primary transition-colors">
-              Tümü <ArrowRight className="h-3 w-3" />
-            </Link>
-          </div>
-          {data.recentlyUpdated.length === 0 ? (
-            <EmptyState description="Henüz güncelleme yok" />
-          ) : (
-            <div className="space-y-2">
-              {data.recentlyUpdated.map((item, i) => (
-                <Link
-                  key={i}
-                  href={`/variants/${item.variantId}`}
-                  className="group flex items-center justify-between rounded-lg border border-border bg-surface p-3 hover:bg-surface-secondary hover:border-border/80 transition-all duration-150"
-                >
-                  <div className="min-w-0">
-                    <p className="text-[13px] font-medium text-text-primary group-hover:text-primary truncate">
-                      {item.variantName}
-                    </p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[11px] text-text-tertiary">{item.retailerName}</span>
-                      {item.isDeal && <Badge variant="success" size="sm" dot>Fırsat</Badge>}
-                    </div>
-                  </div>
-                  <div className="text-right ml-3">
-                    <span className="text-sm font-semibold text-text-primary tabular-nums">
-                      {item.currentPrice != null ? formatPrice(item.currentPrice) : '—'}
-                    </span>
-                    {item.lastSeenAt && (
-                      <p className="text-[11px] text-text-tertiary">
-                        {formatRelativeDate(item.lastSeenAt)}
-                      </p>
-                    )}
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </Card>
+
       </div>
     </div>
   );
