@@ -1,6 +1,8 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
+export { getSemanticColorGroup, areColorsSemanticallyEqual, generateGlobalGroupId } from './color-groups';
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }

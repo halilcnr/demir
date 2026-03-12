@@ -34,6 +34,9 @@ model ProductVariant {
   slug           String   @unique // "iphone-15-pro-max-256gb-natural-titanium"
   imageUrl       String?
   isActive       Boolean  @default(true)
+  // Global arbitrage fields
+  globalGroupId      String?   // slugify(brand+model+storage) e.g. "iphone-15-pro-max-256gb"
+  semanticColorGroup String?   // "dark", "light", "blue", "natural", etc.
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -47,6 +50,7 @@ model ProductVariant {
   @@index([slug])
   @@index([storageGb])
   @@index([color])
+  @@index([globalGroupId])
 }
 
 // ─── Satış Siteleri ──────────────────────────────────────────────
@@ -461,6 +465,20 @@ model ProviderMetrics {
   @@index([retailerSlug])
   @@index([healthScore])
   @@index([riskScore])
+}
+
+// ─── Market Correction Events ────────────────────────────────────
+model MarketCorrectionEvent {
+  id              String   @id @default(cuid())
+  globalGroupId   String   // which product group
+  providersDropped Int     @default(0)  // how many providers dropped
+  totalProviders   Int     @default(0)  // total tracked providers
+  dropPercent      Float   @default(0)  // average drop %
+  windowHours      Int     @default(12) // detection window
+  detectedAt       DateTime @default(now())
+
+  @@index([globalGroupId])
+  @@index([detectedAt])
 }
 
 // ─── Distributed Lock (leader election) ─────────────────────────
