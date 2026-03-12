@@ -596,8 +596,8 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
   }
 
   // ── Step 8: Two-phase broadcast ──
-  //   Phase 1 (Flash): product + price + link — zero delay
-  //   Phase 2 (Detail): analytics, gen comparison, score, timing
+  //   Phase 1 (Flash): product + price + link — sent immediately
+  //   Phase 2 (Detail): fire-and-forget, don't block on it
   const flashMsg = buildFlashMessage(payload, arb, market);
   const flashResult = await broadcast(flashMsg);
 
@@ -606,12 +606,13 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
   const computeMs = totalMs - dataMs;
   const tierLabel = tier === 'GLOBAL_FLOOR' ? 'Tier 1 — Global Taban' : 'Tier 2 — Renk Arbitrajı';
   const detailMsg = buildDetailMessage(payload, arb, market, genContext, { dataMs, analysisMs: computeMs, totalMs }, { tier: tierLabel, minScore });
-  const detailResult = await broadcast(detailMsg);
 
-  const result = {
-    sent: Math.max(flashResult.sent, detailResult.sent),
-    failed: flashResult.failed + detailResult.failed,
-  };
+  // Fire-and-forget: detail mesajı flash'ı bekletmez
+  broadcast(detailMsg).catch(err =>
+    console.error('[telegram-arb] Detail broadcast failed:', err)
+  );
+
+  const result = flashResult;
 
   // ── Step 9: Log ──
   const dropPercent = payload.oldPrice != null && payload.oldPrice > 0

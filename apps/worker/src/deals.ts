@@ -334,7 +334,11 @@ export async function fetchGlobalMarketSnapshot(
       currentPrice: { not: null, gt: 0 },
       stockStatus: { in: ['IN_STOCK', 'LIMITED'] },  // OUT_OF_STOCK excluded from floor
     },
-    include: {
+    select: {
+      id: true,
+      variantId: true,
+      currentPrice: true,
+      lastSeenAt: true,
       retailer: { select: { slug: true, name: true } },
       variant: { select: { id: true, color: true } },
     },
