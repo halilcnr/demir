@@ -127,6 +127,10 @@ model Listing {
   @@index([currentPrice])
   @@index([isDeal])
   @@index([lastSeenAt])
+  // Composite indexes for hot queries
+  @@index([isDeal, stockStatus, dealScore])      // deals API + dashboard topDeals
+  @@index([variantId, isActive, currentPrice])   // market snapshot + best-by-storage
+  @@index([isDeal, lastSeenAt])                  // dashboard 24h deal count
 }
 
 enum StockStatus {
@@ -159,6 +163,7 @@ model PriceSnapshot {
   @@index([listingId, observedAt])
   @@index([changePercent])
   @@index([isSignificant])
+  @@index([observedAt, changePercent])            // biggest-drops API query
 }
 
 // ─── Fırsat/Deal Olayları ────────────────────────────────────────
@@ -188,6 +193,7 @@ model DealEvent {
   @@index([eventType])
   @@index([detectedAt])
   @@index([severity])
+  @@index([listingId, eventType, detectedAt])    // deal dedup check
 }
 
 enum DealEventType {
@@ -252,6 +258,7 @@ model AlertEvent {
   @@index([listingId])
   @@index([isRead])
   @@index([triggeredAt])
+  @@index([isRead, triggeredAt])                 // dashboard unread alerts
 }
 
 enum AlertChannel {
@@ -334,6 +341,7 @@ model SyncJob {
 
   @@index([status])
   @@index([createdAt])
+  @@index([status, finishedAt])                  // last completed sync lookup
 }
 
 enum SyncStatus {
@@ -520,6 +528,7 @@ model ScrapeTask {
   @@index([retailerSlug, status])
   @@index([lockedBy])
   @@index([lockedAt])
+  @@index([syncJobId, status])                   // getTaskQueueStats (5 counts → groupBy)
 }
 
 enum ScrapeTaskStatus {

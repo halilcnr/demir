@@ -281,13 +281,22 @@ export async function recoverStaleTasks(): Promise<number> {
 export async function getTaskQueueStats(syncJobId?: string) {
   const where = syncJobId ? { syncJobId } : {};
 
-  const [pending, inProgress, completed, failed, skipped] = await Promise.all([
-    prisma.scrapeTask.count({ where: { ...where, status: 'PENDING' } }),
-    prisma.scrapeTask.count({ where: { ...where, status: 'IN_PROGRESS' } }),
-    prisma.scrapeTask.count({ where: { ...where, status: 'COMPLETED' } }),
-    prisma.scrapeTask.count({ where: { ...where, status: 'FAILED' } }),
-    prisma.scrapeTask.count({ where: { ...where, status: 'SKIPPED' } }),
-  ]);
+  const groups = await prisma.scrapeTask.groupBy({
+    by: ['status'],
+    where,
+    _count: true,
+  });
+
+  const counts: Record<string, number> = {};
+  for (const g of groups) {
+    counts[g.status] = g._count;
+  }
+
+  const pending = counts['PENDING'] ?? 0;
+  const inProgress = counts['IN_PROGRESS'] ?? 0;
+  const completed = counts['COMPLETED'] ?? 0;
+  const failed = counts['FAILED'] ?? 0;
+  const skipped = counts['SKIPPED'] ?? 0;
 
   return {
     pending,
@@ -352,13 +361,38 @@ export async function finalizeSyncJob(syncJobId: string): Promise<void> {
   );
 }
 
-/** Clean up old task records (older than 24 hours) to prevent table bloat */
+/** Clean up old operational records to prevent table bloat.
+ *  - ScrapeTask: 48h (operational, high volume ~25K/day)
+ *  - SyncJob:    30d (completed/failed only)
+ *  - DealEvent:  90d
+ *  - NotificationLog: 30d
+ *  - AlertEvent: 90d (read only; unread kept indefinitely)
+ *  ⚠️ PriceSnapshot is NEVER deleted — sacred price history.
+ */
 export async function cleanupOldTasks(): Promise<number> {
-  const cutoff = new Date(Date.now() - 24 * 60 * 60_000);
-  const result = await prisma.scrapeTask.deleteMany({
-    where: { createdAt: { lt: cutoff } },
-  });
-  return result.count;
+  const now = Date.now();
+  const hrs48  = new Date(now - 48 * 60 * 60_000);
+  const days30 = new Date(now - 30 * 24 * 60 * 60_000);
+  const days90 = new Date(now - 90 * 24 * 60 * 60_000);
+
+  const [tasks, syncJobs, deals, notifs, alerts] = await Promise.all([
+    prisma.scrapeTask.deleteMany({ where: { createdAt: { lt: hrs48 } } }),
+    prisma.syncJob.deleteMany({
+      where: { status: { in: ['COMPLETED', 'FAILED'] }, createdAt: { lt: days30 } },
+    }),
+    prisma.dealEvent.deleteMany({ where: { detectedAt: { lt: days90 } } }),
+    prisma.notificationLog.deleteMany({ where: { createdAt: { lt: days30 } } }),
+    prisma.alertEvent.deleteMany({ where: { isRead: true, triggeredAt: { lt: days90 } } }),
+  ]);
+
+  const total = tasks.count + syncJobs.count + deals.count + notifs.count + alerts.count;
+  if (total > 0) {
+    console.log(
+      `[cleanup] 🗑️ Removed: ${tasks.count} tasks, ${syncJobs.count} syncJobs, ` +
+      `${deals.count} dealEvents, ${notifs.count} notifLogs, ${alerts.count} alertEvents`
+    );
+  }
+  return total;
 }
 
 // ─── Emergency Scrape Queue ─────────────────────────────────────
