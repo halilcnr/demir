@@ -311,12 +311,16 @@ async function shouldSendSmartAlert(listingId: string, newPrice: number): Promis
 
 type NotificationTier = 'GLOBAL_FLOOR' | 'FAMILY_ARBITRAGE';
 
-function buildArbitrageAlertMessage(
+// ═══════════════════════════════════════════════════════════════════
+//  TWO-PHASE NOTIFICATION SYSTEM
+//  Phase 1 (Flash): Product + price + link — sent instantly
+//  Phase 2 (Detail): Analytics, gen comparison, score, timing
+// ═══════════════════════════════════════════════════════════════════
+
+function buildFlashMessage(
   payload: SmartDealPayload,
   arb: ArbitrageResult,
   market: GlobalMarketSnapshot,
-  genContext: GenerationalContext | null,
-  timings?: { analysisMs: number; totalMs: number },
 ): string {
   const fmtPrice = (p: number) => p.toLocaleString('tr-TR', { maximumFractionDigits: 0 });
   const lines: string[] = [];
@@ -341,22 +345,51 @@ function buildArbitrageAlertMessage(
   }
   lines.push('');
 
+  // ── Link (immediately actionable) ──
+  lines.push(`🔗 <a href="${payload.productUrl}">Satın Al →</a>`);
+
+  return lines.join('\n');
+}
+
+interface EngineInfo {
+  tier: string;
+  minScore: number;
+}
+
+function buildDetailMessage(
+  payload: SmartDealPayload,
+  arb: ArbitrageResult,
+  market: GlobalMarketSnapshot,
+  genContext: GenerationalContext | null,
+  timings: { dataMs: number; analysisMs: number; totalMs: number },
+  engine?: EngineInfo,
+): string {
+  const fmtPrice = (p: number) => p.toLocaleString('tr-TR', { maximumFractionDigits: 0 });
+  const lines: string[] = [];
+
+  lines.push(`📊 <b>Analiz: ${payload.variantLabel}</b>`);
+  lines.push('');
+
   // ── Market ──
   if (arb.isMarketLeader) {
-    lines.push('📊 Tüm mağaza ve renklerde <b>en ucuz</b>');
+    lines.push('Tüm mağaza ve renklerde <b>en ucuz</b>');
   } else {
-    lines.push(`📊 En ucuz: <b>${fmtPrice(arb.globalFloor)} TL</b> (${market.globalFloorRetailer})`);
+    lines.push(`En ucuz: <b>${fmtPrice(arb.globalFloor)} TL</b> (${market.globalFloorRetailer})`);
   }
   if (market.marketAverage > 0) {
-    lines.push(`   Piyasa ort: <b>${fmtPrice(Math.round(market.marketAverage))} TL</b>`);
+    lines.push(`Piyasa ort: <b>${fmtPrice(Math.round(market.marketAverage))} TL</b>`);
   }
   if (market.groupAllTimeLow != null) {
+    const isATL = payload.newPrice <= market.groupAllTimeLow;
     if (isATL) {
-      lines.push('   🏅 Tüm zamanların en düşük fiyatı!');
+      lines.push('🏅 Tüm zamanların en düşük fiyatı!');
     } else {
-      lines.push(`   ATL: ${fmtPrice(market.groupAllTimeLow)} TL`);
+      const distPct = (((payload.newPrice - market.groupAllTimeLow) / market.groupAllTimeLow) * 100).toFixed(1);
+      lines.push(`ATL: ${fmtPrice(market.groupAllTimeLow)} TL (%${distPct} üstünde)`);
     }
   }
+
+  // ── Competitors ──
   if (market.globalCompetitors.length > 0) {
     const byRetailer = new Map<string, { name: string; price: number }>();
     for (const c of market.globalCompetitors) {
@@ -367,10 +400,10 @@ function buildArbitrageAlertMessage(
     }
     const parts = [...byRetailer.values()]
       .sort((a, b) => a.price - b.price)
-      .slice(0, 3)
+      .slice(0, 4)
       .map(c => `${c.name} ${fmtPrice(c.price)}`);
     if (parts.length > 0) {
-      lines.push(`   Rakipler: ${parts.join(', ')}`);
+      lines.push(`Rakipler: ${parts.join(', ')}`);
     }
   }
   lines.push('');
@@ -399,15 +432,42 @@ function buildArbitrageAlertMessage(
   if (market.isMarketCorrection) {
     lines.push('⚠️ Piyasa genelinde düzeltme tespit edildi');
   }
-  if (timings) {
-    lines.push(`⏱ ${(timings.totalMs / 1000).toFixed(1)}s`);
-  }
   lines.push('');
 
-  // ── Link ──
-  lines.push(`🔗 <a href="${payload.productUrl}">Satın Al →</a>`);
+  // ── Timing breakdown ──
+  const totalSec = (timings.totalMs / 1000).toFixed(1);
+  const dataSec = (timings.dataMs / 1000).toFixed(1);
+  const analysisSec = (timings.analysisMs / 1000).toFixed(1);
+  lines.push(`⏱️ ${totalSec}s`);
+  lines.push(`  📡 Veri: ${dataSec}s | 🧠 Analiz: ${analysisSec}s`);
+
+  // ── Engine details ──
+  if (engine) {
+    lines.push('');
+    lines.push(`⚙️ Tier: ${engine.tier}`);
+    lines.push(`⚙️ Karar: ${arb.verdict} | Skor: ${arb.score}/100`);
+    lines.push(`⚙️ Global taban: ${fmtPrice(arb.globalFloor)} TL (${market.globalFloorRetailer}/${market.globalFloorColor})`);
+    lines.push(`⚙️ Min skor: ${engine.minScore}`);
+  }
 
   return lines.join('\n');
+}
+
+/** Combined message for test endpoint (single message) */
+function buildArbitrageAlertMessage(
+  payload: SmartDealPayload,
+  arb: ArbitrageResult,
+  market: GlobalMarketSnapshot,
+  genContext: GenerationalContext | null,
+  timings?: { dataMs: number; analysisMs: number; totalMs: number },
+): string {
+  const flash = buildFlashMessage(payload, arb, market);
+  const detail = buildDetailMessage(
+    payload, arb, market, genContext,
+    timings ?? { dataMs: 0, analysisMs: 0, totalMs: 0 },
+    { tier: 'Test', minScore: 0 },
+  );
+  return flash + '\n\n' + detail;
 }
 
 // ─── Public: Smart Deal Notification (Tier-Based Arbitrage) ──────
@@ -535,10 +595,23 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
     return;
   }
 
-  // ── Step 8: Build & broadcast ──
+  // ── Step 8: Two-phase broadcast ──
+  //   Phase 1 (Flash): product + price + link — zero delay
+  //   Phase 2 (Detail): analytics, gen comparison, score, timing
+  const flashMsg = buildFlashMessage(payload, arb, market);
+  const flashResult = await broadcast(flashMsg);
+
   const totalMs = Date.now() - payload.discoveredAt;
-  const message = buildArbitrageAlertMessage(payload, arb, market, genContext, { analysisMs, totalMs });
-  const result = await broadcast(message);
+  const dataMs = analysisMs;  // DB queries
+  const computeMs = totalMs - dataMs;
+  const tierLabel = tier === 'GLOBAL_FLOOR' ? 'Tier 1 — Global Taban' : 'Tier 2 — Renk Arbitrajı';
+  const detailMsg = buildDetailMessage(payload, arb, market, genContext, { dataMs, analysisMs: computeMs, totalMs }, { tier: tierLabel, minScore });
+  const detailResult = await broadcast(detailMsg);
+
+  const result = {
+    sent: Math.max(flashResult.sent, detailResult.sent),
+    failed: flashResult.failed + detailResult.failed,
+  };
 
   // ── Step 9: Log ──
   const dropPercent = payload.oldPrice != null && payload.oldPrice > 0
@@ -551,6 +624,7 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
     sentCount++;
     console.log(`[telegram-arb] ✓ ${tier} sent: ${payload.variantLabel} (${payload.newPrice} TL, score=${arb.score}) → ${result.sent} subscriber(s)`);
 
+    const fullMessage = flashMsg + '\n\n' + detailMsg;
     await prisma.notificationLog.create({
       data: {
         messageType: msgType as never,
@@ -560,7 +634,7 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
         oldPrice: payload.oldPrice,
         newPrice: payload.newPrice,
         dropPercent,
-        messageText: message,
+        messageText: fullMessage,
         sentTo: result.sent,
         failedTo: result.failed,
         listingId: payload.listingId,
@@ -570,6 +644,7 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
     failCount++;
     console.error(`[telegram-arb] ✗ Broadcast failed: ${result.failed} failure(s)`);
 
+    const fullMessage = flashMsg + '\n\n' + detailMsg;
     await prisma.notificationLog.create({
       data: {
         messageType: msgType as never,
@@ -579,7 +654,7 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
         oldPrice: payload.oldPrice,
         newPrice: payload.newPrice,
         dropPercent,
-        messageText: message,
+        messageText: fullMessage,
         sentTo: 0,
         failedTo: result.failed,
         errorMessage: 'All subscribers failed',
@@ -765,6 +840,7 @@ export async function sendSmartDealTest(listingId?: string): Promise<{ ok: boole
   const barrierLabel = genContext
     ? (genContext.barrierPassed ? '✅ Geçti' : `🚫 ${genContext.reason}`)
     : '— (veri yok)';
+  const minScore = Math.max(settings.smartDealMinScore, DEFAULT_CONFIDENCE_GATE);
 
   const message = [
     '🧪 <b>ARBİTRAJ FIRSAT TESTİ</b>',
@@ -772,11 +848,7 @@ export async function sendSmartDealTest(listingId?: string): Promise<{ ok: boole
     buildArbitrageAlertMessage(payload, arb, market, genContext),
     '',
     '─────────────',
-    `⚙️ Tier: ${tierLabel}`,
     `⚙️ Bariyer: ${barrierLabel}`,
-    `⚙️ Karar: ${arb.verdict} | Skor: ${arb.score}/100`,
-    `⚙️ Global taban: ${market.globalFloor.toLocaleString('tr-TR')} TL (${market.globalFloorRetailer}/${market.globalFloorColor})`,
-    `⚙️ Min skor: ${Math.max(settings.smartDealMinScore, DEFAULT_CONFIDENCE_GATE)}`,
   ].join('\n');
 
   const result = await broadcast(message);
