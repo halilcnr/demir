@@ -308,9 +308,19 @@ export async function checkGenerationalBarrier(
   };
 }
 
+// ─── Cycle-scoped market snapshot cache (saves ~4 DB calls per duplicate variant group) ──
+const marketSnapshotCache = new Map<string, { data: GlobalMarketSnapshot | null; ts: number }>();
+const MARKET_CACHE_TTL_MS = 60_000; // 60s — covers one cycle
+
+/** Clear the market snapshot cache (call at cycle start) */
+export function clearMarketSnapshotCache(): void {
+  marketSnapshotCache.clear();
+}
+
 /**
  * Fetch the ENTIRE market state for this variant's global group
  * (same model + storage, all colors, all in-stock retailers) in optimized queries.
+ * Uses cycle-scoped in-memory cache to avoid redundant queries for same variant group.
  */
 export async function fetchGlobalMarketSnapshot(
   variantId: string,
@@ -321,6 +331,13 @@ export async function fetchGlobalMarketSnapshot(
     select: { familyId: true, storageGb: true, globalGroupId: true, family: { select: { name: true, brand: true } } },
   });
   if (!variant) return null;
+
+  // Cache key = familyId + storageGb (all colors in same group share this)
+  const cacheKey = `${variant.familyId}:${variant.storageGb}`;
+  const cached = marketSnapshotCache.get(cacheKey);
+  if (cached && (Date.now() - cached.ts) < MARKET_CACHE_TTL_MS) {
+    return cached.data;
+  }
 
   // ── Single optimized query: all in-stock listings for this global group ──
   const allListings = await prisma.listing.findMany({
@@ -453,7 +470,7 @@ export async function fetchGlobalMarketSnapshot(
     }
   }
 
-  return {
+  const result: GlobalMarketSnapshot = {
     globalFloor,
     globalFloorRetailer: cheapest.retailerSlug,
     globalFloorColor: cheapest.color,
@@ -468,6 +485,11 @@ export async function fetchGlobalMarketSnapshot(
     freshListingCount: freshPrices.length,
     staleBlockerListings,
   };
+
+  // Cache for subsequent calls with same variant group
+  marketSnapshotCache.set(cacheKey, { data: result, ts: Date.now() });
+
+  return result;
 }
 
 /**
@@ -855,6 +877,17 @@ async function createDealEvent(
   });
 }
 
+// ─── Alert rules cache (loaded once per cycle, saves ~2 DB calls per task) ──
+let alertRulesCache: Awaited<ReturnType<typeof prisma.alertRule.findMany>> | null = null;
+let alertRulesCacheTime = 0;
+const ALERT_RULES_CACHE_TTL_MS = 120_000; // 2 min — covers one cycle
+
+/** Clear alert rules cache (call at cycle start) */
+export function clearAlertRulesCache(): void {
+  alertRulesCache = null;
+  alertRulesCacheTime = 0;
+}
+
 /**
  * Alert kurallarını kontrol eder ve eşleşenleri tetikler.
  */
@@ -870,16 +903,20 @@ export async function checkAlertRules(
     select: { familyId: true },
   });
 
-  const rules = await prisma.alertRule.findMany({
-    where: {
-      isActive: true,
-      OR: [
-        { variantId },
-        { familyId: variant?.familyId ?? undefined },
-        { variantId: null, familyId: null },
-      ],
-    },
-  });
+  // Use cached rules if available
+  if (!alertRulesCache || (Date.now() - alertRulesCacheTime) > ALERT_RULES_CACHE_TTL_MS) {
+    alertRulesCache = await prisma.alertRule.findMany({
+      where: { isActive: true },
+    });
+    alertRulesCacheTime = Date.now();
+  }
+
+  // Filter in memory instead of querying DB
+  const rules = alertRulesCache.filter(rule =>
+    rule.variantId === variantId ||
+    rule.familyId === variant?.familyId ||
+    (rule.variantId === null && rule.familyId === null)
+  );
 
   for (const rule of rules) {
     if (rule.retailerSlug && rule.retailerSlug !== retailerSlug) continue;

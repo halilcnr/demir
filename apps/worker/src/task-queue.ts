@@ -152,8 +152,10 @@ export async function claimTasks(batchSize: number): Promise<ClaimedTask[]> {
 
   if (selected.length === 0) return [];
 
-  // Atomically claim: only update tasks that are still PENDING
+  // Bulk claim: try to claim all selected tasks in one shot, then fetch claimed ones
   const claimed: ClaimedTask[] = [];
+
+  // Atomically claim all selected tasks that are still PENDING
   for (const taskId of selected) {
     const result = await prisma.scrapeTask.updateMany({
       where: { id: taskId, status: 'PENDING' },
@@ -163,26 +165,35 @@ export async function claimTasks(batchSize: number): Promise<ClaimedTask[]> {
         lockedAt: now,
       },
     });
-
     if (result.count > 0) {
-      // Fetch the full task data
-      const task = await prisma.scrapeTask.findUnique({
-        where: { id: taskId },
-      });
-      if (task) {
-        claimed.push({
-          id: task.id,
-          syncJobId: task.syncJobId,
-          listingId: task.listingId,
-          retailerSlug: task.retailerSlug,
-          variantLabel: task.variantLabel,
-          productUrl: task.productUrl,
-        });
-      }
+      claimed.push({ id: taskId } as ClaimedTask); // placeholder
     }
   }
 
-  return claimed;
+  if (claimed.length === 0) return [];
+
+  // Single bulk fetch for all claimed task data (instead of N individual findUnique)
+  const claimedIds = claimed.map(c => c.id);
+  const fullTasks = await prisma.scrapeTask.findMany({
+    where: { id: { in: claimedIds } },
+    select: {
+      id: true,
+      syncJobId: true,
+      listingId: true,
+      retailerSlug: true,
+      variantLabel: true,
+      productUrl: true,
+    },
+  });
+
+  return fullTasks.map(task => ({
+    id: task.id,
+    syncJobId: task.syncJobId,
+    listingId: task.listingId,
+    retailerSlug: task.retailerSlug,
+    variantLabel: task.variantLabel,
+    productUrl: task.productUrl,
+  }));
 }
 
 export interface ClaimedTask {

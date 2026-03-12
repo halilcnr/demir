@@ -7,6 +7,7 @@ import { processTasksUntilDone, getTaskWorkerState } from './task-worker';
 import { resetCycleState } from './provider-health';
 import { clearSyncLogs, addSyncLog, finishSyncLogs, updateSyncProgress } from './sync-logger';
 import { resetAllConcurrency } from './distributed-rate-limiter';
+import { clearMarketSnapshotCache, clearAlertRulesCache } from './deals';
 
 const STARTUP_DELAY_MS = parseInt(process.env.STARTUP_DELAY_MS ?? '5000', 10);
 
@@ -76,7 +77,7 @@ export async function startScheduler(): Promise<void> {
       if (staleJobs.count > 0) console.log(`[scheduler] ♻️ Recovered ${staleJobs.count} stale job(s)`);
 
       await recoverStaleTasks();
-      await resetAllConcurrency();
+      resetAllConcurrency();
       await cleanupOldTasks().then(n => { if (n > 0) console.log(`[scheduler] 🗑️ Cleaned ${n} old tasks`); });
     } catch (err) {
       console.warn('[scheduler] Cleanup error:', err instanceof Error ? err.message : err);
@@ -120,6 +121,8 @@ async function runCycle(): Promise<void> {
 
   resetCycleState();
   clearSyncLogs();
+  clearMarketSnapshotCache();
+  clearAlertRulesCache();
 
   try {
     // Check if there's already an active sync job with tasks

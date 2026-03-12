@@ -13,8 +13,8 @@ import { randomUUID } from 'crypto';
 /** Unique ID for this worker process */
 export const WORKER_ID = `${hostname()}-${randomUUID().slice(0, 8)}`;
 
-const HEARTBEAT_INTERVAL_MS = 10_000; // 10s
-const WORKER_TIMEOUT_MS = 30_000;     // Consider dead after 30s no heartbeat
+const HEARTBEAT_INTERVAL_MS = 30_000; // 30s (reduced from 10s to save DB calls)
+const WORKER_TIMEOUT_MS = 90_000;     // Consider dead after 90s no heartbeat
 
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let localTasksCompleted = 0;

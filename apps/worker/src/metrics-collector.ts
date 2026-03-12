@@ -232,19 +232,57 @@ export async function persistMetricsToDB(): Promise<void> {
   }
 }
 
-// ─── Increment Counters on DB ───────────────────────────────────
+// ─── Batched Provider Counter (in-memory → periodic DB flush) ───
 
-export async function incrementProviderCounter(slug: string, field: 'successCount' | 'failureCount' | 'blockedCount' | 'rateLimitCount' | 'timeoutCount'): Promise<void> {
-  try {
-    await prisma.providerMetrics.upsert({
-      where: { retailerSlug: slug },
-      create: { retailerSlug: slug, [field]: 1, totalRequests: 1 },
-      update: { [field]: { increment: 1 }, totalRequests: { increment: 1 } },
-    });
-  } catch {
-    // Non-fatal
+type CounterField = 'successCount' | 'failureCount' | 'blockedCount' | 'rateLimitCount' | 'timeoutCount';
+
+const pendingCounters = new Map<string, Map<CounterField, number>>();
+const COUNTER_FLUSH_INTERVAL_MS = 15_000; // flush every 15s
+
+/** Increment a provider counter in memory (0 DB calls). */
+export function incrementProviderCounter(slug: string, field: CounterField): void {
+  let slugCounters = pendingCounters.get(slug);
+  if (!slugCounters) {
+    slugCounters = new Map();
+    pendingCounters.set(slug, slugCounters);
+  }
+  slugCounters.set(field, (slugCounters.get(field) ?? 0) + 1);
+}
+
+/** Flush pending counters to DB (called periodically). */
+async function flushProviderCounters(): Promise<void> {
+  if (pendingCounters.size === 0) return;
+
+  const snapshot = new Map(pendingCounters);
+  pendingCounters.clear();
+
+  for (const [slug, fields] of snapshot) {
+    const updates: Record<string, { increment: number }> = {};
+    let totalIncrement = 0;
+    for (const [field, count] of fields) {
+      updates[field] = { increment: count };
+      totalIncrement += count;
+    }
+    updates['totalRequests'] = { increment: totalIncrement };
+
+    try {
+      await prisma.providerMetrics.upsert({
+        where: { retailerSlug: slug },
+        create: {
+          retailerSlug: slug,
+          totalRequests: totalIncrement,
+          ...Object.fromEntries([...fields].map(([f, c]) => [f, c])),
+        },
+        update: updates,
+      });
+    } catch {
+      // Non-fatal — counters are approximate
+    }
   }
 }
+
+// Start the flush timer
+setInterval(() => { flushProviderCounters().catch(() => {}); }, COUNTER_FLUSH_INTERVAL_MS);
 
 // ─── Risk Level Helpers ─────────────────────────────────────────
 

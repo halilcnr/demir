@@ -291,7 +291,7 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
             // Record metrics
             recordCircuitSuccess(slug);
             recordMetricEvent(slug, 'success', respTime);
-            incrementProviderCounter(slug, 'successCount').catch(() => {});
+            incrementProviderCounter(slug, 'successCount');
             console.log(`[sync] ✓ ${slug} — ${result.rawTitle} → ${result.price} TL (${stratUsed}, ${respTime}ms, ${confidence ?? 'n/a'})`);
             addSyncLog({ type: 'success', retailer: slug, variant: variantLabel, message: `${slug} → ${result.price.toLocaleString('tr-TR')} TL`, price: result.price, strategy: stratUsed, responseTimeMs: respTime });
             logScrapeAttempt({ retailer: slug, variant: variantLabel, strategy: stratUsed, status: 'success', responseTimeMs: respTime, price: result.price, confidence });
@@ -426,7 +426,7 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
             await recordBlocked(slug);
             recordCircuitFailure(slug);
             recordMetricEvent(slug, 'blocked', 0);
-            incrementProviderCounter(slug, 'blockedCount').catch(() => {});
+            incrementProviderCounter(slug, 'blockedCount');
             logScrapeAttempt({ retailer: slug, variant: variantLabel, status: 'blocked', httpStatus: 403 });
 
             await prisma.listing.update({
@@ -448,7 +448,7 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
             applyCooldown(slug, 'rate_limit', err.retryAfterMs);
             recordCircuitFailure(slug);
             recordMetricEvent(slug, 'rate_limited', 0);
-            incrementProviderCounter(slug, 'rateLimitCount').catch(() => {});
+            incrementProviderCounter(slug, 'rateLimitCount');
             logScrapeAttempt({ retailer: slug, variant: variantLabel, status: 'rate_limited', httpStatus: 429 });
             await prisma.listing.update({
               where: { id: listing.id },

@@ -201,7 +201,7 @@ async function processOneTask(task: ClaimedTask): Promise<'success' | 'failure' 
   }
 
   // Distributed rate limit check
-  const hasSlot = await acquireRateSlot(slug);
+  const hasSlot = acquireRateSlot(slug);
   if (!hasSlot) {
     await skipTask(taskId, 'rate limit exceeded');
     recordTaskSkipped();
@@ -211,7 +211,7 @@ async function processOneTask(task: ClaimedTask): Promise<'success' | 'failure' 
 
   const provider = getProvider(slug);
   if (!provider) {
-    await releaseRateSlot(slug);
+    releaseRateSlot(slug);
     await skipTask(taskId, 'no provider found');
     recordTaskSkipped();
     return 'skipped';
@@ -232,7 +232,7 @@ async function processOneTask(task: ClaimedTask): Promise<'success' | 'failure' 
     });
 
     if (!listing || !listing.isActive) {
-      await releaseRateSlot(slug);
+      releaseRateSlot(slug);
       await skipTask(taskId, 'listing inactive or not found');
       recordTaskSkipped();
       return 'skipped';
@@ -245,7 +245,50 @@ async function processOneTask(task: ClaimedTask): Promise<'success' | 'failure' 
       const respTime = (meta?.responseTimeMs as number) ?? (Date.now() - startMs);
       const previousPrice = listing.currentPrice ?? null;
 
-      // Update listing
+      const priceChanged = previousPrice != null && previousPrice !== result.price;
+
+      // Create price snapshot (smart dedup)
+      await recordPriceSnapshot({
+        listingId,
+        observedPrice: result.price,
+        previousPrice,
+        currency: 'TRY',
+        changePercent: previousPrice
+          ? calculateChangePercent(previousPrice, result.price)
+          : null,
+        changeAmount: previousPrice ? result.price - previousPrice : null,
+        source: 'direct',
+        strategyUsed: (meta?.strategyUsed as string) ?? null,
+        parseConfidence: meta?.parseConfidence
+          ? ({ high: 0.95, medium: 0.7, low: 0.4 } as Record<string, number>)[String(meta.parseConfidence)] ?? null
+          : null,
+      });
+
+      // Deal detection — ONLY when price changed (saves ~14-17 DB calls for ~70% of tasks)
+      let isDeal = listing.isDeal ?? false;
+      let dealScore = listing.dealScore ?? null;
+
+      if (priceChanged || !previousPrice) {
+        const deal = await detectDeal({
+          listingId,
+          variantId: listing.variantId,
+          retailerId: listing.retailerId,
+          currentPrice: result.price,
+          previousPrice,
+          lowestPrice: listing.lowestPrice ?? result.price,
+          highestPrice: listing.highestPrice ?? result.price,
+          retailerSlug: slug,
+        });
+
+        isDeal = deal !== null && deal.score >= 30;
+        dealScore = deal?.score ?? null;
+
+        if (priceChanged) {
+          await checkAlertRules(listing.variantId, listingId, result.price, previousPrice, slug);
+        }
+      }
+
+      // Single listing update (merged: prices + deal status)
       await prisma.listing.update({
         where: { id: listingId },
         data: {
@@ -266,47 +309,10 @@ async function processOneTask(task: ClaimedTask): Promise<'success' | 'failure' 
           lastSuccessAt: new Date(),
           lastCheckedAt: new Date(),
           discoverySource: 'direct',
+          isDeal,
+          dealScore,
         },
       });
-
-      // Create price snapshot (smart dedup)
-      await recordPriceSnapshot({
-        listingId,
-        observedPrice: result.price,
-        previousPrice,
-        currency: 'TRY',
-        changePercent: previousPrice
-          ? calculateChangePercent(previousPrice, result.price)
-          : null,
-        changeAmount: previousPrice ? result.price - previousPrice : null,
-        source: 'direct',
-        strategyUsed: (meta?.strategyUsed as string) ?? null,
-        parseConfidence: meta?.parseConfidence
-          ? ({ high: 0.95, medium: 0.7, low: 0.4 } as Record<string, number>)[String(meta.parseConfidence)] ?? null
-          : null,
-      });
-
-      // Deal detection
-      const deal = await detectDeal({
-        listingId,
-        variantId: listing.variantId,
-        retailerId: listing.retailerId,
-        currentPrice: result.price,
-        previousPrice,
-        lowestPrice: listing.lowestPrice ?? result.price,
-        highestPrice: listing.highestPrice ?? result.price,
-        retailerSlug: slug,
-      });
-
-      const isDeal = deal !== null && deal.score >= 30;
-      await prisma.listing.update({
-        where: { id: listingId },
-        data: { isDeal, dealScore: deal?.score ?? null },
-      });
-
-      if (previousPrice && previousPrice !== result.price) {
-        await checkAlertRules(listing.variantId, listingId, result.price, previousPrice, slug);
-      }
 
       // Telegram: intelligent deal alert (price drop or first observation)
       if (!previousPrice || result.price < previousPrice) {
@@ -328,13 +334,13 @@ async function processOneTask(task: ClaimedTask): Promise<'success' | 'failure' 
       }
 
       // Record success
-      await releaseRateSlot(slug);
+      releaseRateSlot(slug);
       await completeTask(taskId, { price: result.price, responseTimeMs: respTime });
       await recordSuccess(slug);
       recordCircuitSuccess(slug);
       recordMetricEvent(slug, 'success', respTime);
       recordHealthSuccess(slug, listingId, respTime);
-      incrementProviderCounter(slug, 'successCount').catch(() => {});
+      incrementProviderCounter(slug, 'successCount');
       recordTaskComplete(Date.now() - startMs);
 
       const stratUsed = (meta?.strategyUsed as string) ?? 'unknown';
@@ -348,7 +354,7 @@ async function processOneTask(task: ClaimedTask): Promise<'success' | 'failure' 
       return 'success';
     } else {
       // Null result — try fallback
-      await releaseRateSlot(slug);
+      releaseRateSlot(slug);
       const fallbackResult = await tryFallback(task, listing, provider);
       if (fallbackResult === 'success') return 'success';
 
@@ -360,7 +366,7 @@ async function processOneTask(task: ClaimedTask): Promise<'success' | 'failure' 
       return 'failure';
     }
   } catch (err) {
-    await releaseRateSlot(slug);
+    releaseRateSlot(slug);
     return await handleTaskError(task, err);
   }
 }
@@ -486,7 +492,7 @@ async function handleTaskError(task: ClaimedTask, err: unknown): Promise<'succes
     await recordBlocked(slug);
     recordCircuitFailure(slug);
     recordMetricEvent(slug, 'blocked', 0);
-    incrementProviderCounter(slug, 'blockedCount').catch(() => {});
+    incrementProviderCounter(slug, 'blockedCount');
     recordTaskFailed();
     recordHealthFailure(slug, listingId, 'blocked', 403);
     await prisma.listing.update({ where: { id: listingId }, data: { lastBlockedAt: new Date(), lastFailureAt: new Date() } }).catch(() => {});
@@ -500,7 +506,7 @@ async function handleTaskError(task: ClaimedTask, err: unknown): Promise<'succes
     applyCooldown(slug, 'rate_limit', err.retryAfterMs);
     recordCircuitFailure(slug);
     recordMetricEvent(slug, 'rate_limited', 0);
-    incrementProviderCounter(slug, 'rateLimitCount').catch(() => {});
+    incrementProviderCounter(slug, 'rateLimitCount');
     recordTaskFailed();    recordHealthFailure(slug, listingId, 'blocked', 429);    addSyncLog({ type: 'warn', retailer: slug, variant: variantLabel, message: `${slug} hız limiti (429)` });
     return 'failure';
   }

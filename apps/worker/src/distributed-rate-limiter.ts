@@ -1,9 +1,9 @@
 /**
- * Distributed Rate Limiter.
+ * In-Memory Rate Limiter with periodic DB sync.
  *
- * Coordinates rate limits across all worker instances using PostgreSQL.
- * Each provider has a max requests-per-minute and max concurrency.
- * Workers check and increment counters atomically before sending requests.
+ * Replaces the old DB-per-request approach (4-5 DB calls/task) with
+ * in-memory counters synced to DB every 30s for dashboard visibility.
+ * Saves ~4-5 DB round-trips per scrape task.
  */
 
 import { prisma } from '@repo/shared';
@@ -22,78 +22,63 @@ const DEFAULT_LIMITS: Record<string, { maxPerMinute: number; maxConcurrency: num
 };
 
 const RATE_WINDOW_MS = 60_000; // 1 minute window
+const DB_SYNC_INTERVAL_MS = 30_000; // sync to DB every 30s
+
+// ─── In-memory state per provider ─────────────────────────────
+interface ProviderRateState {
+  currentCount: number;
+  currentConcurrency: number;
+  windowStart: number; // epoch ms
+}
+
+const state = new Map<string, ProviderRateState>();
+
+function getState(slug: string): ProviderRateState {
+  let s = state.get(slug);
+  if (!s) {
+    s = { currentCount: 0, currentConcurrency: 0, windowStart: Date.now() };
+    state.set(slug, s);
+  }
+  return s;
+}
 
 /**
  * Try to acquire a rate-limited slot for a provider.
- * Returns true if the request can proceed, false if rate limit exceeded.
+ * Pure in-memory — 0 DB calls.
  */
-export async function acquireRateSlot(slug: string): Promise<boolean> {
+export function acquireRateSlot(slug: string): boolean {
   const limits = DEFAULT_LIMITS[slug] ?? { maxPerMinute: 10, maxConcurrency: 2 };
-  const now = new Date();
-  const windowStart = new Date(now.getTime() - RATE_WINDOW_MS);
+  const s = getState(slug);
+  const now = Date.now();
 
-  try {
-    // Ensure record exists
-    await prisma.providerRateLimit.upsert({
-      where: { id: slug },
-      create: {
-        id: slug,
-        maxPerMinute: limits.maxPerMinute,
-        maxConcurrency: limits.maxConcurrency,
-        currentCount: 0,
-        currentConcurrency: 0,
-        windowStart: now,
-      },
-      update: {},
-    });
-
-    // Reset window if expired, then try to increment atomically
-    // First, reset stale windows
-    await prisma.providerRateLimit.updateMany({
-      where: { id: slug, windowStart: { lt: windowStart } },
-      data: { currentCount: 0, windowStart: now },
-    });
-
-    // Try to increment count if under limit
-    const result = await prisma.providerRateLimit.updateMany({
-      where: {
-        id: slug,
-        currentCount: { lt: limits.maxPerMinute },
-        currentConcurrency: { lt: limits.maxConcurrency },
-      },
-      data: {
-        currentCount: { increment: 1 },
-        currentConcurrency: { increment: 1 },
-      },
-    });
-
-    return result.count > 0;
-  } catch {
-    // On error, allow the request (fail open for rate limiting)
-    return true;
+  // Reset window if expired
+  if (now - s.windowStart > RATE_WINDOW_MS) {
+    s.currentCount = 0;
+    s.windowStart = now;
   }
+
+  if (s.currentCount >= limits.maxPerMinute || s.currentConcurrency >= limits.maxConcurrency) {
+    return false;
+  }
+
+  s.currentCount++;
+  s.currentConcurrency++;
+  return true;
 }
 
 /**
  * Release a concurrency slot after a request completes.
+ * Pure in-memory — 0 DB calls.
  */
-export async function releaseRateSlot(slug: string): Promise<void> {
-  try {
-    // Decrement concurrency, but don't go below 0
-    const current = await prisma.providerRateLimit.findUnique({ where: { id: slug } });
-    if (current && current.currentConcurrency > 0) {
-      await prisma.providerRateLimit.updateMany({
-        where: { id: slug, currentConcurrency: { gt: 0 } },
-        data: { currentConcurrency: { decrement: 1 } },
-      });
-    }
-  } catch {
-    // Non-fatal
+export function releaseRateSlot(slug: string): void {
+  const s = state.get(slug);
+  if (s && s.currentConcurrency > 0) {
+    s.currentConcurrency--;
   }
 }
 
 /**
- * Get current rate limit status for all providers.
+ * Get current rate limit status for all providers (for dashboard).
  */
 export async function getAllRateLimits() {
   try {
@@ -106,10 +91,11 @@ export async function getAllRateLimits() {
 }
 
 /**
- * Initialize rate limit records for all known providers.
+ * Initialize rate limit records for all known providers & start DB sync.
  */
 export async function initRateLimits(): Promise<void> {
   for (const [slug, limits] of Object.entries(DEFAULT_LIMITS)) {
+    state.set(slug, { currentCount: 0, currentConcurrency: 0, windowStart: Date.now() });
     await prisma.providerRateLimit.upsert({
       where: { id: slug },
       create: {
@@ -126,13 +112,34 @@ export async function initRateLimits(): Promise<void> {
       },
     }).catch(() => {});
   }
+
+  // Periodic DB sync for dashboard visibility
+  setInterval(() => { syncRateLimitsToDB().catch(() => {}); }, DB_SYNC_INTERVAL_MS);
 }
 
 /**
  * Reset all concurrency counters (call on startup to clear stale locks from crashed workers).
  */
-export async function resetAllConcurrency(): Promise<void> {
-  await prisma.providerRateLimit.updateMany({
+export function resetAllConcurrency(): void {
+  for (const s of state.values()) {
+    s.currentConcurrency = 0;
+  }
+  // Also reset DB (fire-and-forget)
+  prisma.providerRateLimit.updateMany({
     data: { currentConcurrency: 0 },
   }).catch(() => {});
+}
+
+/** Sync in-memory state to DB for dashboard visibility */
+async function syncRateLimitsToDB(): Promise<void> {
+  for (const [slug, s] of state.entries()) {
+    await prisma.providerRateLimit.updateMany({
+      where: { id: slug },
+      data: {
+        currentCount: s.currentCount,
+        currentConcurrency: s.currentConcurrency,
+        windowStart: new Date(s.windowStart),
+      },
+    }).catch(() => {});
+  }
 }
