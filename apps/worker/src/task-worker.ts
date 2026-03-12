@@ -320,6 +320,7 @@ async function processOneTask(task: ClaimedTask): Promise<'success' | 'failure' 
             productUrl,
             newPrice: result.price,
             oldPrice: previousPrice ?? null,
+            discoveredAt: startMs,
           });
         } catch {
           // Non-fatal
@@ -340,6 +341,7 @@ async function processOneTask(task: ClaimedTask): Promise<'success' | 'failure' 
             oldPrice: previousPrice,
             lowestPrice: updatedLowest,
             isAllTimeLow: result.price <= updatedLowest,
+            discoveredAt: startMs,
           }).catch(() => {});
         }
       }
@@ -418,6 +420,7 @@ async function tryFallback(
       },
     });
 
+    const fallbackScrapeStartMs = Date.now();
     const retryResult = await provider.scrapeProductPage(match.productUrl);
     if (!retryResult || retryResult.price <= 0) {
       await prisma.listing.update({
@@ -471,6 +474,7 @@ async function tryFallback(
         productUrl: match.productUrl,
         newPrice: retryResult.price,
         oldPrice: previousPrice ?? null,
+        discoveredAt: fallbackScrapeStartMs,
       }).catch(() => {});
 
       // Simple price drop notification (fallback)
@@ -488,6 +492,7 @@ async function tryFallback(
           oldPrice: previousPrice,
           lowestPrice: updatedLowest,
           isAllTimeLow: retryResult.price <= updatedLowest,
+          discoveredAt: fallbackScrapeStartMs,
         }).catch(() => {});
       }
     }

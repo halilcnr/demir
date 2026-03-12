@@ -115,6 +115,8 @@ interface NotifySettings {
   // Smart deal settings
   smartDealMinScore: number;
   smartDealCooldownMin: number;
+  // Timing breakdown in messages
+  notifyTimingBreakdown: boolean;
   updatedAt: string;
 }
 
@@ -206,6 +208,7 @@ export default function TelegramSettingsPage() {
         notifyDailyReport: true,
         smartDealMinScore: 80,
         smartDealCooldownMin: 60,
+        notifyTimingBreakdown: false,
         updatedAt: new Date().toISOString(),
       }),
       [field]: value,
@@ -547,6 +550,7 @@ export default function TelegramSettingsPage() {
               <SettingPill label="Akıllı Fırsat" active={effectiveSettings.notifySmartDeal && effectiveSettings.notifyEnabled} icon={<Zap className="h-3 w-3" />} />
               <SettingPill label="Günlük Rapor" active={effectiveSettings.notifyDailyReport && effectiveSettings.notifyEnabled} icon={<FileText className="h-3 w-3" />} />
               <SettingPill label="En Düşük Fiyat" active={effectiveSettings.notifyAllTimeLow && effectiveSettings.notifyEnabled} icon={<Target className="h-3 w-3" />} />
+              <SettingPill label="Zamanlama Detayı" active={effectiveSettings.notifyTimingBreakdown && effectiveSettings.notifyEnabled} icon={<Clock className="h-3 w-3" />} />
             </div>
           </Card>
 
@@ -787,6 +791,13 @@ export default function TelegramSettingsPage() {
                   icon={<Target className="h-3.5 w-3.5 text-emerald-500" />}
                   checked={effectiveSettings.notifyAllTimeLow}
                   onChange={v => updateSettingsField('notifyAllTimeLow', v)}
+                />
+                <ToggleRow
+                  label="Zamanlama Detayı"
+                  description="Bildirimlerde keşiften gönderime kadar geçen süreyi göster"
+                  icon={<Clock className="h-3.5 w-3.5 text-cyan-500" />}
+                  checked={effectiveSettings.notifyTimingBreakdown}
+                  onChange={v => updateSettingsField('notifyTimingBreakdown', v)}
                 />
               </div>
             </div>

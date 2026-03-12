@@ -103,6 +103,10 @@ export async function PUT(request: Request) {
     updates.smartDealCooldownMin = v;
   }
 
+  if (body.notifyTimingBreakdown !== undefined) {
+    updates.notifyTimingBreakdown = Boolean(body.notifyTimingBreakdown);
+  }
+
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
   }

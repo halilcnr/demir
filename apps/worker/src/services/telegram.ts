@@ -29,6 +29,8 @@ interface CachedSettings {
   // Smart deal settings
   smartDealMinScore: number;
   smartDealCooldownMin: number;
+  // Timing breakdown in messages
+  notifyTimingBreakdown: boolean;
 }
 
 let settingsCache: CachedSettings | null = null;
@@ -57,6 +59,7 @@ export async function getNotifySettings(): Promise<CachedSettings> {
         notifyDailyReport: row.notifyDailyReport,
         smartDealMinScore: row.smartDealMinScore,
         smartDealCooldownMin: row.smartDealCooldownMin,
+        notifyTimingBreakdown: row.notifyTimingBreakdown,
       };
       settingsCacheTime = now;
       return settingsCache;
@@ -79,6 +82,7 @@ export async function getNotifySettings(): Promise<CachedSettings> {
     notifyDailyReport: true,
     smartDealMinScore: 80,
     smartDealCooldownMin: 60,
+    notifyTimingBreakdown: false,
   };
 }
 
@@ -93,6 +97,7 @@ export interface PriceDropPayload {
   oldPrice: number;
   lowestPrice: number | null;
   isAllTimeLow: boolean;
+  discoveredAt: number;      // Date.now() at scrape time
 }
 
 // ─── Smart Deal Types ────────────────────────────────────────────
@@ -105,6 +110,7 @@ export interface SmartDealPayload {
   productUrl: string;
   newPrice: number;
   oldPrice: number | null;
+  discoveredAt: number;      // Date.now() at scrape time
 }
 
 interface DealScoreResult {
@@ -202,8 +208,8 @@ async function broadcast(text: string): Promise<{ sent: number; failed: number }
 }
 
 // ─── Build Turkish price drop message ────────────────────────────
-function buildPriceDropMessage(payload: PriceDropPayload): string {
-  const { variantLabel, retailerName, productUrl, newPrice, oldPrice, lowestPrice, isAllTimeLow } = payload;
+function buildPriceDropMessage(payload: PriceDropPayload, showBreakdown: boolean): string {
+  const { variantLabel, retailerName, productUrl, newPrice, oldPrice, lowestPrice, isAllTimeLow, discoveredAt } = payload;
 
   const dropAmount = oldPrice - newPrice;
   const dropPercent = ((dropAmount / oldPrice) * 100).toFixed(1);
@@ -226,6 +232,16 @@ function buildPriceDropMessage(payload: PriceDropPayload): string {
   lines.push('');
   lines.push(`📉 <b>%${dropPercent} düşüş</b> (${fmtPrice(dropAmount)} TL fark)`);
   lines.push('');
+
+  // ── Timing info ──
+  const totalMs = Date.now() - discoveredAt;
+  const totalSec = (totalMs / 1000).toFixed(1);
+  lines.push(`⏱ <b>Bildirim ulaşma süresi:</b> ${totalSec} saniye`);
+  if (showBreakdown) {
+    lines.push(`  📡 Keşiften bildirime: ${totalSec}s`);
+  }
+  lines.push('');
+
   lines.push(`🔗 <a href="${productUrl}">Ürüne Git</a>`);
 
   return lines.join('\n');
@@ -332,7 +348,8 @@ export async function notifyPriceDrop(payload: PriceDropPayload): Promise<void> 
     return;
   }
 
-  const message = buildPriceDropMessage(payload);
+  const settings = await getNotifySettings();
+  const message = buildPriceDropMessage(payload, settings.notifyTimingBreakdown);
   const result = await broadcast(message);
 
   const msgType = payload.isAllTimeLow ? 'ALL_TIME_LOW' : 'PRICE_DROP';
@@ -693,7 +710,7 @@ async function shouldSendSmartAlert(listingId: string, newPrice: number): Promis
 }
 
 // ─── Rich Turkish Message Builder ────────────────────────────────
-function buildSmartAlertMessage(payload: SmartDealPayload, sr: DealScoreResult): string {
+function buildSmartAlertMessage(payload: SmartDealPayload, sr: DealScoreResult, showBreakdown: boolean, timings?: { analysisMs: number; totalMs: number }): string {
   const fmtPrice = (p: number) => p.toLocaleString('tr-TR', { maximumFractionDigits: 0 });
   const lines: string[] = [];
 
@@ -760,6 +777,19 @@ function buildSmartAlertMessage(payload: SmartDealPayload, sr: DealScoreResult):
     lines.push('');
   }
 
+  // ── Timing info ──
+  if (timings) {
+    const totalSec = (timings.totalMs / 1000).toFixed(1);
+    lines.push(`⏱ <b>Bildirim ulaşma süresi:</b> ${totalSec} saniye`);
+    if (showBreakdown) {
+      const scrapeSec = ((timings.totalMs - timings.analysisMs) / 1000).toFixed(1);
+      const analysisSec = (timings.analysisMs / 1000).toFixed(1);
+      lines.push(`  📡 Veri toplama: ${scrapeSec}s`);
+      lines.push(`  🧠 Analiz + gönderim: ${analysisSec}s`);
+    }
+    lines.push('');
+  }
+
   // ── Link ──
   lines.push(`🔗 <a href="${payload.productUrl}">Ürüne Git →</a>`);
 
@@ -783,7 +813,9 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
   const smartCooldownMs = settings.smartDealCooldownMin * 60_000;
 
   // 1) Compute deal score from live market data
+  const analysisStartMs = Date.now();
   const sr = await computeDealScore(payload.variantId, payload.newPrice, payload.oldPrice);
+  const analysisMs = Date.now() - analysisStartMs;
   console.log(`[telegram-smart] ${payload.retailerSlug} ${payload.variantLabel}: score=${sr.score} tier=${sr.tier}`);
 
   // 1.5) Family-level gate: suppress if a cheaper sibling color exists (>2% cheaper)
@@ -854,7 +886,8 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
   }
 
   // 5) Build & broadcast
-  const message = buildSmartAlertMessage(payload, sr);
+  const totalMs = Date.now() - payload.discoveredAt;
+  const message = buildSmartAlertMessage(payload, sr, settings.notifyTimingBreakdown, { analysisMs, totalMs });
   const result = await broadcast(message);
 
   // 6) Log
@@ -1070,12 +1103,13 @@ export async function sendSmartDealTest(listingId?: string): Promise<{ ok: boole
     productUrl: listing.productUrl,
     newPrice: listing.currentPrice,
     oldPrice: listing.previousPrice,
+    discoveredAt: Date.now(),
   };
 
   const message = [
     '🧪 <b>FIRSAT SKORU TEST MESAJI</b>',
     '',
-    buildSmartAlertMessage(payload, sr),
+    buildSmartAlertMessage(payload, sr, settings.notifyTimingBreakdown),
     '',
     '─────────────',
     `⚙️ Bu bir test mesajıdır. Gerçek bildirimler yalnızca skor ≥ ${settings.smartDealMinScore} olduğunda gönderilir.`,

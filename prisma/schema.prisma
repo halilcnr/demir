@@ -379,6 +379,9 @@ model AppSettings {
   smartDealMinScore       Int    @default(80)    // Minimum skor (0-100) — sadece bu ve üstü gönderilir
   smartDealCooldownMin    Int    @default(60)    // Aynı listing için akıllı fırsat bekleme süresi (dk)
 
+  // Bildirim zamanlama detayı
+  notifyTimingBreakdown   Boolean @default(false) // Bildirimde zamanlama detayını göster
+
   updatedAt             DateTime @updatedAt
 }
 

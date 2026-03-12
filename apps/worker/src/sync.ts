@@ -183,6 +183,7 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
             continue;
           }
 
+          const scrapeStartMs = Date.now();
           const result = await provider.scrapeProductPage(listing.productUrl);
           itemsScanned++;
 
@@ -271,6 +272,7 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
                   productUrl: listing.productUrl,
                   newPrice: result.price,
                   oldPrice: previousPrice ?? null,
+                  discoveredAt: scrapeStartMs,
                 });
               } catch (tgErr) {
                 console.error('[telegram] Notification error (non-fatal):', tgErr instanceof Error ? tgErr.message : tgErr);
@@ -291,6 +293,7 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
                   oldPrice: previousPrice,
                   lowestPrice: updatedLowest,
                   isAllTimeLow: result.price <= updatedLowest,
+                  discoveredAt: scrapeStartMs,
                 }).catch(() => {});
               }
             }
@@ -388,6 +391,7 @@ export async function runSync(retailerSlug?: string, variantId?: string) {
                         productUrl: discoveryForRetailer.productUrl,
                         newPrice: retryResult.price,
                         oldPrice: previousPrice ?? null,
+                        discoveredAt: scrapeStartMs,
                       });
                     } catch (tgErr) {
                       console.error('[telegram] Notification error (non-fatal):', tgErr instanceof Error ? tgErr.message : tgErr);
