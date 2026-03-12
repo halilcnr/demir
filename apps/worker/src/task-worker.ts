@@ -98,7 +98,7 @@ export async function processTasksUntilDone(syncJobId: string): Promise<{
     await recoverStaleTasks();
 
     let emptyRounds = 0;
-    const MAX_EMPTY_ROUNDS = 8; // Higher threshold for distributed safety with 5+ workers
+    const MAX_EMPTY_ROUNDS = 3; // Fast transition for dual-worker back-to-back cycles
 
     while (emptyRounds < MAX_EMPTY_ROUNDS) {
       // Claim a batch of tasks
@@ -107,8 +107,8 @@ export async function processTasksUntilDone(syncJobId: string): Promise<{
       if (tasks.length === 0) {
         emptyRounds++;
         if (emptyRounds < MAX_EMPTY_ROUNDS) {
-          // Brief pause before retrying — other workers might still be generating tasks
-          await new Promise(r => setTimeout(r, 2000));
+          // Brief pause before retrying — other worker might still be processing
+          await new Promise(r => setTimeout(r, 1000));
         }
         continue;
       }
