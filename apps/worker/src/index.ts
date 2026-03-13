@@ -493,19 +493,35 @@ server.listen(PORT, () => {
 // Start Telegram subscriber polling (/start, /stop commands)
 startTelegramPolling();
 
+// ─── Overlap-guarded periodic tasks ─────────────────────────────
+// Each flag prevents re-entry if the previous invocation is still running.
+let metricsRunning = false;
+let healthFlushRunning = false;
+let analyticsRunning = false;
+let maintenanceRunning = false;
+let housekeepingRunning = false;
+
 // Periodically persist metrics to DB (every 60s)
-setInterval(() => {
-  persistMetricsToDB().catch(() => {});
+setInterval(async () => {
+  if (metricsRunning) return;
+  metricsRunning = true;
+  try { await persistMetricsToDB(); } catch {} finally { metricsRunning = false; }
 }, 60_000);
 
 // Flush hourly health snapshots (every 5 min)
-setInterval(() => {
-  flushHourlySnapshots().catch(() => {});
+setInterval(async () => {
+  if (healthFlushRunning) return;
+  healthFlushRunning = true;
+  try { await flushHourlySnapshots(); } catch {} finally { healthFlushRunning = false; }
 }, 5 * 60_000);
 
-// Recompute price analytics (every 15 min)
-setInterval(() => {
-  computeAllVariantAnalytics().catch(() => {});
+// Recompute price analytics (every 15 min) — overlap guard CRITICAL for memory
+setInterval(async () => {
+  if (analyticsRunning) return;
+  analyticsRunning = true;
+  try { await computeAllVariantAnalytics(); }
+  catch (err) { console.error('[worker] Analytics failed:', err); }
+  finally { analyticsRunning = false; }
 }, 15 * 60_000);
 
 // Daily health report to Telegram (check every hour, send at ~09:00 Istanbul time)
@@ -543,16 +559,36 @@ setInterval(async () => {
 }, 60 * 60_000);
 
 // Cleanup old snapshots + price maintenance (daily)
-setInterval(() => {
-  cleanupOldSnapshots().catch(() => {});
-  runPriceMaintenance().catch((err) => console.error('[worker] Price maintenance failed:', err));
+setInterval(async () => {
+  if (maintenanceRunning) return;
+  maintenanceRunning = true;
+  try {
+    await cleanupOldSnapshots();
+    await runPriceMaintenance();
+  } catch (err) { console.error('[worker] Maintenance failed:', err); }
+  finally { maintenanceRunning = false; }
 }, 24 * 60 * 60_000);
 
 // Periodic housekeeping — dead workers + old tasks (every 10 min)
-setInterval(() => {
-  cleanupDeadWorkers().catch(() => {});
-  cleanupOldTasks().catch(() => {});
+setInterval(async () => {
+  if (housekeepingRunning) return;
+  housekeepingRunning = true;
+  try {
+    await cleanupDeadWorkers();
+    await cleanupOldTasks();
+  } catch {} finally { housekeepingRunning = false; }
 }, 10 * 60_000);
+
+// ─── Prisma engine memory flush (every 2 hours) ────────────────
+// Prisma's Rust query engine accumulates memory over 300K+ queries.
+// Disconnecting flushes its internal state; next query auto-reconnects.
+setInterval(async () => {
+  try {
+    const { prisma } = await import('@repo/shared');
+    await prisma.$disconnect();
+    console.log('[worker] 🧹 Prisma engine flushed');
+  } catch {}
+}, 2 * 60 * 60_000);
 
 // Initialize distributed worker identity + rate limits, then start scheduler
 (async () => {
