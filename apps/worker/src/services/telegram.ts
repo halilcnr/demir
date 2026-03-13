@@ -17,6 +17,16 @@ const GLOBAL_FLOOR_PROXIMITY = 1.02;               // Tier 2: price <= globalFlo
 
 const telegramPollLock = new DistributedLock('telegram-poll', 60_000);
 
+/** Istanbul-local timestamp with ms precision for message footers */
+function istanbulTimestamp(): string {
+  return new Date().toLocaleString('tr-TR', {
+    timeZone: 'Europe/Istanbul',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    fractionalSecondDigits: 3,
+  } as Intl.DateTimeFormatOptions);
+}
+
 // ─── DB Settings Cache ───────────────────────────────────────────
 interface CachedSettings {
   notifyDropPercent: number;
@@ -348,6 +358,10 @@ function buildFlashMessage(
   // ── Link (immediately actionable) ──
   lines.push(`🔗 <a href="${payload.productUrl}">Satın Al →</a>`);
 
+  // ── Timestamp ──
+  lines.push('');
+  lines.push(`<i>${istanbulTimestamp()}</i>`);
+
   return lines.join('\n');
 }
 
@@ -376,8 +390,18 @@ function buildDetailMessage(
   } else {
     lines.push(`En ucuz: <b>${fmtPrice(arb.globalFloor)} TL</b> (${market.globalFloorRetailer})`);
   }
+  if (market.allInStockPrices.length > 1) {
+    const sorted = [...market.allInStockPrices].sort((a, b) => a.price - b.price);
+    const secondCheapest = sorted[1];
+    if (secondCheapest) {
+      const diff = secondCheapest.price - payload.newPrice;
+      const diffStr = diff > 0 ? ` (${fmtPrice(Math.round(diff))} TL fark)` : '';
+      lines.push(`En yakın 2. teklif: <b>${fmtPrice(secondCheapest.price)} TL</b> — ${secondCheapest.retailerName}/${secondCheapest.color}${diffStr}`);
+    }
+  }
   if (market.marketAverage > 0) {
-    lines.push(`Piyasa ort: <b>${fmtPrice(Math.round(market.marketAverage))} TL</b>`);
+    const belowAvgPct = (((market.marketAverage - payload.newPrice) / market.marketAverage) * 100).toFixed(1);
+    lines.push(`Piyasa ort: <b>${fmtPrice(Math.round(market.marketAverage))} TL</b>${Number(belowAvgPct) > 0 ? ` (%${belowAvgPct} altında)` : ''}`);
   }
   if (market.groupAllTimeLow != null) {
     const isATL = payload.newPrice <= market.groupAllTimeLow;
@@ -450,6 +474,10 @@ function buildDetailMessage(
     lines.push(`⚙️ Min skor: ${engine.minScore}`);
   }
 
+  // ── Timestamp ──
+  lines.push('');
+  lines.push(`<i>${istanbulTimestamp()}</i>`);
+
   return lines.join('\n');
 }
 
@@ -515,17 +543,18 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
   }
 
   // ── Step 1: Fetch global market snapshot ──
-  const analysisStartMs = Date.now();
+  const pipelineStartMs = Date.now();
   const market = await fetchGlobalMarketSnapshot(payload.variantId);
   if (!market) {
     skippedCount++;
     console.log(`[telegram-arb] No market data for ${payload.variantLabel}`);
     return;
   }
+  const dataMs = Date.now() - pipelineStartMs;
 
   // ── Step 2: Run arbitrage algorithm ──
+  const computeStartMs = Date.now();
   const arb = computeArbitrage(payload.newPrice, payload.retailerSlug, market);
-  const analysisMs = Date.now() - analysisStartMs;
 
   console.log(`[telegram-arb] ${payload.retailerSlug} ${payload.variantLabel}: verdict=${arb.verdict} score=${arb.score}`);
 
@@ -601,11 +630,10 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
   const flashMsg = buildFlashMessage(payload, arb, market);
   const flashResult = await broadcast(flashMsg);
 
-  const totalMs = Date.now() - payload.discoveredAt;
-  const dataMs = analysisMs;  // DB queries
-  const computeMs = totalMs - dataMs;
+  const analysisMs = Date.now() - computeStartMs;
+  const totalMs = Date.now() - pipelineStartMs;
   const tierLabel = tier === 'GLOBAL_FLOOR' ? 'Tier 1 — Global Taban' : 'Tier 2 — Renk Arbitrajı';
-  const detailMsg = buildDetailMessage(payload, arb, market, genContext, { dataMs, analysisMs: computeMs, totalMs }, { tier: tierLabel, minScore });
+  const detailMsg = buildDetailMessage(payload, arb, market, genContext, { dataMs, analysisMs, totalMs }, { tier: tierLabel, minScore });
 
   // Fire-and-forget: detail mesajı flash'ı bekletmez
   broadcast(detailMsg).catch(err =>

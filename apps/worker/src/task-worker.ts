@@ -46,7 +46,6 @@ import { getAdaptiveDelay } from './provider-queue';
 import { claimTasks, completeTask, failTask, skipTask, getTaskQueueStats, recoverStaleTasks, type ClaimedTask } from './task-queue';
 import { acquireRateSlot, releaseRateSlot } from './distributed-rate-limiter';
 import { WORKER_ID, recordTaskComplete, recordTaskFailed, recordTaskSkipped, setWorkerStatus, setCurrentTask } from './worker-identity';
-import { queryFallbackSourcesDetailed } from './discovery';
 import { getWorkerConfig } from './worker-config';
 import { recordHealthSuccess, recordHealthFailure } from './services/scrape-health';
 
@@ -373,112 +372,16 @@ async function processOneTask(task: ClaimedTask): Promise<'success' | 'failure' 
 
 /**
  * Try fallback discovery when a direct scrape returns null.
+ * DISABLED: External discovery sources (akakce, cimri, epey, enuygun)
+ * cause unnecessary HTTP traffic, memory usage, and DB writes.
+ * All listing URLs are already seeded — fallback adds no value.
  */
 async function tryFallback(
-  task: ClaimedTask,
-  listing: { id: string; variantId: string; currentPrice: number | null; lowestPrice: number | null; highestPrice: number | null; retailer: { name: string }; variant: { family: { name: string }; color: string; storageGb: number } },
-  provider: ReturnType<typeof getProvider>,
+  _task: ClaimedTask,
+  _listing: { id: string; variantId: string; currentPrice: number | null; lowestPrice: number | null; highestPrice: number | null; retailer: { name: string }; variant: { family: { name: string }; color: string; storageGb: number } },
+  _provider: ReturnType<typeof getProvider>,
 ): Promise<'success' | 'failure'> {
-  if (!provider) return 'failure';
-
-  try {
-    const fallback = await queryFallbackSourcesDetailed(
-      listing.variant.family.name,
-      listing.variant.storageGb,
-      listing.variant.color,
-    );
-
-    const match = fallback.results.find(d => d.retailerSlug === task.retailerSlug);
-    if (!match || match.productUrl === task.productUrl || match.confidence < 0.55) {
-      return 'failure';
-    }
-
-    // Update listing URL
-    await prisma.listing.update({
-      where: { id: listing.id },
-      data: {
-        productUrl: match.productUrl,
-        resolvedViaFallback: true,
-        discoverySource: match.source,
-        discoveryConfidence: match.confidence,
-        lastResolvedAt: new Date(),
-        lastResolvedBySource: match.source,
-        lastResolvedRetailerUrl: match.productUrl,
-      },
-    });
-
-    const fallbackScrapeStartMs = Date.now();
-    const retryResult = await provider.scrapeProductPage(match.productUrl);
-    if (!retryResult || retryResult.price <= 0) {
-      await prisma.listing.update({
-        where: { id: listing.id },
-        data: { lastFallbackFailureAt: new Date() },
-      });
-      return 'failure';
-    }
-
-    const previousPrice = listing.currentPrice ?? null;
-    await prisma.listing.update({
-      where: { id: listing.id },
-      data: {
-        retailerProductTitle: retryResult.rawTitle,
-        currentPrice: retryResult.price,
-        previousPrice,
-        lowestPrice: listing.lowestPrice ? Math.min(listing.lowestPrice, retryResult.price) : retryResult.price,
-        highestPrice: listing.highestPrice ? Math.max(listing.highestPrice, retryResult.price) : retryResult.price,
-        stockStatus: retryResult.stockStatus,
-        lastSeenAt: new Date(),
-        lastSuccessAt: new Date(),
-        lastCheckedAt: new Date(),
-      },
-    });
-
-    await recordPriceSnapshot({
-      listingId: listing.id,
-      observedPrice: retryResult.price,
-      previousPrice,
-      currency: 'TRY',
-      changePercent: previousPrice ? calculateChangePercent(previousPrice, retryResult.price) : null,
-      changeAmount: previousPrice ? retryResult.price - previousPrice : null,
-      source: 'fallback',
-      strategyUsed: match.source,
-      parseConfidence: match.confidence,
-    });
-
-    await completeTask(task.id, { price: retryResult.price });
-    await recordSuccess(task.retailerSlug);
-    recordCircuitSuccess(task.retailerSlug);
-    recordTaskComplete(0);
-
-    // Telegram: intelligent deal alert (fallback)
-    if (!previousPrice || retryResult.price < previousPrice) {
-      await notifySmartDeal({
-        listingId: listing.id,
-        variantId: listing.variantId,
-        variantLabel: task.variantLabel,
-        retailerName: listing.retailer.name,
-        retailerSlug: task.retailerSlug,
-        productUrl: match.productUrl,
-        newPrice: retryResult.price,
-        oldPrice: previousPrice ?? null,
-        discoveredAt: fallbackScrapeStartMs,
-      }).catch(() => {});
-    }
-
-    addSyncLog({
-      type: 'success', retailer: task.retailerSlug, variant: task.variantLabel,
-      message: `${task.retailerSlug} (fallback) → ${retryResult.price.toLocaleString('tr-TR')} TL`,
-      price: retryResult.price,
-    });
-
-    return 'success';
-  } catch {
-    await prisma.listing.update({
-      where: { id: listing.id },
-      data: { lastFallbackFailureAt: new Date() },
-    }).catch(() => {});
-    return 'failure';
-  }
+  return 'failure';
 }
 
 /**
