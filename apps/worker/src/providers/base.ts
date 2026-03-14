@@ -139,9 +139,15 @@ export abstract class BaseProvider implements RetailerProvider {
       }
 
       const html = await res.text();
+
+      // Cap HTML at 2 MB — pages above this are bloated with inline assets
+      // and cause cheerio OOM; strategies won't find data in the tail anyway
+      const MAX_HTML_BYTES = 2 * 1024 * 1024;
+      const trimmedHtml = html.length > MAX_HTML_BYTES ? html.substring(0, MAX_HTML_BYTES) : html;
+
       recordSmartBackoffSuccess(this.retailerSlug);
-      storeSnapshot(this.retailerSlug, url, html, true);
-      return html;
+      storeSnapshot(this.retailerSlug, url, trimmedHtml, true);
+      return trimmedHtml;
     } catch (err) {
       if (
         err instanceof ProviderBlockedError ||

@@ -357,6 +357,16 @@ async function processOneTask(task: ClaimedTask): Promise<'success' | 'failure' 
       const fallbackResult = await tryFallback(task, listing, provider);
       if (fallbackResult === 'success') return 'success';
 
+      // Soft deactivation: mark OUT_OF_STOCK, recheck every 6h via task-queue
+      await prisma.listing.update({
+        where: { id: listingId },
+        data: {
+          lastFailureAt: new Date(),
+          lastCheckedAt: new Date(),
+          stockStatus: 'OUT_OF_STOCK',
+        },
+      }).catch(() => {});
+
       await failTask(taskId, 'scrape returned null');
       await recordFailure(slug);
       recordTaskFailed();
@@ -416,16 +426,27 @@ async function handleTaskError(task: ClaimedTask, err: unknown): Promise<'succes
 
   if (err instanceof ListingNotFoundError) {
     await failTask(taskId, 'not found (404)', 'not_found');
-    await prisma.listing.update({ where: { id: listingId }, data: { isActive: false, lastFailureAt: new Date() } }).catch(() => {});
+    // Soft deactivation: mark OUT_OF_STOCK, recheck every 6h via task-queue filter
+    await prisma.listing.update({
+      where: { id: listingId },
+      data: {
+        stockStatus: 'OUT_OF_STOCK',
+        lastFailureAt: new Date(),
+        lastCheckedAt: new Date(),
+      },
+    }).catch(() => {});
     recordTaskFailed();
     recordHealthFailure(slug, listingId, 'error', 404);
-    addSyncLog({ type: 'warn', retailer: slug, variant: variantLabel, message: `${slug} — ürün bulunamadı (404)` });
+    addSyncLog({ type: 'warn', retailer: slug, variant: variantLabel, message: `${slug} — ürün bulunamadı (stok dışı)` });
     return 'failure';
   }
 
   if (err instanceof InvalidListingError) {
     await failTask(taskId, 'invalid listing', 'invalid');
-    await prisma.listing.update({ where: { id: listingId }, data: { isActive: false, lastFailureAt: new Date() } }).catch(() => {});
+    await prisma.listing.update({
+      where: { id: listingId },
+      data: { stockStatus: 'OUT_OF_STOCK', lastFailureAt: new Date(), lastCheckedAt: new Date() },
+    }).catch(() => {});
     recordTaskFailed();
     return 'failure';
   }

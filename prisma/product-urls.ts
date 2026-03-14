@@ -196,7 +196,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-512-gb-siyah-p-HBCV00002VUQTS',
   },
   'iphone-14-512gb-blue': {
-    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-512-gb-mavi-p-HBCV00002VUQTU',
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-512-gb-mavi-p-HBCV00002VUQ85',
     a101: 'https://www.a101.com.tr/elektronik/apple-iphone-14-512-gb-cep-telefonu-mavi_p-26029310',
   },
   'iphone-14-512gb-starlight': {

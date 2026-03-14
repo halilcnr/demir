@@ -52,6 +52,15 @@ export async function generateTasks(
     !l.productUrl.includes('/sr?q=')
   );
 
+  // OUT_OF_STOCK listings: only include if last check was >6h ago (reduced frequency)
+  const OOS_RECHECK_MS = 6 * 60 * 60 * 1000;
+  const now = Date.now();
+  const scheduled = validListings.filter(l => {
+    if (l.stockStatus !== 'OUT_OF_STOCK') return true;
+    const lastChecked = l.lastCheckedAt?.getTime() ?? 0;
+    return (now - lastChecked) > OOS_RECHECK_MS;
+  });
+
   const syncJob = await prisma.syncJob.create({
     data: {
       retailerId: retailerSlug
@@ -62,23 +71,28 @@ export async function generateTasks(
     },
   });
 
-  if (validListings.length === 0) {
+  if (scheduled.length === 0) {
     return { syncJobId: syncJob.id, taskCount: 0 };
+  }
+
+  const oosSkipped = validListings.length - scheduled.length;
+  if (oosSkipped > 0) {
+    console.log(`[task-queue] Skipped ${oosSkipped} OUT_OF_STOCK listings (recheck in <6h)`);
   }
 
   // Provider-safe rotation: interleave retailers so tasks alternate providers
   // Group by retailer slug, then round-robin pick one from each group
-  const byProvider = new Map<string, typeof validListings>();
-  for (const l of validListings) {
+  const byProvider = new Map<string, typeof scheduled>();
+  for (const l of scheduled) {
     const slug = l.retailer.slug;
     if (!byProvider.has(slug)) byProvider.set(slug, []);
     byProvider.get(slug)!.push(l);
   }
 
-  const rotated: typeof validListings = [];
+  const rotated: typeof scheduled = [];
   const providerQueues = [...byProvider.values()];
   let idx = 0;
-  while (rotated.length < validListings.length) {
+  while (rotated.length < scheduled.length) {
     for (const q of providerQueues) {
       if (idx < q.length) {
         rotated.push(q[idx]);
