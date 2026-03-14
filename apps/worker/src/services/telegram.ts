@@ -7,11 +7,10 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
 const POLL_INTERVAL_MS = 30_000; // getUpdates polling interval
 
 // ─── Intelligent Filtering Constants ─────────────────────────────
-const STALE_BENCHMARK_MS = 12 * 60 * 60 * 1000;  // 12h — suppress if benchmark is stale
 const VELOCITY_COOLDOWN_MS = 4 * 60 * 60 * 1000;  // 4h — cooldown for oscillating variants
 const VELOCITY_WINDOW_MS = 4 * 60 * 60 * 1000;    // 4h — look-back for oscillation detection
-const VELOCITY_FLIP_THRESHOLD = 2;                 // ≥2 direction changes = oscillating
-const DEFAULT_CONFIDENCE_GATE = 85;                // Only push if score ≥ 85
+const VELOCITY_FLIP_THRESHOLD = 3;                 // ≥3 direction changes = oscillating
+const DEFAULT_CONFIDENCE_GATE = 75;                // Only push if score ≥ 75
 const SIBLING_DISCOUNT_THRESHOLD = 0.90;           // Tier 2: price < siblingAvg * 0.90
 const GLOBAL_FLOOR_PROXIMITY = 1.02;               // Tier 2: price <= globalFloor * 1.02
 
@@ -194,21 +193,6 @@ async function broadcast(text: string): Promise<{ sent: number; failed: number }
 // ═══════════════════════════════════════════════════════════════════
 
 /**
- * Freshness Filter: Returns true if the benchmark (previous price snapshot
- * used for comparison) is stale (>12h old) and thus unreliable.
- */
-async function isBenchmarkStale(listingId: string): Promise<boolean> {
-  const threshold = new Date(Date.now() - STALE_BENCHMARK_MS);
-  const recent = await prisma.priceSnapshot.findFirst({
-    where: { listingId, observedAt: { gte: threshold } },
-    orderBy: { observedAt: 'desc' },
-    select: { observedAt: true },
-  });
-  // If no snapshot within the window, the benchmark is stale
-  return !recent;
-}
-
-/**
  * Velocity Check: Returns true if this variant is oscillating
  * (≥2 direction changes within the last 4 hours) — suppress to prevent spam.
  */
@@ -273,7 +257,6 @@ function classifyNotificationTier(
 
 import { fetchGlobalMarketSnapshot, computeArbitrage, checkGenerationalBarrier } from '../deals';
 import type { ArbitrageResult, GlobalMarketSnapshot, GenerationalContext } from '../deals';
-import { enqueueEmergencyScrape } from '../task-queue';
 
 // ─── Fallback Constants ──────────────────────────────────────────
 const SMART_RE_ALERT_DROP_PERCENT = 1;
@@ -516,26 +499,6 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
   // Enforce minimum confidence gate (never below DEFAULT_CONFIDENCE_GATE)
   const minScore = Math.max(settings.smartDealMinScore, DEFAULT_CONFIDENCE_GATE);
   const smartCooldownMs = settings.smartDealCooldownMin * 60_000;
-
-  // ── Filter 0: Freshness — deferred alert if benchmark data is stale (>12h) ──
-  const stale = await isBenchmarkStale(payload.listingId);
-  if (stale) {
-    skippedCount++;
-    console.log(`[telegram-arb] Stale benchmark (>12h), deferred: ${payload.variantLabel}`);
-
-    // Trigger emergency re-scrape for the stale listing
-    enqueueEmergencyScrape([payload.listingId]).catch(err =>
-      console.error('[telegram-arb] Emergency scrape enqueue failed:', err)
-    );
-
-    // Send deferred notice instead of full suppression
-    const deferredMsg =
-      `⏳ <b>Ertelendi: ${payload.variantLabel}</b>\n` +
-      `💰 ${payload.newPrice.toLocaleString('tr-TR')} TL (${payload.retailerName})\n\n` +
-      `Piyasa verileri güncelleniyor, doğrulandığında bildirim gönderilecek.`;
-    await broadcast(deferredMsg);
-    return;
-  }
 
   // ── Filter 1: Velocity — suppress oscillating variants ──
   const oscillating = await isVariantOscillating(payload.listingId);
