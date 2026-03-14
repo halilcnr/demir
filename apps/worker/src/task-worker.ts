@@ -315,6 +315,7 @@ async function processOneTask(task: ClaimedTask): Promise<'success' | 'failure' 
 
       // Telegram: intelligent deal alert (price drop or first observation)
       if (!previousPrice || result.price < previousPrice) {
+        console.log(`[task-worker] Deal trigger: ${variantLabel} @ ${slug} — ${previousPrice ?? 'null'} → ${result.price} TL`);
         try {
           await notifySmartDeal({
             listingId,
@@ -357,13 +358,13 @@ async function processOneTask(task: ClaimedTask): Promise<'success' | 'failure' 
       const fallbackResult = await tryFallback(task, listing, provider);
       if (fallbackResult === 'success') return 'success';
 
-      // Soft deactivation: mark OUT_OF_STOCK, recheck every 6h via task-queue
+      // Record failure but keep listing active and IN_STOCK —
+      // null result means "couldn't parse", not necessarily "out of stock"
       await prisma.listing.update({
         where: { id: listingId },
         data: {
           lastFailureAt: new Date(),
           lastCheckedAt: new Date(),
-          stockStatus: 'OUT_OF_STOCK',
         },
       }).catch(() => {});
 

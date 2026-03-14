@@ -500,13 +500,16 @@ function buildArbitrageAlertMessage(
 
 // ─── Public: Smart Deal Notification (Tier-Based Arbitrage) ──────
 export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> {
-  if (!TELEGRAM_ENABLED) return;
+  if (!TELEGRAM_ENABLED) {
+    console.log(`[telegram-arb] TELEGRAM_ENABLED=false, skipping: ${payload.variantLabel}`);
+    return;
+  }
 
   const settings = await getNotifySettings();
 
   if (!settings.notifySmartDeal) {
     skippedCount++;
-    console.log(`[telegram-arb] Akıllı fırsat bildirimleri kapalı`);
+    console.log(`[telegram-arb] Akıllı fırsat bildirimleri kapalı (setting)`);
     return;
   }
 

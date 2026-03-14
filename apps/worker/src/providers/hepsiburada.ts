@@ -2,7 +2,6 @@ import * as cheerio from 'cheerio';
 import { BaseProvider, type ScrapeStrategy } from './base';
 import { normalizeIPhoneModel } from '@repo/shared';
 import type { ScrapedProduct } from '@repo/shared';
-import { ListingNotFoundError } from '../errors';
 
 export class HepsiburadaProvider extends BaseProvider {
   retailerSlug = 'hepsiburada';
@@ -30,18 +29,7 @@ export class HepsiburadaProvider extends BaseProvider {
     }
 
     // Fallback to HTML-based strategies (jsonld, css-selectors, meta-tags, next-data, regex)
-    const result = await super.scrapeProductPage(url);
-
-    // Detect delisted products: HB returns 200 with a page that has no product data
-    // If API failed AND all HTML strategies failed, this listing is likely gone
-    if (!result && codeMatch) {
-      // Verify by checking if the page is a "not found" type page
-      // (API was tried and failed + all 5 HTML strategies returned null = strong signal)
-      console.warn(`[hepsiburada] Product likely delisted (API + all HTML strategies failed): ${url}`);
-      throw new ListingNotFoundError(this.retailerSlug, url);
-    }
-
-    return result;
+    return super.scrapeProductPage(url);
   }
 
   /**
