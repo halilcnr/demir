@@ -15,6 +15,7 @@ import { getTaskWorkerState } from './task-worker';
 import { getScrapeHealthDashboard, generateDailyReport, buildHealthReportMessage, flushHourlySnapshots, cleanupOldSnapshots } from './services/scrape-health';
 import { computeAllVariantAnalytics, detectSmartDeals, buildSmartDealMessage } from './services/price-analytics';
 import { runPriceMaintenance, getPriceStorageStats } from './services/price-maintenance';
+import { runDealRadar } from './services/deal-radar';
 
 const startedAt = new Date().toISOString();
 console.log('=== iPhone Price Tracker Worker ===');
@@ -520,6 +521,13 @@ createResilientInterval(
   async () => { await computeAllVariantAnalytics(); },
   15 * 60_000,
   { maxBackoffMs: 30 * 60_000 }, // max 30min backoff for heavy job
+);
+
+// Fırsat Radarı — scan for 30-day and all-time lows (every 30 min)
+createResilientInterval(
+  'deal-radar',
+  async () => { await runDealRadar(); },
+  30 * 60_000,
 );
 
 // Cleanup old snapshots + price maintenance (daily)
