@@ -11,23 +11,29 @@ function withPoolLimit(url: string | undefined): string | undefined {
   return url + (url.includes('?') ? '&' : '?') + 'connection_limit=10';
 }
 
+// Use event-based error logging only on the server (Node.js).
+// In the browser, PrismaClient is a Proxy that throws on any property access,
+// so we must not call $on or use emit:'event' config in browser context.
+const isServer = typeof (globalThis as any).window === 'undefined';
+
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
     log: process.env.NODE_ENV === 'development'
       ? ['query', 'error', 'warn']
-      : [
-          { emit: 'event', level: 'error' },  // Capture errors as events for proper severity
-        ],
+      : isServer
+        ? [{ emit: 'event', level: 'error' }]  // Server: capture as events for proper severity
+        : ['error'],                             // Browser: standard config (won't actually run)
     datasourceUrl: withPoolLimit(process.env.DATABASE_URL),
   });
 
 // Ensure Prisma errors are logged with console.error (not info severity)
-// This fixes the issue where prisma:error was being logged as severity: "info"
-if (!globalForPrisma.prisma) {
+// Only attach on server side — PrismaClient.$on crashes in browser Proxy
+if (isServer && !globalForPrisma.prisma) {
   (prisma as any).$on?.('error', (e: any) => {
     console.error(`[prisma:error] ${e.message ?? e}`);
   });
 }
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
+
