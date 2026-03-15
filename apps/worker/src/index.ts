@@ -587,16 +587,9 @@ setInterval(async () => {
   } catch {} finally { housekeepingRunning = false; }
 }, 10 * 60_000);
 
-// ─── Prisma engine memory flush (every 2 hours) ────────────────
-// Prisma's Rust query engine accumulates memory over 300K+ queries.
-// Disconnecting flushes its internal state; next query auto-reconnects.
-setInterval(async () => {
-  try {
-    const { prisma } = await import('@repo/shared');
-    await prisma.$disconnect();
-    console.log('[worker] 🧹 Prisma engine flushed');
-  } catch {}
-}, 2 * 60 * 60_000);
+// NOTE: Periodic prisma.$disconnect() removed — it was causing
+// "Engine is not yet connected" errors on in-flight queries
+// (metrics upsert, heartbeat, rate limiter, locks, etc.).
 
 // Initialize distributed worker identity + rate limits, then start scheduler
 (async () => {
