@@ -7,6 +7,7 @@
  */
 
 import { prisma } from '@repo/shared';
+import { createResilientInterval } from './backoff';
 
 /** Default rate limits per provider */
 const DEFAULT_LIMITS: Record<string, { maxPerMinute: number; maxConcurrency: number }> = {
@@ -113,8 +114,12 @@ export async function initRateLimits(): Promise<void> {
     }).catch(() => {});
   }
 
-  // Periodic DB sync for dashboard visibility
-  setInterval(() => { syncRateLimitsToDB().catch(() => {}); }, DB_SYNC_INTERVAL_MS);
+  // Periodic DB sync for dashboard visibility — with exponential backoff
+  createResilientInterval(
+    'rate-limit-sync',
+    () => syncRateLimitsToDB(),
+    DB_SYNC_INTERVAL_MS,
+  );
 }
 
 /**
@@ -127,7 +132,9 @@ export function resetAllConcurrency(): void {
   // Also reset DB (fire-and-forget)
   prisma.providerRateLimit.updateMany({
     data: { currentConcurrency: 0 },
-  }).catch(() => {});
+  }).catch((err) => {
+    console.error('[rate-limiter] Failed to reset concurrency in DB:', err instanceof Error ? err.message : err);
+  });
 }
 
 /** Sync in-memory state to DB for dashboard visibility */
@@ -140,6 +147,7 @@ async function syncRateLimitsToDB(): Promise<void> {
         currentConcurrency: s.currentConcurrency,
         windowStart: new Date(s.windowStart),
       },
-    }).catch(() => {});
+    });
+    // No individual catch — let createResilientInterval handle backoff
   }
 }

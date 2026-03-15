@@ -9,6 +9,7 @@
 import { prisma } from '@repo/shared';
 import { hostname } from 'os';
 import { randomUUID } from 'crypto';
+import { createResilientInterval } from './backoff';
 
 /** Unique ID for this worker process */
 export const WORKER_ID = `${hostname()}-${randomUUID().slice(0, 8)}`;
@@ -16,7 +17,7 @@ export const WORKER_ID = `${hostname()}-${randomUUID().slice(0, 8)}`;
 const HEARTBEAT_INTERVAL_MS = 30_000; // 30s (reduced from 10s to save DB calls)
 const WORKER_TIMEOUT_MS = 90_000;     // Consider dead after 90s no heartbeat
 
-let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+let heartbeatHandle: { stop: () => void } | null = null;
 let localTasksCompleted = 0;
 let localTasksFailed = 0;
 let localTasksSkipped = 0;
@@ -52,18 +53,20 @@ export async function startWorkerIdentity(concurrency: number): Promise<void> {
     },
   });
 
-  heartbeatTimer = setInterval(() => {
-    sendHeartbeat().catch(() => {});
-  }, HEARTBEAT_INTERVAL_MS);
+  heartbeatHandle = createResilientInterval(
+    'worker-heartbeat',
+    () => sendHeartbeat(),
+    HEARTBEAT_INTERVAL_MS,
+  );
 
   console.log(`[worker-id] Registered as ${WORKER_ID} (concurrency: ${concurrency})`);
 }
 
 /** Stop heartbeats and mark as stopping */
 export async function stopWorkerIdentity(): Promise<void> {
-  if (heartbeatTimer) {
-    clearInterval(heartbeatTimer);
-    heartbeatTimer = null;
+  if (heartbeatHandle) {
+    heartbeatHandle.stop();
+    heartbeatHandle = null;
   }
   await prisma.workerHeartbeat.updateMany({
     where: { id: WORKER_ID },
@@ -77,19 +80,24 @@ async function sendHeartbeat(): Promise<void> {
     ? taskTimesMs.reduce((a, b) => a + b, 0) / taskTimesMs.length
     : 0;
 
-  await prisma.workerHeartbeat.updateMany({
-    where: { id: WORKER_ID },
-    data: {
-      lastHeartbeatAt: new Date(),
-      status: currentStatus,
-      currentTaskId,
-      tasksCompleted: localTasksCompleted,
-      tasksFailed: localTasksFailed,
-      tasksSkipped: localTasksSkipped,
-      avgTaskTimeMs: Math.round(avgTime),
-      concurrency: localConcurrency,
-    },
-  });
+  try {
+    await prisma.workerHeartbeat.updateMany({
+      where: { id: WORKER_ID },
+      data: {
+        lastHeartbeatAt: new Date(),
+        status: currentStatus,
+        currentTaskId,
+        tasksCompleted: localTasksCompleted,
+        tasksFailed: localTasksFailed,
+        tasksSkipped: localTasksSkipped,
+        avgTaskTimeMs: Math.round(avgTime),
+        concurrency: localConcurrency,
+      },
+    });
+  } catch (err) {
+    // Let createResilientInterval handle backoff; re-throw so it knows this failed
+    throw err;
+  }
 }
 
 /** Record a completed task */

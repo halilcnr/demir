@@ -6,6 +6,7 @@ import { getAllProviderHealth, getDiscoverySourceHealth } from './provider-healt
 import { sendTestMessage, getTelegramStats, startTelegramPolling, sendCustomMessage, sendListingAlert, sendSmartDealTest, getNotifySettings } from './services/telegram';
 import { getWorkerConfig, invalidateConfigCache, MODE_PRESETS } from './worker-config';
 import { getAllProviderLiveMetrics, computeGlobalRiskScore, getRiskLevel, persistMetricsToDB } from './metrics-collector';
+import { createResilientInterval } from './backoff';
 import { getQueueDepth, getActiveRequests, estimateCycleDuration } from './provider-queue';
 import { WORKER_ID, startWorkerIdentity, stopWorkerIdentity, getClusterWorkers, getOnlineWorkerCount, cleanupDeadWorkers } from './worker-identity';
 import { initRateLimits, resetAllConcurrency } from './distributed-rate-limiter';
@@ -501,36 +502,45 @@ setInterval(() => {
   fetch(url).catch(() => {}); // fire-and-forget
 }, 4 * 60_000); // every 4 min
 
-// ─── Overlap-guarded periodic tasks ─────────────────────────────
-// Each flag prevents re-entry if the previous invocation is still running.
-let metricsRunning = false;
-let healthFlushRunning = false;
-let analyticsRunning = false;
-let maintenanceRunning = false;
-let housekeepingRunning = false;
+// ─── Resilient periodic tasks (with exponential backoff) ────────
+// Each uses createResilientInterval which provides:
+// - Built-in overlap prevention (no re-entry)
+// - Exponential backoff on failure (prevents log spam)
+// - Proper error logging (console.error, not silent swallow)
 
 // Periodically persist metrics to DB (every 60s)
-setInterval(async () => {
-  if (metricsRunning) return;
-  metricsRunning = true;
-  try { await persistMetricsToDB(); } catch {} finally { metricsRunning = false; }
-}, 60_000);
+createResilientInterval('metrics-persist', () => persistMetricsToDB(), 60_000);
 
 // Flush hourly health snapshots (every 5 min)
-setInterval(async () => {
-  if (healthFlushRunning) return;
-  healthFlushRunning = true;
-  try { await flushHourlySnapshots(); } catch {} finally { healthFlushRunning = false; }
-}, 5 * 60_000);
+createResilientInterval('health-flush', () => flushHourlySnapshots(), 5 * 60_000);
 
-// Recompute price analytics (every 15 min) — overlap guard CRITICAL for memory
-setInterval(async () => {
-  if (analyticsRunning) return;
-  analyticsRunning = true;
-  try { await computeAllVariantAnalytics(); }
-  catch (err) { console.error('[worker] Analytics failed:', err); }
-  finally { analyticsRunning = false; }
-}, 15 * 60_000);
+// Recompute price analytics (every 15 min)
+createResilientInterval(
+  'analytics-compute',
+  async () => { await computeAllVariantAnalytics(); },
+  15 * 60_000,
+  { maxBackoffMs: 30 * 60_000 }, // max 30min backoff for heavy job
+);
+
+// Cleanup old snapshots + price maintenance (daily)
+createResilientInterval(
+  'daily-maintenance',
+  async () => {
+    await cleanupOldSnapshots();
+    await runPriceMaintenance();
+  },
+  24 * 60 * 60_000,
+);
+
+// Periodic housekeeping — dead workers + old tasks (every 10 min)
+createResilientInterval(
+  'housekeeping',
+  async () => {
+    await cleanupDeadWorkers();
+    await cleanupOldTasks();
+  },
+  10 * 60_000,
+);
 
 // Daily health report to Telegram (check every hour, send at ~09:00 Istanbul time)
 let lastReportDate = '';
@@ -565,27 +575,6 @@ setInterval(async () => {
     }
   }
 }, 60 * 60_000);
-
-// Cleanup old snapshots + price maintenance (daily)
-setInterval(async () => {
-  if (maintenanceRunning) return;
-  maintenanceRunning = true;
-  try {
-    await cleanupOldSnapshots();
-    await runPriceMaintenance();
-  } catch (err) { console.error('[worker] Maintenance failed:', err); }
-  finally { maintenanceRunning = false; }
-}, 24 * 60 * 60_000);
-
-// Periodic housekeeping — dead workers + old tasks (every 10 min)
-setInterval(async () => {
-  if (housekeepingRunning) return;
-  housekeepingRunning = true;
-  try {
-    await cleanupDeadWorkers();
-    await cleanupOldTasks();
-  } catch {} finally { housekeepingRunning = false; }
-}, 10 * 60_000);
 
 // NOTE: Periodic prisma.$disconnect() removed — it was causing
 // "Engine is not yet connected" errors on in-flight queries

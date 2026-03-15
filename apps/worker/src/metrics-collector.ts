@@ -1,4 +1,5 @@
 import { prisma } from '@repo/shared';
+import { createResilientInterval } from './backoff';
 
 // ─── Circuit Breaker States ─────────────────────────────────────
 
@@ -226,8 +227,10 @@ export async function persistMetricsToDB(): Promise<void> {
           lastResponseTimeMs: m.avgLatency5m,
         },
       });
-    } catch {
-      // Non-fatal; metrics are also available in-memory
+    } catch (err) {
+      // Non-fatal; metrics are also available in-memory.
+      // But log it so we know about DB degradation.
+      console.error(`[metrics] Failed to persist metrics for ${m.slug}:`, err instanceof Error ? err.message : err);
     }
   }
 }
@@ -275,14 +278,19 @@ async function flushProviderCounters(): Promise<void> {
         },
         update: updates,
       });
-    } catch {
-      // Non-fatal — counters are approximate
+    } catch (err) {
+      // Non-fatal — counters are approximate, but log the error
+      console.error(`[metrics] Failed to flush counters for ${slug}:`, err instanceof Error ? err.message : err);
     }
   }
 }
 
-// Start the flush timer
-setInterval(() => { flushProviderCounters().catch(() => {}); }, COUNTER_FLUSH_INTERVAL_MS);
+// Start the flush timer with exponential backoff
+createResilientInterval(
+  'counter-flush',
+  () => flushProviderCounters(),
+  COUNTER_FLUSH_INTERVAL_MS,
+);
 
 // ─── Risk Level Helpers ─────────────────────────────────────────
 
