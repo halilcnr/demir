@@ -493,6 +493,14 @@ server.listen(PORT, () => {
 // Start Telegram subscriber polling (/start, /stop commands)
 startTelegramPolling();
 
+// ─── Keep-alive self-ping (prevents Railway auto-sleep) ─────────
+// Railway sleeps services that receive no HTTP traffic for ~10 min.
+// Our OOS filter means cycles finish fast → long idle → sleep.
+setInterval(() => {
+  const url = `http://localhost:${PORT}/health`;
+  fetch(url).catch(() => {}); // fire-and-forget
+}, 4 * 60_000); // every 4 min
+
 // ─── Overlap-guarded periodic tasks ─────────────────────────────
 // Each flag prevents re-entry if the previous invocation is still running.
 let metricsRunning = false;

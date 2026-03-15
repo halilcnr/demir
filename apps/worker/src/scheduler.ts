@@ -91,14 +91,22 @@ export async function startScheduler(): Promise<void> {
 }
 
 function scheduleNext(): void {
-  randomInterval().then(interval => {
-    nextIntervalMs = interval;
-    console.log(`[scheduler] 🎲 [${WORKER_ID.slice(0, 12)}] Next sync in ${(nextIntervalMs / 1000 / 60).toFixed(1)} min`);
-    setTimeout(async () => {
-      await runCycle();
-      scheduleNext();
-    }, nextIntervalMs);
-  });
+  randomInterval()
+    .then(interval => {
+      nextIntervalMs = interval;
+      console.log(`[scheduler] 🎲 [${WORKER_ID.slice(0, 12)}] Next sync in ${(nextIntervalMs / 1000 / 60).toFixed(1)} min`);
+      setTimeout(() => {
+        runCycle()
+          .catch(err => console.error('[scheduler] runCycle unexpected error:', err))
+          .finally(() => scheduleNext());
+      }, nextIntervalMs);
+    })
+    .catch(err => {
+      // DB error fetching config — retry with fallback interval
+      console.error('[scheduler] ⚠️ randomInterval failed, retrying in 60s:', err instanceof Error ? err.message : err);
+      nextIntervalMs = 60_000;
+      setTimeout(() => scheduleNext(), nextIntervalMs);
+    });
 }
 
 /**
@@ -119,12 +127,12 @@ async function runCycle(): Promise<void> {
   const startTime = Date.now();
   console.log(`[scheduler] ── Cycle #${cycle} ── ${new Date().toISOString()}`);
 
-  resetCycleState();
-  clearSyncLogs();
-  clearMarketSnapshotCache();
-  clearAlertRulesCache();
-
   try {
+    resetCycleState();
+    clearSyncLogs();
+    clearMarketSnapshotCache();
+    clearAlertRulesCache();
+
     // Check if there's already an active sync job with tasks
     let syncJobId = await getActiveSyncJobId();
 
