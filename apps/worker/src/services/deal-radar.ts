@@ -11,11 +11,15 @@
 
 import { prisma } from '@repo/shared';
 import { checkGenerationalBarrier } from '../deals';
-import { sendCustomMessage, getNotifySettings } from './telegram';
+import { broadcast, getNotifySettings } from './telegram';
 
 // ─── Constants ───────────────────────────────────────────────────
 const RADAR_COOLDOWN_MS = 6 * 60 * 60 * 1000; // 6h anti-spam per family+storage
 const BAKI_GAP_PERCENT = 10; // minimum % gap to next-gen model
+
+// Real discount thresholds (to prevent spam on 5-10 TL drops)
+const MIN_RADAR_DROP_TL = 1000;
+const MIN_RADAR_DROP_PERCENT = 2;
 
 // Track last notification per family+storage to avoid spam
 const lastNotifiedMap = new Map<string, number>(); // key → timestamp
@@ -38,6 +42,8 @@ interface RadarCandidate {
   bestRetailerSlug: string | null;
   productUrl: string | null;
   listingId: string | null;
+  previousPrice: number | null;
+  lastNotifiedPrice: number | null;
 }
 
 // ─── Main Scan ───────────────────────────────────────────────────
@@ -88,6 +94,31 @@ export async function runDealRadar(): Promise<number> {
 
     const bestListing = a.variant.listings[0];
 
+    // --- SPAM FİLTRESİ: GERÇEK İNDİRİM Mİ? ---
+    // Sadece 5-10 TL düşüşlerle sürekli bildirim gitmesini engellemek için
+    // önceki fiyata kıyasla en az 250 TL veya %0.5 indirim olmalı.
+    if (bestListing?.previousPrice != null && bestListing.previousPrice > price) {
+      const dropAmount = bestListing.previousPrice - price;
+      const dropPercent = (dropAmount / bestListing.previousPrice) * 100;
+      
+      if (dropAmount < MIN_RADAR_DROP_TL && dropPercent < MIN_RADAR_DROP_PERCENT) {
+        // Drop is too small to be newsworthy
+        continue;
+      }
+    }
+
+    // --- DB KALICI SPAM FİLTRESİ ---
+    // Eğer listing daha önce bildirildiyse, ve yeni fiyat eskisine çok yakınsa es geç.
+    if (bestListing?.lastNotifiedPrice != null) {
+      const dropFromLast = bestListing.lastNotifiedPrice - price;
+      const dropFromLastPercent = (dropFromLast / bestListing.lastNotifiedPrice) * 100;
+
+      // Sadece daha da ucuzladıysa (ve tatmin edici miktardaysa) tekrar at.
+      if (dropFromLast < MIN_RADAR_DROP_TL && dropFromLastPercent < MIN_RADAR_DROP_PERCENT) {
+        continue;
+      }
+    }
+
     candidates.push({
       variantId: a.variantId,
       variantName: a.variant.normalizedName,
@@ -104,6 +135,8 @@ export async function runDealRadar(): Promise<number> {
       bestRetailerSlug: bestListing?.retailer.slug ?? null,
       productUrl: bestListing?.productUrl ?? null,
       listingId: bestListing?.id ?? null,
+      previousPrice: bestListing?.previousPrice ?? null,
+      lastNotifiedPrice: bestListing?.lastNotifiedPrice ?? null,
     });
   }
 
@@ -162,29 +195,63 @@ export async function runDealRadar(): Promise<number> {
 
     // Build and send message
     const message = buildDealRadarMessage(candidate, genContext);
-    const result = await sendCustomMessage(message);
+    const result = await broadcast(message);
 
-    if (result.ok) {
+    const dropPercent = candidate.previousPrice ? ((candidate.previousPrice - candidate.currentPrice) / candidate.previousPrice) * 100 : null;
+
+    if (result.sent > 0) {
       sentCount++;
       lastNotifiedMap.set(groupKey, Date.now());
-      console.log(`[deal-radar] ✅ Sent: ${candidate.variantName} — ${candidate.currentPrice} TL (${candidate.isATL ? 'ATL' : '30-day low'})`);
+      console.log(`[deal-radar] ✅ Sent: ${candidate.variantName} — ${candidate.currentPrice} TL (${candidate.isATL ? 'ATL' : '30-day low'}) -> ${result.sent} subs`);
 
-      // Log to NotificationLog
+      // Log to NotificationLog and update Listing.lastNotifiedPrice
+      await prisma.$transaction([
+        ...(candidate.listingId ? [
+          prisma.listing.update({
+            where: { id: candidate.listingId },
+            data: { 
+              lastNotifiedPrice: candidate.currentPrice,
+              notificationSentAt: new Date()
+            }
+          })
+        ] : []),
+        prisma.notificationLog.create({
+          data: {
+            messageType: 'DEAL_ALERT',
+            status: result.failed > 0 ? 'PARTIAL' : 'SENT',
+            productName: candidate.variantName,
+            retailer: candidate.bestRetailerName,
+            oldPrice: candidate.previousPrice,
+            newPrice: candidate.currentPrice,
+            dropPercent,
+            messageText: message,
+            sentTo: result.sent,
+            failedTo: result.failed,
+            listingId: candidate.listingId,
+          },
+        })
+      ]).catch(err => {
+        console.error('[deal-radar] Failed to log notification or update listing:', err);
+      });
+    } else {
+      console.error(`[deal-radar] ❌ Broadcast failed for ${candidate.variantName}: ${result.failed} failures (0 sent)`);
+      
       await prisma.notificationLog.create({
         data: {
           messageType: 'DEAL_ALERT',
-          status: 'SENT',
+          status: 'FAILED',
           productName: candidate.variantName,
           retailer: candidate.bestRetailerName,
+          oldPrice: candidate.previousPrice,
           newPrice: candidate.currentPrice,
+          dropPercent,
           messageText: message,
-          sentTo: result.sent ?? 0,
-          failedTo: 0,
+          sentTo: 0,
+          failedTo: result.failed,
+          errorMessage: 'All subscribers failed or zero subscribers',
           listingId: candidate.listingId,
         },
-      }).catch(err => console.error('[deal-radar] Failed to log notification:', err));
-    } else {
-      console.error(`[deal-radar] ❌ Failed to send for ${candidate.variantName}: ${result.error}`);
+      }).catch(() => {});
     }
   }
 

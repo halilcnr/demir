@@ -158,7 +158,7 @@ async function sendToChat(chatId: string, text: string): Promise<{ ok: boolean; 
 }
 
 // ─── Broadcast: send to ALL active subscribers ───────────────────
-async function broadcast(text: string): Promise<{ sent: number; failed: number }> {
+export async function broadcast(text: string): Promise<{ sent: number; failed: number }> {
   const subscribers = await prisma.telegramSubscriber.findMany({
     where: { isActive: true },
     select: { chatId: true },
