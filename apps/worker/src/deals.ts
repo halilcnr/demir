@@ -607,8 +607,11 @@ export function computeArbitrage(
       historicalScore = 50;
     } else if (distanceFromATL <= 20) {
       historicalScore = 30;
+    } else if (distanceFromATL <= 30) {
+      historicalScore = 15;
     } else {
-      historicalScore = Math.max(0, 20 - Math.round((distanceFromATL - 20) / 2));
+      historicalScore = 0; // Çok uzaksa (30%+) tarihsel puan sıfır
+      reasons.push(`⚠️ Tarihsel dipten çok uzak (%${distanceFromATL.toFixed(1)} yukarıda)`);
     }
   } else {
     historicalScore = 50; // no historical data → neutral
@@ -651,6 +654,17 @@ export function computeArbitrage(
   }
 
   score = Math.max(0, Math.min(100, score));
+
+  // ── Absolute Disqualification: Way too far from ATL ──
+  // Even if it's a market leader, if it's >10% above its own historical low,
+  // the market is extremely inflated. Discard it entirely to prevent spam.
+  if (distanceFromATL != null && distanceFromATL > 10) {
+    if (score >= 80) { // If it would have passed otherwise
+      verdict = 'DISCARD';
+      reasons.push(`❌ Piyasa lideri olmasına rağmen ATL'den çok uzak (%${distanceFromATL.toFixed(1)}). Pazar şişkin.`);
+      score = 0;
+    }
+  }
 
   return {
     verdict,
