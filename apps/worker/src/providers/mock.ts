@@ -1,5 +1,5 @@
 import { BaseProvider, type ScrapeStrategy } from './base';
-import { normalizeIPhoneModel } from '@repo/shared';
+import { normalizeProductTitle } from '@repo/shared';
 import type { ScrapedProduct } from '@repo/shared';
 
 /**
@@ -28,7 +28,7 @@ export class MockProvider extends BaseProvider {
   async search(query: string): Promise<ScrapedProduct[]> {
     await this.delay(200);
 
-    const parsed = normalizeIPhoneModel(query);
+    const parsed = normalizeProductTitle(query);
     if (!parsed) return [];
 
     const basePrice = 30000 + Math.random() * 50000;

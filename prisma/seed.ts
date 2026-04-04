@@ -1,19 +1,26 @@
 import { PrismaClient } from '@prisma/client';
 import { PRODUCT_URLS } from './product-urls';
+import { SAMSUNG_PRODUCT_URLS } from './samsung-product-urls';
 
 const prisma = new PrismaClient();
 
 const FAMILIES = [
-  { name: 'iPhone 17', sortOrder: 1, variants: { storages: [256, 512], colors: ['Black', 'White', 'Fog Blue', 'Lavender', 'Sage'] } },
-  { name: 'iPhone 17 Air', sortOrder: 2, variants: { storages: [256, 512], colors: ['Black', 'White', 'Fog Blue', 'Lavender', 'Sage'] } },
-  { name: 'iPhone 17 Pro', sortOrder: 3, variants: { storages: [256, 512, 1024], colors: ['Obsidian', 'Silver', 'Cosmic Orange'] } },
-  { name: 'iPhone 17 Pro Max', sortOrder: 4, variants: { storages: [256, 512, 1024], colors: ['Obsidian', 'Silver', 'Cosmic Orange'] } },
-  { name: 'iPhone 16', sortOrder: 5, variants: { storages: [128, 256, 512], colors: ['Black', 'White', 'Pink', 'Teal', 'Ultramarine'] } },
-  { name: 'iPhone 16 Pro', sortOrder: 6, variants: { storages: [128, 256, 512, 1024], colors: ['Natural Titanium', 'Black Titanium', 'White Titanium', 'Desert Titanium'] } },
-  { name: 'iPhone 16 Pro Max', sortOrder: 7, variants: { storages: [256, 512, 1024], colors: ['Natural Titanium', 'Black Titanium', 'White Titanium', 'Desert Titanium'] } },
-  { name: 'iPhone 15', sortOrder: 8, variants: { storages: [128, 256, 512], colors: ['Black', 'Blue', 'Green', 'Yellow', 'Pink'] } },
-  { name: 'iPhone 14', sortOrder: 9, variants: { storages: [128, 256, 512], colors: ['Midnight', 'Starlight', 'Blue', 'Purple', 'Red', 'Yellow'] } },
-  { name: 'iPhone 13', sortOrder: 10, variants: { storages: [128, 256, 512], colors: ['Midnight', 'Starlight', 'Blue', 'Pink', 'Green', 'Red'] } },
+  { name: 'iPhone 17', brand: 'Apple', sortOrder: 1, variants: { storages: [256, 512], colors: ['Black', 'White', 'Fog Blue', 'Lavender', 'Sage'] } },
+  { name: 'iPhone 17 Air', brand: 'Apple', sortOrder: 2, variants: { storages: [256, 512], colors: ['Black', 'White', 'Fog Blue', 'Lavender', 'Sage'] } },
+  { name: 'iPhone 17 Pro', brand: 'Apple', sortOrder: 3, variants: { storages: [256, 512, 1024], colors: ['Obsidian', 'Silver', 'Cosmic Orange'] } },
+  { name: 'iPhone 17 Pro Max', brand: 'Apple', sortOrder: 4, variants: { storages: [256, 512, 1024], colors: ['Obsidian', 'Silver', 'Cosmic Orange'] } },
+  { name: 'iPhone 16', brand: 'Apple', sortOrder: 5, variants: { storages: [128, 256, 512], colors: ['Black', 'White', 'Pink', 'Teal', 'Ultramarine'] } },
+  { name: 'iPhone 16 Pro', brand: 'Apple', sortOrder: 6, variants: { storages: [128, 256, 512, 1024], colors: ['Natural Titanium', 'Black Titanium', 'White Titanium', 'Desert Titanium'] } },
+  { name: 'iPhone 16 Pro Max', brand: 'Apple', sortOrder: 7, variants: { storages: [256, 512, 1024], colors: ['Natural Titanium', 'Black Titanium', 'White Titanium', 'Desert Titanium'] } },
+  { name: 'iPhone 15', brand: 'Apple', sortOrder: 8, variants: { storages: [128, 256, 512], colors: ['Black', 'Blue', 'Green', 'Yellow', 'Pink'] } },
+  { name: 'iPhone 14', brand: 'Apple', sortOrder: 9, variants: { storages: [128, 256, 512], colors: ['Midnight', 'Starlight', 'Blue', 'Purple', 'Red', 'Yellow'] } },
+  { name: 'iPhone 13', brand: 'Apple', sortOrder: 10, variants: { storages: [128, 256, 512], colors: ['Midnight', 'Starlight', 'Blue', 'Pink', 'Green', 'Red'] } },
+  // Samsung Galaxy S-series
+  { name: 'Galaxy S25 Ultra', brand: 'Samsung', sortOrder: 11, variants: { storages: [256, 512, 1024], colors: ['Titanium Black', 'Titanium Gray', 'Titanium Blue', 'Titanium Silverblue'] } },
+  { name: 'Galaxy S24 Ultra', brand: 'Samsung', sortOrder: 12, variants: { storages: [256, 512, 1024], colors: ['Titanium Black', 'Titanium Gray', 'Titanium Violet', 'Titanium Yellow'] } },
+  // Samsung Galaxy A-series
+  { name: 'Galaxy A56', brand: 'Samsung', sortOrder: 13, variants: { storages: [128, 256], colors: ['Black', 'Gray', 'Lilac', 'Green'] } },
+  { name: 'Galaxy A36', brand: 'Samsung', sortOrder: 14, variants: { storages: [128, 256], colors: ['Black', 'Navy', 'Lilac', 'Green'] } },
 ];
 
 function slugify(text: string): string {
@@ -134,18 +141,19 @@ async function main() {
   let variantCount = 0;
 
   for (const f of FAMILIES) {
-    const familySlug = slugify(f.name);
+    const brand = f.brand ?? 'Apple';
+    const familySlug = slugify(brand === 'Samsung' ? `samsung-${f.name}` : f.name);
     const family = await prisma.productFamily.upsert({
       where: { slug: familySlug },
-      update: { sortOrder: f.sortOrder },
-      create: { name: f.name, slug: familySlug, sortOrder: f.sortOrder },
+      update: { sortOrder: f.sortOrder, brand },
+      create: { name: f.name, slug: familySlug, brand, sortOrder: f.sortOrder },
     });
     familyCount++;
 
     for (const storageGb of f.variants.storages) {
       for (const color of f.variants.colors) {
         const normalizedName = `${f.name} ${storageLabel(storageGb)} ${color}`;
-        const variantSlug = slugify(normalizedName);
+        const variantSlug = slugify(brand === 'Samsung' ? `samsung-${normalizedName}` : normalizedName);
 
         await prisma.productVariant.upsert({
           where: { slug: variantSlug },
@@ -165,18 +173,28 @@ async function main() {
   console.log(`✅ ${familyCount} aile, ${variantCount} varyant oluşturuldu`);
 
   // ─── Manuel URL'lerden Listing'ler ─────────────────────
-  // product-urls.ts'deki URL'leri DB'ye yaz
+  // product-urls.ts + samsung-product-urls.ts'deki URL'leri DB'ye yaz
   let manualListingCount = 0;
 
   const allRetailers = await prisma.retailer.findMany();
   const retailerMap = Object.fromEntries(allRetailers.map(r => [r.slug, r]));
 
-  for (const [variantSlug, urls] of Object.entries(PRODUCT_URLS)) {
-    const variant = await prisma.productVariant.findUnique({ where: { slug: variantSlug } });
+  const allProductUrls: Record<string, Record<string, string>> = {
+    ...PRODUCT_URLS,
+    ...SAMSUNG_PRODUCT_URLS,
+  };
+
+  for (const [variantSlug, urls] of Object.entries(allProductUrls)) {
+    const variant = await prisma.productVariant.findUnique({
+      where: { slug: variantSlug },
+      include: { family: true },
+    });
     if (!variant) {
       console.warn(`⚠️  Varyant bulunamadı: ${variantSlug}`);
       continue;
     }
+
+    const brand = variant.family.brand || 'Apple';
 
     for (const [rSlug, url] of Object.entries(urls)) {
       const retailer = retailerMap[rSlug];
@@ -196,7 +214,7 @@ async function main() {
         create: {
           variantId: variant.id,
           retailerId: retailer.id,
-          retailerProductTitle: `Apple ${variant.normalizedName}`,
+          retailerProductTitle: `${brand} ${variant.normalizedName}`,
           productUrl: url,
           stockStatus: 'UNKNOWN',
           lastSeenAt: null,

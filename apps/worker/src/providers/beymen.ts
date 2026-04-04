@@ -1,5 +1,5 @@
 import { BaseProvider, type ScrapeStrategy } from './base';
-import { normalizeIPhoneModel } from '@repo/shared';
+import { normalizeProductTitle } from '@repo/shared';
 import type { ScrapedProduct } from '@repo/shared';
 
 export class BeymenProvider extends BaseProvider {
@@ -16,7 +16,7 @@ export class BeymenProvider extends BaseProvider {
         run: (html, url) => {
           const ld = this.extractJsonLd(html);
           if (!ld) return null;
-          const parsed = normalizeIPhoneModel(ld.name);
+          const parsed = normalizeProductTitle(ld.name);
           if (!parsed) return null;
           return {
             retailerSlug: this.retailerSlug,
@@ -46,7 +46,7 @@ export class BeymenProvider extends BaseProvider {
             || $('[class*="product-price"], [class*="Price"], [class*="price"]').first().text().trim();
 
           if (!title || !priceText) return null;
-          const parsed = normalizeIPhoneModel(title);
+          const parsed = normalizeProductTitle(title);
           if (!parsed) return null;
           const price = this.parseTurkishPrice(priceText);
           if (!price) return null;
@@ -71,7 +71,7 @@ export class BeymenProvider extends BaseProvider {
         run: (_html, url, $) => {
           const meta = this.extractMetaTags($);
           if (!meta.name || !meta.price) return null;
-          const parsed = normalizeIPhoneModel(meta.name);
+          const parsed = normalizeProductTitle(meta.name);
           if (!parsed) return null;
           return {
             retailerSlug: this.retailerSlug,
@@ -107,7 +107,7 @@ export class BeymenProvider extends BaseProvider {
 
           const name = product.name || product.title || product.productName;
           if (!name) return null;
-          const parsed = normalizeIPhoneModel(name);
+          const parsed = normalizeProductTitle(name);
           if (!parsed) return null;
 
           const rawPrice = product.price || product.salePrice || product.currentPrice || product.sellingPrice;
@@ -134,7 +134,7 @@ export class BeymenProvider extends BaseProvider {
         run: (html, url) => {
           const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
           if (!titleMatch) return null;
-          const parsed = normalizeIPhoneModel(titleMatch[1]);
+          const parsed = normalizeProductTitle(titleMatch[1]);
           if (!parsed) return null;
           const priceMatch = html.match(/"price"\s*:\s*"?(\d[\d.,]+)"?/i);
           if (!priceMatch) return null;

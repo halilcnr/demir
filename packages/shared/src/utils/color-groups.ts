@@ -14,23 +14,32 @@ const SEMANTIC_COLOR_MAP: Record<string, string> = {
   'Midnight': 'dark',
   'Graphite': 'dark',
   'Obsidian': 'dark',
+  'Titanium Black': 'dark',
+  'Navy': 'dark',
 
   // Light group
   'White': 'light',
   'White Titanium': 'light',
   'Starlight': 'light',
   'Silver': 'light',
+  'Titanium White': 'light',
+  'Gray': 'light',
+  'Titanium Gray': 'light',
 
   // Blue group
   'Blue': 'blue',
   'Blue Titanium': 'blue',
   'Fog Blue': 'blue',
   'Ultramarine': 'blue',
+  'Titanium Blue': 'blue',
+  'Titanium Silverblue': 'blue',
+  'Silverblue': 'blue',
 
   // Gold/Warm group
   'Gold': 'gold',
   'Desert Titanium': 'gold',
   'Cosmic Orange': 'gold',
+  'Titanium Orange': 'gold',
 
   // Natural/Neutral group
   'Natural Titanium': 'natural',
@@ -39,13 +48,18 @@ const SEMANTIC_COLOR_MAP: Record<string, string> = {
 
   // Standalone groups
   'Green': 'green',
+  'Titanium Green': 'green',
   'Pink': 'pink',
   'Red': 'red',
   'Purple': 'purple',
   'Deep Purple': 'purple',
+  'Violet': 'purple',
+  'Titanium Violet': 'purple',
   'Yellow': 'yellow',
+  'Titanium Yellow': 'yellow',
   'Teal': 'teal',
   'Orange': 'orange',
+  'Lilac': 'purple',
 };
 
 /**

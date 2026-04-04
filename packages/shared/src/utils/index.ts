@@ -112,7 +112,7 @@ const COLOR_MAP: Record<string, string> = {
   'turuncu': 'Orange', 'orange': 'Orange',
   'teal': 'Teal', 'deniz mavisi': 'Teal',
   'ultramarine': 'Ultramarine', 'lacivert taş': 'Ultramarine', 'lacivert tas': 'Ultramarine', 'laciverttaş': 'Ultramarine', 'laciverttas': 'Ultramarine',
-  // Titanium variants
+  // Titanium variants (iPhone)
   'natural titanium': 'Natural Titanium', 'doğal titanyum': 'Natural Titanium', 'natürel titanyum': 'Natural Titanium', 'naturel titanyum': 'Natural Titanium',
   'blue titanium': 'Blue Titanium', 'mavi titanyum': 'Blue Titanium',
   'white titanium': 'White Titanium', 'beyaz titanyum': 'White Titanium',
@@ -132,6 +132,42 @@ const COLOR_MAP: Record<string, string> = {
   'space black': 'Space Black', 'uzay siyahı': 'Space Black',
   'gold': 'Gold', 'altın': 'Gold',
   'deep purple': 'Deep Purple', 'derin mor': 'Deep Purple',
+  // Generic — used by A-series Samsung
+  'gri': 'Gray', 'gray': 'Gray', 'grey': 'Gray',
+  'lila': 'Lilac', 'lilac': 'Lilac', 'açık pembe': 'Lilac', 'acik pembe': 'Lilac',
+  'açık yeşil': 'Green', 'acik yesil': 'Green', 'light green': 'Green',
+  'antrasit': 'Navy', 'navy': 'Navy', 'lacivert': 'Navy',
+};
+
+// Samsung-specific color map: Turkish/English Samsung names → DB color names
+// Needed because iPhone "Siyah Titanyum" = "Black Titanium" but Samsung = "Titanium Black"
+const SAMSUNG_COLOR_MAP: Record<string, string> = {
+  // S-series Titanium colors
+  'titanyum siyah': 'Titanium Black', 'siyah titanyum': 'Titanium Black', 'titanium black': 'Titanium Black',
+  'titanyum gri': 'Titanium Gray', 'gri titanyum': 'Titanium Gray', 'titanium gray': 'Titanium Gray', 'titanium grey': 'Titanium Gray',
+  'titanyum mavi': 'Titanium Blue', 'mavi titanyum': 'Titanium Blue', 'titanium blue': 'Titanium Blue',
+  'titanyum beyaz': 'Titanium White', 'beyaz titanyum': 'Titanium White', 'titanium white': 'Titanium White',
+  'titanyum gümüş': 'Titanium Silverblue', 'gümüş titanyum': 'Titanium Silverblue',
+  'titanyum gumus': 'Titanium Silverblue', 'gumus titanyum': 'Titanium Silverblue',
+  'titanium silverblue': 'Titanium Silverblue', 'titanium silver blue': 'Titanium Silverblue',
+  'titanyum mor': 'Titanium Violet', 'mor titanyum': 'Titanium Violet', 'titanium violet': 'Titanium Violet',
+  'titanyum sarı': 'Titanium Yellow', 'titanyum sari': 'Titanium Yellow',
+  'sarı titanyum': 'Titanium Yellow', 'sari titanyum': 'Titanium Yellow', 'titanium yellow': 'Titanium Yellow',
+  'titanyum turuncu': 'Titanium Orange', 'titanium orange': 'Titanium Orange',
+  'titanyum yeşil': 'Titanium Green', 'titanyum yesil': 'Titanium Green', 'titanium green': 'Titanium Green',
+  // Generic colors — fallback for A-series
+  'siyah': 'Black', 'black': 'Black',
+  'gri': 'Gray', 'gray': 'Gray', 'grey': 'Gray',
+  'mavi': 'Blue', 'blue': 'Blue',
+  'beyaz': 'White', 'white': 'White',
+  'yeşil': 'Green', 'yesil': 'Green', 'green': 'Green',
+  'açık yeşil': 'Green', 'acik yesil': 'Green', 'light green': 'Green',
+  'mor': 'Violet', 'purple': 'Violet', 'violet': 'Violet',
+  'sarı': 'Yellow', 'sari': 'Yellow', 'yellow': 'Yellow',
+  'pembe': 'Pink', 'pink': 'Pink',
+  'lila': 'Lilac', 'lilac': 'Lilac', 'açık pembe': 'Lilac', 'acik pembe': 'Lilac',
+  'antrasit': 'Navy', 'navy': 'Navy', 'lacivert': 'Navy',
+  'gümüş': 'Silverblue', 'gumus': 'Silverblue',
 };
 
 function detectColor(title: string): string {
@@ -143,6 +179,82 @@ function detectColor(title: string): string {
     }
   }
   return 'Bilinmiyor';
+}
+
+function detectSamsungColor(title: string): string {
+  const lower = title.toLowerCase();
+  const sortedKeys = Object.keys(SAMSUNG_COLOR_MAP).sort((a, b) => b.length - a.length);
+  for (const key of sortedKeys) {
+    if (lower.includes(key)) {
+      return SAMSUNG_COLOR_MAP[key];
+    }
+  }
+  return 'Bilinmiyor';
+}
+
+/** Samsung Galaxy model adını, rengi ve depolamayı normalize eder */
+export function normalizeSamsungModel(
+  title: string
+): { model: string; color: string; storageGb: number } | null {
+  const lower = title.toLowerCase();
+
+  // Match "Galaxy S25 Ultra", "Galaxy S24 Ultra", "Galaxy S25+", "Galaxy S25 FE", etc.
+  const sMatch = lower.match(/galaxy\s+(s\d{2})\s*(ultra|plus|\+|fe)?/);
+  // Match "Galaxy A56", "Galaxy A36", etc.
+  const aMatch = lower.match(/galaxy\s+(a\d{2})\s*(5g)?/);
+
+  if (!sMatch && !aMatch) return null;
+
+  let model: string;
+  if (sMatch) {
+    const series = sMatch[1].toUpperCase(); // "S25"
+    const variantRaw = sMatch[2];
+    let variant = '';
+    if (variantRaw) {
+      const v = variantRaw.replace('+', 'Plus').trim();
+      variant = ' ' + v.charAt(0).toUpperCase() + v.slice(1);
+    }
+    model = `Galaxy ${series}${variant}`;
+  } else {
+    const series = aMatch![1].toUpperCase(); // "A56"
+    model = `Galaxy ${series}`;
+  }
+
+  // Storage
+  const storageMatch = lower.match(/(\d+)\s*(gb|tb)/i);
+  let storageGb = 128;
+  if (storageMatch) {
+    const num = parseInt(storageMatch[1], 10);
+    const unit = storageMatch[2].toLowerCase();
+    if (num <= 16) {
+      // This is RAM, not storage — look for a second match
+      const remaining = lower.slice((storageMatch.index ?? 0) + storageMatch[0].length);
+      const secondMatch = remaining.match(/(\d+)\s*(gb|tb)/i);
+      if (secondMatch) {
+        const n2 = parseInt(secondMatch[1], 10);
+        storageGb = secondMatch[2].toLowerCase() === 'tb' ? n2 * 1024 : n2;
+      }
+    } else {
+      storageGb = unit === 'tb' ? num * 1024 : num;
+    }
+  }
+
+  const color = detectSamsungColor(title);
+
+  return { model, color, storageGb };
+}
+
+/** Unified normalizer — tries Samsung then iPhone */
+export function normalizeProductTitle(
+  title: string
+): { brand: string; model: string; color: string; storageGb: number } | null {
+  const samsung = normalizeSamsungModel(title);
+  if (samsung) return { brand: 'Samsung', ...samsung };
+
+  const iphone = normalizeIPhoneModel(title);
+  if (iphone) return { brand: 'Apple', ...iphone };
+
+  return null;
 }
 
 export function getRetailerColor(slug: string): string {

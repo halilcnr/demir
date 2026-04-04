@@ -1,7 +1,7 @@
 import * as cheerio from 'cheerio';
 import { execFile } from 'child_process';
 import { BaseProvider, type ScrapeStrategy } from './base';
-import { normalizeIPhoneModel, parseTurkishPrice as sharedParseTurkishPrice } from '@repo/shared';
+import { normalizeProductTitle, parseTurkishPrice as sharedParseTurkishPrice } from '@repo/shared';
 import type { ScrapedProduct } from '@repo/shared';
 import {
   ProviderBlockedError,
@@ -105,7 +105,7 @@ export class N11Provider extends BaseProvider {
         run: (html, url, $) => {
           const ld = this.extractJsonLd(html);
           if (!ld) return null;
-          const parsed = normalizeIPhoneModel(ld.name);
+          const parsed = normalizeProductTitle(ld.name);
           if (!parsed) return null;
           const seller = $('.sallerName a').text().trim() || undefined;
           return {
@@ -136,7 +136,7 @@ export class N11Provider extends BaseProvider {
 
           if (!title || !priceText) return null;
 
-          const parsed = normalizeIPhoneModel(title);
+          const parsed = normalizeProductTitle(title);
           if (!parsed) return null;
 
           const price = this.parseTurkishPrice(priceText);
@@ -166,7 +166,7 @@ export class N11Provider extends BaseProvider {
           const meta = this.extractMetaTags($);
           if (!meta.name || !meta.price) return null;
 
-          const parsed = normalizeIPhoneModel(meta.name);
+          const parsed = normalizeProductTitle(meta.name);
           if (!parsed) return null;
 
           return {
@@ -201,7 +201,7 @@ export class N11Provider extends BaseProvider {
                 const title = data.name || data.title || data.productName;
                 const price = data.price || data.salePrice || data.discountedPrice;
                 if (title && price) {
-                  const parsed = normalizeIPhoneModel(title);
+                  const parsed = normalizeProductTitle(title);
                   if (!parsed) continue;
                   const numPrice = typeof price === 'number' ? price : sharedParseTurkishPrice(String(price));
                   if (!numPrice) continue;
@@ -230,7 +230,7 @@ export class N11Provider extends BaseProvider {
                 const items = dl.ecommerce?.items || dl.ecommerce?.detail?.products || [];
                 const item = items[0];
                 if (item?.name && item?.price) {
-                  const parsed = normalizeIPhoneModel(item.name);
+                  const parsed = normalizeProductTitle(item.name);
                   if (!parsed) continue;
                   const numPrice = typeof item.price === 'number' ? item.price : sharedParseTurkishPrice(String(item.price));
                   if (!numPrice) continue;
@@ -264,7 +264,7 @@ export class N11Provider extends BaseProvider {
           if (!titleMatch) return null;
           const title = titleMatch[1].replace(/<[^>]+>/g, '').trim();
 
-          const parsed = normalizeIPhoneModel(title);
+          const parsed = normalizeProductTitle(title);
           if (!parsed) return null;
 
           // Try multiple price patterns
@@ -320,7 +320,7 @@ export class N11Provider extends BaseProvider {
 
         if (!title || !priceText || !href) return;
 
-        const parsed = normalizeIPhoneModel(title);
+        const parsed = normalizeProductTitle(title);
         if (!parsed) return;
 
         const price = this.parseTurkishPrice(priceText);

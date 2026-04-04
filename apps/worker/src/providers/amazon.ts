@@ -1,6 +1,6 @@
 import * as cheerio from 'cheerio';
 import { BaseProvider, type ScrapeStrategy } from './base';
-import { normalizeIPhoneModel } from '@repo/shared';
+import { normalizeProductTitle } from '@repo/shared';
 import type { ScrapedProduct } from '@repo/shared';
 
 export class AmazonProvider extends BaseProvider {
@@ -16,7 +16,7 @@ export class AmazonProvider extends BaseProvider {
         run: (html, url, $) => {
           const ld = this.extractJsonLd(html);
           if (!ld) return null;
-          const parsed = normalizeIPhoneModel(ld.name);
+          const parsed = normalizeProductTitle(ld.name);
           if (!parsed) return null;
           const seller = $('#sellerProfileTriggerId').text().trim() || undefined;
           return {
@@ -45,7 +45,7 @@ export class AmazonProvider extends BaseProvider {
 
           if (!title || !wholePrice) return null;
 
-          const parsed = normalizeIPhoneModel(title);
+          const parsed = normalizeProductTitle(title);
           if (!parsed) return null;
 
           const priceStr = `${wholePrice.replace(/[^\d]/g, '')}${fractionPrice ? '.' + fractionPrice.replace(/[^\d]/g, '') : ''}`;
@@ -77,7 +77,7 @@ export class AmazonProvider extends BaseProvider {
           const meta = this.extractMetaTags($);
           if (!meta.name || !meta.price) return null;
 
-          const parsed = normalizeIPhoneModel(meta.name);
+          const parsed = normalizeProductTitle(meta.name);
           if (!parsed) return null;
 
           return {
@@ -114,7 +114,7 @@ export class AmazonProvider extends BaseProvider {
 
         if (!title || !wholePrice || !href) return;
 
-        const parsed = normalizeIPhoneModel(title);
+        const parsed = normalizeProductTitle(title);
         if (!parsed) return;
 
         const priceStr = `${wholePrice}${fractionPrice ? '.' + fractionPrice : ''}`.replace(/[^\d.]/g, '');

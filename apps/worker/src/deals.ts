@@ -139,24 +139,45 @@ const NOISE_THRESHOLD = 0.01;         // 1% noise range
 // ═══════════════════════════════════════════════════════════════════
 
 interface ProductLineInfo {
-  line: 'base' | 'air' | 'pro' | 'pro-max';
+  line: 'base' | 'air' | 'pro' | 'pro-max' | 'ultra' | 'plus' | 'fe' | 'a-mid';
   gen: number;
 }
 
 export function parseProductLine(familyName: string): ProductLineInfo | null {
-  const match = familyName.match(/^iPhone\s+(\d+)\s*(Pro\s+Max|Pro|Air)?$/i);
-  if (!match) return null;
+  // iPhone: "iPhone 16 Pro Max", "iPhone 17 Air", etc.
+  const iphoneMatch = familyName.match(/^iPhone\s+(\d+)\s*(Pro\s+Max|Pro|Air)?$/i);
+  if (iphoneMatch) {
+    const gen = parseInt(iphoneMatch[1], 10);
+    const suffix = (iphoneMatch[2] ?? '').trim().toLowerCase();
+    let line: ProductLineInfo['line'];
+    if (suffix === 'pro max') line = 'pro-max';
+    else if (suffix === 'pro') line = 'pro';
+    else if (suffix === 'air') line = 'air';
+    else line = 'base';
+    return { line, gen };
+  }
 
-  const gen = parseInt(match[1], 10);
-  const suffix = (match[2] ?? '').trim().toLowerCase();
+  // Samsung Galaxy S-series: "Galaxy S25 Ultra", "Galaxy S24 Ultra", etc.
+  const samsungSMatch = familyName.match(/^Galaxy\s+S(\d+)\s*(Ultra|Plus|\+|FE)?$/i);
+  if (samsungSMatch) {
+    const gen = parseInt(samsungSMatch[1], 10);
+    const suffix = (samsungSMatch[2] ?? '').trim().toLowerCase();
+    let line: ProductLineInfo['line'];
+    if (suffix === 'ultra') line = 'ultra';
+    else if (suffix === 'plus' || suffix === '+') line = 'plus';
+    else if (suffix === 'fe') line = 'fe';
+    else line = 'base';
+    return { line, gen };
+  }
 
-  let line: ProductLineInfo['line'];
-  if (suffix === 'pro max') line = 'pro-max';
-  else if (suffix === 'pro') line = 'pro';
-  else if (suffix === 'air') line = 'air';
-  else line = 'base';
+  // Samsung Galaxy A-series: "Galaxy A56", "Galaxy A36", etc.
+  const samsungAMatch = familyName.match(/^Galaxy\s+A(\d+)$/i);
+  if (samsungAMatch) {
+    const gen = parseInt(samsungAMatch[1], 10);
+    return { line: 'a-mid', gen };
+  }
 
-  return { line, gen };
+  return null;
 }
 
 export interface GenerationalContext {

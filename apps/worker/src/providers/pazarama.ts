@@ -1,6 +1,6 @@
 import * as cheerio from 'cheerio';
 import { BaseProvider, type ScrapeStrategy } from './base';
-import { normalizeIPhoneModel } from '@repo/shared';
+import { normalizeProductTitle } from '@repo/shared';
 import type { ScrapedProduct } from '@repo/shared';
 
 export class PazaramaProvider extends BaseProvider {
@@ -16,7 +16,7 @@ export class PazaramaProvider extends BaseProvider {
         run: (html, url, $) => {
           const ld = this.extractJsonLd(html);
           if (!ld) return null;
-          const parsed = normalizeIPhoneModel(ld.name);
+          const parsed = normalizeProductTitle(ld.name);
           if (!parsed) return null;
           const seller = $('.seller-name, .merchant-name').text().trim() || undefined;
           return {
@@ -44,7 +44,7 @@ export class PazaramaProvider extends BaseProvider {
 
           if (!title || !priceText) return null;
 
-          const parsed = normalizeIPhoneModel(title);
+          const parsed = normalizeProductTitle(title);
           if (!parsed) return null;
 
           const price = this.parseTurkishPrice(priceText);
@@ -84,7 +84,7 @@ export class PazaramaProvider extends BaseProvider {
           const name = (product.name as string) || (product.title as string) || '';
           if (!name) return null;
 
-          const parsed = normalizeIPhoneModel(name);
+          const parsed = normalizeProductTitle(name);
           if (!parsed) return null;
 
           const priceRaw = product.price ?? product.salePrice ?? product.listPrice;
@@ -124,7 +124,7 @@ export class PazaramaProvider extends BaseProvider {
 
         if (!title || !priceText || !href) return;
 
-        const parsed = normalizeIPhoneModel(title);
+        const parsed = normalizeProductTitle(title);
         if (!parsed) return;
 
         const price = this.parseTurkishPrice(priceText);
