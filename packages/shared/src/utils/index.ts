@@ -147,6 +147,7 @@ const SAMSUNG_COLOR_MAP: Record<string, string> = {
   'titanyum gri': 'Titanium Gray', 'gri titanyum': 'Titanium Gray', 'titanium gray': 'Titanium Gray', 'titanium grey': 'Titanium Gray',
   'titanyum mavi': 'Titanium Blue', 'mavi titanyum': 'Titanium Blue', 'titanium blue': 'Titanium Blue',
   'titanyum beyaz': 'Titanium White', 'beyaz titanyum': 'Titanium White', 'titanium white': 'Titanium White',
+  'titanium silver': 'Titanium Silver', 'titanyum silver': 'Titanium Silver',
   'titanyum gümüş': 'Titanium Silverblue', 'gümüş titanyum': 'Titanium Silverblue',
   'titanyum gumus': 'Titanium Silverblue', 'gumus titanyum': 'Titanium Silverblue',
   'titanium silverblue': 'Titanium Silverblue', 'titanium silver blue': 'Titanium Silverblue',

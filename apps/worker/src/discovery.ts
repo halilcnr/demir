@@ -135,6 +135,7 @@ const TURKISH_COLOR_MAP: Record<string, string> = {
   'titanium silverblue': 'titanium silverblue', 'titanyum gümüş mavi': 'titanium silverblue',
   'titanium violet': 'titanium violet', 'titanyum mor': 'titanium violet',
   'titanium yellow': 'titanium yellow', 'titanyum sarı': 'titanium yellow',
+  'titanium silver': 'titanium silver', 'titanyum gümüş': 'titanium silver',
   'lilac': 'lilac', 'leylak': 'lilac', 'lila': 'lilac',
   'navy': 'navy', 'lacivert': 'navy',
   'gri': 'gray', 'gray': 'gray', 'grey': 'gray',

@@ -26,6 +26,31 @@ export interface SamsungProductUrlMap {
 export const SAMSUNG_PRODUCT_URLS: SamsungProductUrlMap = {
 
   // ═══════════════════════════════════════════════════════
+  //  Samsung Galaxy S26 Ultra — 256 GB
+  //  TODO: Gerçek URL'ler eklenecek — mağazalarda listelendikçe güncellenecek
+  // ═══════════════════════════════════════════════════════
+  // 'samsung-galaxy-s26-ultra-256gb-titanium-black': {},
+  // 'samsung-galaxy-s26-ultra-256gb-titanium-gray': {},
+  // 'samsung-galaxy-s26-ultra-256gb-titanium-blue': {},
+  // 'samsung-galaxy-s26-ultra-256gb-titanium-silver': {},
+
+  // ═══════════════════════════════════════════════════════
+  //  Samsung Galaxy S26 Ultra — 512 GB
+  // ═══════════════════════════════════════════════════════
+  // 'samsung-galaxy-s26-ultra-512gb-titanium-black': {},
+  // 'samsung-galaxy-s26-ultra-512gb-titanium-gray': {},
+  // 'samsung-galaxy-s26-ultra-512gb-titanium-blue': {},
+  // 'samsung-galaxy-s26-ultra-512gb-titanium-silver': {},
+
+  // ═══════════════════════════════════════════════════════
+  //  Samsung Galaxy S26 Ultra — 1 TB
+  // ═══════════════════════════════════════════════════════
+  // 'samsung-galaxy-s26-ultra-1tb-titanium-black': {},
+  // 'samsung-galaxy-s26-ultra-1tb-titanium-gray': {},
+  // 'samsung-galaxy-s26-ultra-1tb-titanium-blue': {},
+  // 'samsung-galaxy-s26-ultra-1tb-titanium-silver': {},
+
+  // ═══════════════════════════════════════════════════════
   //  Samsung Galaxy S25 Ultra — 256 GB
   // ═══════════════════════════════════════════════════════
   'samsung-galaxy-s25-ultra-256gb-titanium-black': {

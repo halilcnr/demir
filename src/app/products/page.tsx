@@ -25,6 +25,7 @@ const MODEL_FAMILIES = [
   'iPhone 17 Pro',
   'iPhone 17 Pro Max',
   // Samsung
+  'Galaxy S26 Ultra',
   'Galaxy S25 Ultra',
   'Galaxy S24 Ultra',
   'Galaxy A56',

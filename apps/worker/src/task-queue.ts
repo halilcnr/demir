@@ -119,6 +119,30 @@ export async function generateTasks(
   }
 
   console.log(`[task-queue] Generated ${taskData.length} tasks for syncJob ${syncJob.id}`);
+
+  // ── Brand/family observability breakdown ──
+  const brandCounts = new Map<string, number>();
+  const familyCounts = new Map<string, number>();
+  const retailerCounts = new Map<string, number>();
+  for (const l of scheduled) {
+    const brand = l.variant.family.brand || 'Apple';
+    brandCounts.set(brand, (brandCounts.get(brand) ?? 0) + 1);
+    familyCounts.set(l.variant.family.name, (familyCounts.get(l.variant.family.name) ?? 0) + 1);
+    retailerCounts.set(l.retailer.slug, (retailerCounts.get(l.retailer.slug) ?? 0) + 1);
+  }
+  for (const [brand, count] of brandCounts) {
+    console.log(`[task-queue]   📱 ${brand}: ${count} tasks`);
+  }
+  if (!brandCounts.has('Samsung')) {
+    console.warn(`[task-queue]   ⚠️ Samsung: 0 tasks — Samsung listingleri DB'de var mı? pnpm db:seed çalıştırıldı mı?`);
+  }
+  // Log families with fewer than expected tasks
+  for (const [family, count] of familyCounts) {
+    if (count <= 2) {
+      console.warn(`[task-queue]   ⚠️ ${family}: yalnızca ${count} task — URL eksik olabilir`);
+    }
+  }
+
   return { syncJobId: syncJob.id, taskCount: taskData.length };
 }
 

@@ -23,6 +23,7 @@ const SEMANTIC_COLOR_MAP: Record<string, string> = {
   'Starlight': 'light',
   'Silver': 'light',
   'Titanium White': 'light',
+  'Titanium Silver': 'light',
   'Gray': 'light',
   'Titanium Gray': 'light',
 

@@ -16,11 +16,12 @@ const FAMILIES = [
   { name: 'iPhone 14', brand: 'Apple', sortOrder: 9, variants: { storages: [128, 256, 512], colors: ['Midnight', 'Starlight', 'Blue', 'Purple', 'Red', 'Yellow'] } },
   { name: 'iPhone 13', brand: 'Apple', sortOrder: 10, variants: { storages: [128, 256, 512], colors: ['Midnight', 'Starlight', 'Blue', 'Pink', 'Green', 'Red'] } },
   // Samsung Galaxy S-series
-  { name: 'Galaxy S25 Ultra', brand: 'Samsung', sortOrder: 11, variants: { storages: [256, 512, 1024], colors: ['Titanium Black', 'Titanium Gray', 'Titanium Blue', 'Titanium Silverblue'] } },
-  { name: 'Galaxy S24 Ultra', brand: 'Samsung', sortOrder: 12, variants: { storages: [256, 512, 1024], colors: ['Titanium Black', 'Titanium Gray', 'Titanium Violet', 'Titanium Yellow'] } },
+  { name: 'Galaxy S26 Ultra', brand: 'Samsung', sortOrder: 11, variants: { storages: [256, 512, 1024], colors: ['Titanium Black', 'Titanium Gray', 'Titanium Blue', 'Titanium Silver'] } },
+  { name: 'Galaxy S25 Ultra', brand: 'Samsung', sortOrder: 12, variants: { storages: [256, 512, 1024], colors: ['Titanium Black', 'Titanium Gray', 'Titanium Blue', 'Titanium Silverblue'] } },
+  { name: 'Galaxy S24 Ultra', brand: 'Samsung', sortOrder: 13, variants: { storages: [256, 512, 1024], colors: ['Titanium Black', 'Titanium Gray', 'Titanium Violet', 'Titanium Yellow'] } },
   // Samsung Galaxy A-series
-  { name: 'Galaxy A56', brand: 'Samsung', sortOrder: 13, variants: { storages: [128, 256], colors: ['Black', 'Gray', 'Lilac', 'Green'] } },
-  { name: 'Galaxy A36', brand: 'Samsung', sortOrder: 14, variants: { storages: [128, 256], colors: ['Black', 'Navy', 'Lilac', 'Green'] } },
+  { name: 'Galaxy A56', brand: 'Samsung', sortOrder: 14, variants: { storages: [128, 256], colors: ['Black', 'Gray', 'Lilac', 'Green'] } },
+  { name: 'Galaxy A36', brand: 'Samsung', sortOrder: 15, variants: { storages: [128, 256], colors: ['Black', 'Navy', 'Lilac', 'Green'] } },
 ];
 
 function slugify(text: string): string {
@@ -172,6 +173,14 @@ async function main() {
   }
   console.log(`✅ ${familyCount} aile, ${variantCount} varyant oluşturuldu`);
 
+  // ─── Brand breakdown ──────────────────────────────────
+  const appleCount = FAMILIES.filter(f => (f.brand ?? 'Apple') === 'Apple').length;
+  const samsungCount = FAMILIES.filter(f => f.brand === 'Samsung').length;
+  const appleVariants = FAMILIES.filter(f => (f.brand ?? 'Apple') === 'Apple').reduce((sum, f) => sum + f.variants.storages.length * f.variants.colors.length, 0);
+  const samsungVariants = FAMILIES.filter(f => f.brand === 'Samsung').reduce((sum, f) => sum + f.variants.storages.length * f.variants.colors.length, 0);
+  console.log(`   📱 Apple: ${appleCount} aile, ${appleVariants} varyant`);
+  console.log(`   📱 Samsung: ${samsungCount} aile, ${samsungVariants} varyant`);
+
   // ─── Manuel URL'lerden Listing'ler ─────────────────────
   // product-urls.ts + samsung-product-urls.ts'deki URL'leri DB'ye yaz
   let manualListingCount = 0;
@@ -224,6 +233,33 @@ async function main() {
     }
   }
   console.log(`✅ ${manualListingCount} manuel URL listing oluşturuldu`);
+
+  // ─── Listing coverage diagnostics ──────────────────────
+  const iphoneUrlCount = Object.keys(PRODUCT_URLS).length;
+  const samsungUrlCount = Object.keys(SAMSUNG_PRODUCT_URLS).length;
+  console.log(`   🔗 iPhone URL entries: ${iphoneUrlCount}`);
+  console.log(`   🔗 Samsung URL entries: ${samsungUrlCount}`);
+
+  // Check for Samsung variants missing from URL files
+  const samsungFamilies = FAMILIES.filter(f => f.brand === 'Samsung');
+  let missingUrlCount = 0;
+  for (const sf of samsungFamilies) {
+    for (const storageGb of sf.variants.storages) {
+      for (const color of sf.variants.colors) {
+        const normalizedName = `${sf.name} ${storageLabel(storageGb)} ${color}`;
+        const variantSlug = slugify(`samsung-${normalizedName}`);
+        if (!SAMSUNG_PRODUCT_URLS[variantSlug]) {
+          console.warn(`   ⚠️  Samsung URL eksik: ${variantSlug}`);
+          missingUrlCount++;
+        }
+      }
+    }
+  }
+  if (missingUrlCount > 0) {
+    console.warn(`   ⚠️  ${missingUrlCount} Samsung varyantının URL'si yok — bu varyantlar sync edilmeyecek!`);
+  } else {
+    console.log(`   ✅ Tüm Samsung varyantlarının URL'si mevcut`);
+  }
 
   // ─── Varsayılan Uygulama Ayarları ─────────────────────
   await prisma.appSettings.upsert({

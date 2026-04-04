@@ -80,8 +80,9 @@ const POPULAR_COLORS = new Set([
   'titanyum doğal', 'obsidian', 'phantom black', 'cream',
   // Samsung
   'titanium black', 'titanium gray', 'titanium grey', 'titanium blue',
-  'titanium white', 'titanium silverblue', 'titanyum gri', 'titanyum mavi',
-  'titanyum beyaz',
+  'titanium white', 'titanium silverblue', 'titanium silver', 'titanium violet',
+  'titanium yellow', 'titanyum gri', 'titanyum mavi', 'titanyum gümüş',
+  'titanyum beyaz', 'titanyum mor', 'titanyum sarı',
 ]);
 
 // ═══════════════════════════════════════════════════════════════════

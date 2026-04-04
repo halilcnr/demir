@@ -44,6 +44,7 @@ const MODEL_FILTERS = [
   { label: '17 Pro', value: 'iPhone 17 Pro' },
   { label: '17 Pro Max', value: 'iPhone 17 Pro Max' },
   // Samsung
+  { label: 'S26 Ultra', value: 'Galaxy S26 Ultra' },
   { label: 'S25 Ultra', value: 'Galaxy S25 Ultra' },
   { label: 'S24 Ultra', value: 'Galaxy S24 Ultra' },
   { label: 'A56', value: 'Galaxy A56' },
