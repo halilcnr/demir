@@ -128,6 +128,16 @@ const TURKISH_COLOR_MAP: Record<string, string> = {
   'gold': 'gold', 'altın': 'gold',
   'deep purple': 'deep purple', 'derin mor': 'deep purple',
   'ultramarine': 'ultramarine', 'lacivert taş': 'ultramarine',
+  // Samsung colors
+  'titanium black': 'titanium black', 'titanyum siyah': 'titanium black',
+  'titanium gray': 'titanium gray', 'titanyum gri': 'titanium gray',
+  'titanium blue': 'titanium blue', 'titanyum mavi': 'titanium blue',
+  'titanium silverblue': 'titanium silverblue', 'titanyum gümüş mavi': 'titanium silverblue',
+  'titanium violet': 'titanium violet', 'titanyum mor': 'titanium violet',
+  'titanium yellow': 'titanium yellow', 'titanyum sarı': 'titanium yellow',
+  'lilac': 'lilac', 'leylak': 'lilac', 'lila': 'lilac',
+  'navy': 'navy', 'lacivert': 'navy',
+  'gri': 'gray', 'gray': 'gray', 'grey': 'gray',
 };
 
 const USER_AGENTS = [
@@ -242,40 +252,61 @@ async function fetchWithTimeout(url: string, timeoutMs = 15000): Promise<FetchRe
 // ─── Product Name Parsing & Matching ────────────────────────────
 
 interface ParsedProductName {
-  family: string;       // "iPhone 15", "iPhone 17 Pro Max"
-  modelNumber: string;  // "15", "17"
-  variant: string;      // "Pro Max", "Plus", "Air", ""
+  brand: 'Apple' | 'Samsung';
+  family: string;       // "iPhone 15", "Galaxy S25 Ultra"
+  modelNumber: string;  // "15", "S25"
+  variant: string;      // "Pro Max", "Ultra", ""
   storageGb: number;
   color: string | null; // normalized English color or null
 }
 
 /**
- * Parse an iPhone product name from a comparison site listing.
- * Handles Turkish and English names like:
- *   "iPhone 15 256 GB Mavi"
- *   "Apple iPhone 17 Pro Max 512 GB Gümüş"
- *   "iPhone 13 128GB Beyaz"
+ * Parse a product name from a comparison site listing.
+ * Handles both iPhone and Samsung Galaxy titles in Turkish and English.
  */
 function parseProductName(title: string): ParsedProductName | null {
   const lower = title.toLowerCase();
 
-  // Must contain "iphone"
-  if (!lower.includes('iphone')) return null;
+  let brand: 'Apple' | 'Samsung';
+  let family: string;
+  let modelNumber: string;
+  let variant: string;
 
-  // Extract model number and variant
-  const modelMatch = lower.match(/iphone\s*(\d{2,3})\s*(pro\s*max|pro|plus|mini|air)?/);
-  if (!modelMatch) return null;
+  if (lower.includes('galaxy') || lower.includes('samsung')) {
+    // Samsung Galaxy parsing
+    // Matches: Galaxy S25 Ultra, Galaxy S24 Ultra, Galaxy A56, Galaxy A36, etc.
+    const galaxyMatch = lower.match(/galaxy\s*(s|a)(\d{2,3})\s*(ultra|plus|fe)?/);
+    if (!galaxyMatch) return null;
 
-  const modelNumber = modelMatch[1];
-  const rawVariant = modelMatch[2] || '';
-  const variant = rawVariant
-    .replace(/\s+/g, ' ')
-    .trim()
-    .split(' ')
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
+    brand = 'Samsung';
+    const series = galaxyMatch[1].toUpperCase(); // S or A
+    modelNumber = `${series}${galaxyMatch[2]}`; // e.g. "S25", "A56"
+    const rawVariant = galaxyMatch[3] || '';
+    variant = rawVariant
+      .replace(/\s+/g, ' ')
+      .trim()
+      .split(' ')
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+    family = `Galaxy ${modelNumber}${variant ? ' ' + variant : ''}`;
+  } else if (lower.includes('iphone')) {
+    // iPhone parsing
+    const iphoneMatch = lower.match(/iphone\s*(\d{2,3})\s*(pro\s*max|pro|plus|mini|air)?/);
+    if (!iphoneMatch) return null;
 
-  const family = `iPhone ${modelNumber}${variant ? ' ' + variant : ''}`;
+    brand = 'Apple';
+    modelNumber = iphoneMatch[1];
+    const rawVariant = iphoneMatch[2] || '';
+    variant = rawVariant
+      .replace(/\s+/g, ' ')
+      .trim()
+      .split(' ')
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+    family = `iPhone ${modelNumber}${variant ? ' ' + variant : ''}`;
+  } else {
+    return null;
+  }
 
   // Extract storage
   const storageMatch = lower.match(/(\d+)\s*(gb|tb)/i);
@@ -297,7 +328,7 @@ function parseProductName(title: string): ParsedProductName | null {
     }
   }
 
-  return { family, modelNumber, variant, storageGb, color };
+  return { brand, family, modelNumber, variant, storageGb, color };
 }
 
 /**
@@ -327,10 +358,9 @@ function computeMatchConfidence(
     score += 0.4;
   } else {
     // Partial match: same model number, different variant
-    const expectedModelMatch = expectedFamilyLower.match(/iphone\s*(\d+)/);
+    const expectedModelMatch = expectedFamilyLower.match(/(?:iphone|galaxy\s*[sa])\s*(\w+)/);
     if (expectedModelMatch && parsed.modelNumber === expectedModelMatch[1]) {
-      // Same iPhone number but different variant (e.g. Pro vs Pro Max)
-      // This is NOT a match
+      // Same model number but different variant (e.g. Pro vs Pro Max, or S25 vs S25 Ultra)
       return { confidence: 0, details };
     }
     return { confidence: 0, details };

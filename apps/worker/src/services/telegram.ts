@@ -506,8 +506,6 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
     return;
   }
 
-  // Enforce minimum confidence gate (never below DEFAULT_CONFIDENCE_GATE)
-  const minScore = Math.max(settings.smartDealMinScore, DEFAULT_CONFIDENCE_GATE);
   const smartCooldownMs = settings.smartDealCooldownMin * 60_000;
 
   // ── Filter 1: Velocity — suppress oscillating variants ──
@@ -541,14 +539,7 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
     return;
   }
 
-  // ── Step 4: Confidence gate ──
-  if (arb.score < minScore) {
-    skippedCount++;
-    console.log(`[telegram-arb] Low score (${arb.score} < ${minScore}): ${payload.variantLabel}`);
-    return;
-  }
-
-  // ── Step 4.5: Generational Barrier (Baki Protocol) ──
+  // ── Step 4: Generational Barrier (pre-check, fast fail) ──
   const genContext = await checkGenerationalBarrier(payload.variantId, payload.newPrice);
   if (genContext && !genContext.barrierPassed) {
     skippedCount++;
@@ -556,7 +547,7 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
     return;
   }
 
-  // ── Step 4.6: Baki-Quant Engine (10 Commandments) ──
+  // ── Step 5: Baki-Quant Engine (10 Commandments + Score) ──
   const bakiResult = await runBakiQuantEngine({
     currentPrice: payload.newPrice,
     previousPrice: payload.oldPrice,
@@ -889,7 +880,6 @@ export async function sendSmartDealTest(listingId?: string): Promise<{ ok: boole
   const barrierLabel = genContext
     ? (genContext.barrierPassed ? '✅ Geçti' : `🚫 ${genContext.reason}`)
     : '— (veri yok)';
-  const minScore = Math.max(settings.smartDealMinScore, DEFAULT_CONFIDENCE_GATE);
 
   const message = [
     '🧪 <b>ARBİTRAJ FIRSAT TESTİ</b>',
@@ -972,8 +962,8 @@ async function processUpdates(): Promise<void> {
           await sendToChat(groupChatId, [
             '🎉 <b>Merhaba!</b>',
             '',
-            'Bu grup artık iPhone fiyat düşüşü bildirimlerini alacak.',
-            'Fiyatlar düştüğünde otomatik olarak bilgilendirileceksiniz.',
+            'Bu grup artık fiyat düşüşü bildirimlerini alacak.',
+            'iPhone ve Samsung fiyatları düştüğünde otomatik olarak bilgilendirileceksiniz.',
             '',
             '🔕 Bildirimleri kapatmak için /stop yazın.',
           ].join('\n'));
@@ -1017,8 +1007,8 @@ async function processUpdates(): Promise<void> {
         await sendToChat(chatId, [
           '🎉 <b>Hoş geldiniz!</b>',
           '',
-          'iPhone fiyat düşüşü bildirimlerine abone oldunuz.',
-          'Fiyatlar düştüğünde otomatik olarak bilgilendirileceksiniz.',
+          'Fiyat düşüşü bildirimlerine abone oldunuz.',
+          'iPhone ve Samsung fiyatları düştüğünde otomatik olarak bilgilendirileceksiniz.',
           '',
           '🔕 Bildirimleri kapatmak için /stop yazın.',
         ].join('\n'));
@@ -1037,7 +1027,7 @@ async function processUpdates(): Promise<void> {
         await sendToChat(chatId, [
           '👋 Merhaba! Ben BakiBot.',
           '',
-          '📱 iPhone fiyat düşüşlerini takip ediyorum.',
+          '📱 iPhone ve Samsung fiyat düşüşlerini takip ediyorum.',
           '',
           '<b>Komutlar:</b>',
           '/start — Bildirimlere abone ol',

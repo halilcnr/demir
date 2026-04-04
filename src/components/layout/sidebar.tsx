@@ -30,7 +30,7 @@ export function Sidebar() {
       <div className="flex h-16 items-center gap-2 border-b border-gray-200 px-6">
         <Smartphone className="h-6 w-6 text-blue-600" />
         <span className="text-lg font-bold text-gray-900">
-          iPhone<span className="text-blue-600">Tracker</span>
+          Baki<span className="text-blue-600">Tracker</span>
         </span>
       </div>
 
@@ -61,7 +61,7 @@ export function Sidebar() {
 
       {/* Footer */}
       <div className="border-t border-gray-200 p-4">
-        <p className="text-xs text-gray-400">iPhone Price Tracker v1.0</p>
+        <p className="text-xs text-gray-400">BakiTracker v1.0</p>
       </div>
     </aside>
   );

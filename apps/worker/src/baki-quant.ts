@@ -49,7 +49,7 @@ export interface BakiQuantResult {
 // ═══════════════════════════════════════════════════════════════════
 
 /** Hard threshold for sending a notification */
-const BAKI_SCORE_THRESHOLD = 85;
+const BAKI_SCORE_THRESHOLD = 75;
 
 /** Flash crash: single-scrape drop exceeding this % is suspicious */
 const FLASH_CRASH_DROP_PERCENT = 25;
@@ -57,8 +57,8 @@ const FLASH_CRASH_DROP_PERCENT = 25;
 /** Outlier gap: price is this % below median → suspect outlier */
 const OUTLIER_GAP_PERCENT = 20;
 
-/** 48-hour re-alert lock per variant group */
-const RENOTIFY_LOCK_MS = 48 * 60 * 60 * 1000;
+/** Re-alert lock per variant group (12h balances spam vs. opportunity) */
+const RENOTIFY_LOCK_MS = 12 * 60 * 60 * 1000;
 
 /** Minimum active providers for reliable arbitrage */
 const MIN_PROVIDER_COVERAGE = 3;
@@ -70,7 +70,7 @@ const STOCK_EXHAUSTION_THRESHOLD = 2;
 const MIN_RESALE_MARGIN_TL = 2000;
 
 /** Penalty per missing provider (below MIN_PROVIDER_COVERAGE) */
-const COVERAGE_PENALTY_PER_MISSING = 15;
+const COVERAGE_PENALTY_PER_MISSING = 8;
 
 /** Color popularity tiers (Turkish market) */
 const POPULAR_COLORS = new Set([
@@ -179,7 +179,7 @@ function commandment2_MarketCorrection(
     return {
       id: 2, name: 'Piyasa Düzeltmesi', passed: true,
       reason: 'Piyasa genelinde düzeltme — bu fiyat özel değil, herkes düşüyor',
-      penalty: 25,
+      penalty: 10,
     };
   }
   return { id: 2, name: 'Piyasa Düzeltmesi', passed: true, reason: 'Piyasa stabil', penalty: 0 };
@@ -333,13 +333,13 @@ function commandment6_LiquidityPenalty(
     liquidityPenalty = 0;
   } else if (uniqueRetailersForColor === 2) {
     reason = 'Sadece 2 mağazada — düşük likidite';
-    liquidityPenalty = 5;
+    liquidityPenalty = 3;
   } else if (uniqueRetailersForColor === 1) {
     reason = 'Tek mağazada — çok düşük likidite';
-    liquidityPenalty = 10;
+    liquidityPenalty = 5;
   } else {
     reason = 'Hiçbir mağazada stokta değil (?)';
-    liquidityPenalty = 15;
+    liquidityPenalty = 8;
   }
 
   return {
@@ -436,7 +436,7 @@ function commandment9_DataCoverage(
     return {
       id: 9, name: 'Veri Kapsamı', passed: true,
       reason: `Tek mağaza — kapsam çok düşük, arbitraj güvenilir değil`,
-      penalty: COVERAGE_PENALTY_PER_MISSING * 2,
+      penalty: COVERAGE_PENALTY_PER_MISSING + 5,
     };
   }
 
@@ -461,7 +461,7 @@ function commandment10_StockExhaustion(
     return {
       id: 10, name: 'Stok Tükenme', passed: true,
       reason: `Sadece ${freshCount} güncel listing kaldı — stok tükeniyor olabilir`,
-      penalty: 8,
+      penalty: 3,
       stockWarning: true,
     };
   }
@@ -641,9 +641,9 @@ function generateBakiCommentary(
   // ── Score-based closing ──
   if (bakiScore >= 95) {
     parts.push('Bu fiyata bu telefonu bırakma abi.');
-  } else if (bakiScore >= 90) {
-    parts.push('Güçlü fırsat. Düşünmeden al.');
   } else if (bakiScore >= 85) {
+    parts.push('Güçlü fırsat. Düşünmeden al.');
+  } else if (bakiScore >= 75) {
     parts.push('İyi bir alım. Hızlı karar ver.');
   }
 
@@ -820,7 +820,7 @@ export function buildBakiFlashMessage(input: BakiNotificationInput): string {
   }
 
   // ── Score badge ──
-  const scoreBadge = baki.bakiScore >= 95 ? '🟢' : baki.bakiScore >= 90 ? '🔵' : '🟡';
+  const scoreBadge = baki.bakiScore >= 90 ? '🟢' : baki.bakiScore >= 80 ? '🔵' : '🟡';
   lines.push(`${scoreBadge} <b>Baki Skor: ${baki.bakiScore}/100</b>`);
 
   // ── Stock warning ──
