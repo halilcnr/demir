@@ -1,5 +1,15 @@
 import { prisma } from '@repo/shared';
 import { DistributedLock, INSTANCE_ID } from '../distributed-lock';
+import {
+  runBakiQuantEngine,
+  recordBakiNotification,
+  buildBakiFlashMessage,
+  buildBakiDetailMessage,
+  buildRejectionLog,
+  BAKI_THRESHOLD,
+  type BakiQuantResult,
+  type BakiNotificationInput,
+} from '../baki-quant';
 
 // ─── Configuration ───────────────────────────────────────────────
 const TELEGRAM_ENABLED = process.env.TELEGRAM_ENABLED === 'true';
@@ -546,6 +556,27 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
     return;
   }
 
+  // ── Step 4.6: Baki-Quant Engine (10 Commandments) ──
+  const bakiResult = await runBakiQuantEngine({
+    currentPrice: payload.newPrice,
+    previousPrice: payload.oldPrice,
+    variantId: payload.variantId,
+    variantLabel: payload.variantLabel,
+    retailerName: payload.retailerName,
+    retailerSlug: payload.retailerSlug,
+    arb,
+    market,
+    genContext,
+  });
+
+  console.log(`[baki-quant] ${payload.retailerSlug} ${payload.variantLabel}: verdict=${bakiResult.verdict} bakiScore=${bakiResult.bakiScore} failed=[${bakiResult.failedCommandments.join(',')}]`);
+
+  if (bakiResult.verdict === 'REDDET') {
+    skippedCount++;
+    console.log(buildRejectionLog(payload.variantLabel, payload.retailerName, payload.newPrice, bakiResult));
+    return;
+  }
+
   // ── Step 5: Tier classification ──
   const tier = classifyNotificationTier(arb, market, payload.newPrice);
   if (!tier) {
@@ -590,16 +621,39 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
     return;
   }
 
-  // ── Step 8: Two-phase broadcast ──
-  //   Phase 1 (Flash): product + price + link — sent immediately
-  //   Phase 2 (Detail): fire-and-forget, don't block on it
-  const flashMsg = buildFlashMessage(payload, arb, market);
-  const flashResult = await broadcast(flashMsg);
-
+  // ── Step 8: Two-phase Baki broadcast ──
+  //   Phase 1 (Flash): Baki Abi commentary + price + link — sent immediately
+  //   Phase 2 (Detail): 10 commandments breakdown — fire-and-forget
   const analysisMs = Date.now() - computeStartMs;
   const totalMs = Date.now() - pipelineStartMs;
+
+  const bakiNotifInput: BakiNotificationInput = {
+    variantLabel: payload.variantLabel,
+    retailerName: payload.retailerName,
+    productUrl: payload.productUrl,
+    newPrice: payload.newPrice,
+    oldPrice: payload.oldPrice,
+    arb,
+    market,
+    genContext,
+    baki: bakiResult,
+    timings: { dataMs, analysisMs, totalMs },
+  };
+
+  const flashMsg = buildBakiFlashMessage(bakiNotifInput);
+  const flashResult = await broadcast(flashMsg);
+
+  // Record the 48h lock for this variant group
+  const variantInfo = await prisma.productVariant.findUnique({
+    where: { id: payload.variantId },
+    select: { familyId: true, storageGb: true },
+  });
+  if (variantInfo) {
+    recordBakiNotification(variantInfo.familyId, variantInfo.storageGb);
+  }
+
   const tierLabel = tier === 'GLOBAL_FLOOR' ? 'Tier 1 — Global Taban' : 'Tier 2 — Renk Arbitrajı';
-  const detailMsg = buildDetailMessage(payload, arb, market, genContext, { dataMs, analysisMs, totalMs }, { tier: tierLabel, minScore });
+  const detailMsg = buildBakiDetailMessage(bakiNotifInput);
 
   // Fire-and-forget: detail mesajı flash'ı bekletmez
   broadcast(detailMsg).catch(err =>
@@ -617,7 +671,7 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
 
   if (result.sent > 0) {
     sentCount++;
-    console.log(`[telegram-arb] ✓ ${tier} sent: ${payload.variantLabel} (${payload.newPrice} TL, score=${arb.score}) → ${result.sent} subscriber(s)`);
+    console.log(`[telegram-arb] ✓ ${tier} sent: ${payload.variantLabel} (${payload.newPrice} TL, bakiScore=${bakiResult.bakiScore}, arbScore=${arb.score}) → ${result.sent} subscriber(s)`);
 
     const fullMessage = flashMsg + '\n\n' + detailMsg;
     await prisma.notificationLog.create({

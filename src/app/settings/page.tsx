@@ -18,7 +18,7 @@ export default function SettingsPage() {
             </label>
             <input
               type="text"
-              defaultValue="iPhone Price Tracker"
+              defaultValue="BakiTracker"
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
               readOnly
             />
@@ -68,7 +68,7 @@ export default function SettingsPage() {
       <Card>
         <h3 className="mb-3 text-sm font-semibold text-gray-900">Hakkında</h3>
         <div className="text-sm text-gray-600 space-y-1">
-          <p>iPhone Price Tracker v1.0</p>
+          <p>BakiTracker v2.0</p>
           <p>Next.js 15 • Prisma • PostgreSQL • Recharts</p>
           <p>Vercel üzerinde deploy edilmektedir.</p>
         </div>

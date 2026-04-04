@@ -8,8 +8,8 @@ import { QueryProvider } from './providers';
 import { LiveUpdatesProvider } from '@/components/live-updates-context';
 
 export const metadata: Metadata = {
-  title: 'iPhone Fiyat Takip - Deal Dashboard',
-  description: 'Türkiye e-ticaret sitelerinden iPhone fiyat takip ve fırsat tespit paneli',
+  title: 'Fiyat Takip - Deal Dashboard',
+  description: 'Türkiye e-ticaret sitelerinden iPhone & Samsung fiyat takip ve fırsat tespit paneli',
 };
 
 export default function RootLayout({

@@ -13,6 +13,7 @@ import { CardSkeleton } from '@/components/ui/skeleton';
 
 const STORAGE_OPTIONS = ['128GB', '256GB', '512GB', '1TB'];
 const MODEL_FAMILIES = [
+  // iPhone
   'iPhone 13',
   'iPhone 14',
   'iPhone 15',
@@ -23,6 +24,11 @@ const MODEL_FAMILIES = [
   'iPhone 17 Air',
   'iPhone 17 Pro',
   'iPhone 17 Pro Max',
+  // Samsung
+  'Galaxy S25 Ultra',
+  'Galaxy S24 Ultra',
+  'Galaxy A56',
+  'Galaxy A36',
 ];
 const SORT_OPTIONS = [
   { value: 'name', label: 'İsim (A-Z)' },
@@ -78,7 +84,7 @@ export default function ProductsPage() {
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
-              placeholder="Model ara... (ör: iPhone 15 Pro)"
+              placeholder="Model ara... (ör: iPhone 15 Pro, Galaxy S25 Ultra)"
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(1); }}
               className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"

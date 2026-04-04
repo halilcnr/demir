@@ -43,7 +43,7 @@ export function Sidebar() {
           <Smartphone className="h-4 w-4 text-white" />
         </div>
         <span className="text-[15px] font-semibold tracking-tight text-text-primary">
-          iPhone<span className="text-primary">Tracker</span>
+          Baki<span className="text-primary">Tracker</span>
         </span>
       </div>
 

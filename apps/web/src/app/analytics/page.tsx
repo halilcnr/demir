@@ -152,7 +152,7 @@ export default function AnalyticsPage() {
 
   // Data for the top deals bar chart
   const topDealsChart = deals.slice(0, 8).map((d) => ({
-    name: d.variantName.replace('iPhone ', '').slice(0, 20),
+    name: d.variantName.replace(/^(iPhone|Galaxy)\s+/i, '').slice(0, 20),
     savings: d.savingsVsMarket,
     score: d.dealScore,
   }));

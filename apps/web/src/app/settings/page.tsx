@@ -79,7 +79,7 @@ function UrlManager() {
             type="text"
             value={variantSlug}
             onChange={e => setVariantSlug(e.target.value)}
-            placeholder="Varyant slug (ör: iphone-16-pro-max-256gb-natural-titanium)"
+            placeholder="Varyant slug (ör: iphone-16-pro-max-256gb-natural-titanium, samsung-galaxy-s25-ultra-256gb-titanium-black)"
             className="col-span-1 sm:col-span-2 rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-text-primary focus:border-primary focus:ring-2 focus:ring-primary/30 outline-none transition-colors"
           />
           <select
@@ -275,7 +275,7 @@ export default function SettingsPage() {
           </div>
           <div className="space-y-2">
             {[
-              ['ProductFamily', 'iPhone modeli (ör. iPhone 15 Pro Max)'],
+              ['ProductFamily', 'Cihaz modeli (ör. iPhone 15 Pro Max, Galaxy S25 Ultra)'],
               ['ProductVariant', 'Renk + depolama kombinasyonu (ör. 256GB Natural Titanium)'],
               ['Listing', 'Bir mağazadaki bir varyantın kaydı (fiyat, stok, fırsat skoru)'],
               ['PriceSnapshot', 'Her senkronizasyonda alınan fiyat kaydı (tarihçe)'],

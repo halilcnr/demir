@@ -32,6 +32,7 @@ function getFreshnessBadge(lastSeenAt: string | null): { label: string; classNam
 
 const MODEL_FILTERS = [
   { label: 'Tümü', value: '' },
+  // iPhone
   { label: 'iPhone 13', value: 'iPhone 13' },
   { label: 'iPhone 14', value: 'iPhone 14' },
   { label: 'iPhone 15', value: 'iPhone 15' },
@@ -42,6 +43,11 @@ const MODEL_FILTERS = [
   { label: '17 Air', value: 'iPhone 17 Air' },
   { label: '17 Pro', value: 'iPhone 17 Pro' },
   { label: '17 Pro Max', value: 'iPhone 17 Pro Max' },
+  // Samsung
+  { label: 'S25 Ultra', value: 'Galaxy S25 Ultra' },
+  { label: 'S24 Ultra', value: 'Galaxy S24 Ultra' },
+  { label: 'A56', value: 'Galaxy A56' },
+  { label: 'A36', value: 'Galaxy A36' },
 ] as const;
 
 function VariantsContent() {

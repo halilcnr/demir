@@ -23,6 +23,7 @@ import type { BestByStorageGroup } from '@repo/shared';
 
 const MODEL_FAMILIES = [
   'Tümü',
+  // iPhone
   'iPhone 13',
   'iPhone 14',
   'iPhone 15',
@@ -33,6 +34,11 @@ const MODEL_FAMILIES = [
   'iPhone 17 Air',
   'iPhone 17 Pro',
   'iPhone 17 Pro Max',
+  // Samsung
+  'Galaxy S25 Ultra',
+  'Galaxy S24 Ultra',
+  'Galaxy A56',
+  'Galaxy A36',
 ];
 
 const STORAGE_OPTIONS = [128, 256, 512, 1024];

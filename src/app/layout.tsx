@@ -5,8 +5,8 @@ import { Header } from '@/components/layout/header';
 import { QueryProvider } from '@/components/providers/query-provider';
 
 export const metadata: Metadata = {
-  title: 'iPhone Fiyat Takip - Admin Dashboard',
-  description: 'Türkiye e-ticaret sitelerinden iPhone fiyat takip paneli',
+  title: 'Fiyat Takip - Admin Dashboard',
+  description: 'Türkiye e-ticaret sitelerinden iPhone & Samsung fiyat takip paneli',
 };
 
 export default function RootLayout({
