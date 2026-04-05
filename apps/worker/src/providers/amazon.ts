@@ -9,6 +9,13 @@ export class AmazonProvider extends BaseProvider {
 
   protected pacing = { baseDelayMs: 2500, jitterMs: 2000, concurrencyLimit: 1 };
 
+  /**
+   * Minimum sane price for a phone (TL).
+   * Amazon pages for out-of-stock items sometimes show accessory / case prices.
+   * Any price below this floor is guaranteed to be a scraping error.
+   */
+  private static MIN_PHONE_PRICE = 5000;
+
   protected getStrategies(): ScrapeStrategy[] {
     return [
       {
@@ -16,9 +23,15 @@ export class AmazonProvider extends BaseProvider {
         run: (html, url, $) => {
           const ld = this.extractJsonLd(html);
           if (!ld) return null;
+          if (ld.price < AmazonProvider.MIN_PHONE_PRICE) return null; // accessory / garbage price
           const parsed = normalizeProductTitle(ld.name);
           if (!parsed) return null;
           const seller = $('#sellerProfileTriggerId').text().trim() || undefined;
+          // Double-check stock: JSON-LD may say inStock but the page says otherwise
+          const pageOutOfStock = $('#outOfStock').length > 0
+            || $('#availability .a-color-price').length > 0
+            || $('#availability').text().toLowerCase().includes('mevcut değil');
+          const inStock = ld.inStock && !pageOutOfStock;
           return {
             retailerSlug: this.retailerSlug,
             retailerName: this.retailerName,
@@ -30,7 +43,7 @@ export class AmazonProvider extends BaseProvider {
             currency: 'TRY',
             sellerName: seller,
             imageUrl: ld.image,
-            stockStatus: ld.inStock ? 'IN_STOCK' : 'OUT_OF_STOCK',
+            stockStatus: inStock ? 'IN_STOCK' : 'OUT_OF_STOCK',
             productUrl: url,
             fetchedAt: new Date(),
           };
@@ -50,7 +63,7 @@ export class AmazonProvider extends BaseProvider {
 
           const priceStr = `${wholePrice.replace(/[^\d]/g, '')}${fractionPrice ? '.' + fractionPrice.replace(/[^\d]/g, '') : ''}`;
           const price = parseFloat(priceStr);
-          if (isNaN(price) || price <= 0) return null;
+          if (isNaN(price) || price < AmazonProvider.MIN_PHONE_PRICE) return null; // reject garbage prices
 
           const seller = $('#sellerProfileTriggerId').text().trim() || undefined;
           const outOfStock = $('#outOfStock').length > 0 || $('#availability .a-color-price').length > 0;
@@ -76,9 +89,15 @@ export class AmazonProvider extends BaseProvider {
         run: (_html, url, $) => {
           const meta = this.extractMetaTags($);
           if (!meta.name || !meta.price) return null;
+          if (meta.price < AmazonProvider.MIN_PHONE_PRICE) return null; // accessory / garbage price
 
           const parsed = normalizeProductTitle(meta.name);
           if (!parsed) return null;
+
+          // meta-tags can't reliably detect stock — check DOM
+          const outOfStock = $('#outOfStock').length > 0
+            || $('#availability .a-color-price').length > 0
+            || $('#availability').text().toLowerCase().includes('mevcut değil');
 
           return {
             retailerSlug: this.retailerSlug,
@@ -90,7 +109,7 @@ export class AmazonProvider extends BaseProvider {
             price: meta.price,
             currency: 'TRY',
             imageUrl: meta.image ?? undefined,
-            stockStatus: 'IN_STOCK',
+            stockStatus: outOfStock ? 'OUT_OF_STOCK' : 'IN_STOCK',
             productUrl: url,
             fetchedAt: new Date(),
           };
