@@ -268,7 +268,7 @@ export async function checkGenerationalBarrier(
         variant: { familyId, storageGb: variant!.storageGb, isActive: true },
         isActive: true,
         currentPrice: { not: null, gt: 0 },
-        stockStatus: { in: ['IN_STOCK', 'LIMITED'] },
+        stockStatus: { in: ['IN_STOCK', 'LIMITED', 'UNKNOWN'] },
         lastSeenAt: { gte: new Date(Date.now() - 12 * 60 * 60 * 1000) },
       },
       orderBy: { currentPrice: 'asc' },
@@ -370,7 +370,7 @@ export async function fetchGlobalMarketSnapshot(
       },
       isActive: true,
       currentPrice: { not: null, gt: 0 },
-      stockStatus: { in: ['IN_STOCK', 'LIMITED'] },  // OUT_OF_STOCK excluded from floor
+      stockStatus: { in: ['IN_STOCK', 'LIMITED', 'UNKNOWN'] },  // UNKNOWN = not yet scraped, include it
     },
     select: {
       id: true,
@@ -996,7 +996,7 @@ export async function checkAlertRules(
             variantId,
             retailer: { slug: { not: retailerSlug } },
             currentPrice: { not: null },
-            stockStatus: { in: ['IN_STOCK', 'LIMITED'] },
+            stockStatus: { in: ['IN_STOCK', 'LIMITED', 'UNKNOWN'] },
           },
           select: { currentPrice: true },
         });
