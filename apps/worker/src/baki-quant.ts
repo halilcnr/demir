@@ -51,11 +51,6 @@ export interface BakiQuantResult {
 /** Hard threshold for sending a notification */
 const BAKI_SCORE_THRESHOLD = 75;
 
-/** Lower threshold for first observations (previousPrice == null).
- *  New products have fewer providers scraped → coverage/liquidity penalties stack.
- *  A lower bar prevents silently killing every first-observation notification. */
-const FIRST_OBSERVATION_THRESHOLD = 55;
-
 /** Flash crash: single-scrape drop exceeding this % is suspicious */
 const FLASH_CRASH_DROP_PERCENT = 25;
 
@@ -742,9 +737,7 @@ export async function runBakiQuantEngine(input: BakiQuantInput): Promise<BakiQua
       });
 
   // ── Verdict ──
-  const isFirstObservation = previousPrice == null;
-  const effectiveThreshold = isFirstObservation ? FIRST_OBSERVATION_THRESHOLD : BAKI_SCORE_THRESHOLD;
-  const verdict: BakiVerdict = (!hasHardKill && bakiScore >= effectiveThreshold)
+  const verdict: BakiVerdict = (!hasHardKill && bakiScore >= BAKI_SCORE_THRESHOLD)
     ? 'GONDER'
     : 'REDDET';
 

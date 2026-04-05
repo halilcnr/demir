@@ -121,6 +121,13 @@ const WEIGHT_FRESHNESS = 0.30;
 const GLOBAL_FLOOR_TOLERANCE = 1.02;  // 2% tolerance for discard
 const NOISE_THRESHOLD = 0.01;         // 1% noise range
 
+/**
+ * Minimum sane price for a phone listing (TL).
+ * Anything below this is a scraping error, accessory price, or bait listing.
+ * Excluded from market snapshot calculations to prevent poisoning the floor.
+ */
+const MIN_SANE_PHONE_PRICE_TL = 5000;
+
 // ═══════════════════════════════════════════════════════════════════
 //  GENERATIONAL BARRIER (BAKİ PROTOCOL)
 //
@@ -385,7 +392,9 @@ export async function fetchGlobalMarketSnapshot(
 
   if (allListings.length === 0) return null;
 
-  const allPrices: MarketPrice[] = allListings.map(l => ({
+  const allPrices: MarketPrice[] = allListings
+    .filter(l => l.currentPrice! >= MIN_SANE_PHONE_PRICE_TL) // Exclude garbage scrape prices
+    .map(l => ({
     price: l.currentPrice!,
     retailerSlug: l.retailer.slug,
     retailerName: l.retailer.name,
@@ -395,6 +404,8 @@ export async function fetchGlobalMarketSnapshot(
     freshness: classifyFreshness(l.lastSeenAt),
     lastSeenAt: l.lastSeenAt,
   }));
+
+  if (allPrices.length === 0) return null;
 
   // ── Freshness-aware global floor: use ONLY CANLI data ──
   // BELİRSİZ prices are kept for context but don't set the floor.

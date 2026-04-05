@@ -24,6 +24,12 @@ const DEFAULT_CONFIDENCE_GATE = 75;                // Only push if score ≥ 75
 const SIBLING_DISCOUNT_THRESHOLD = 0.90;           // Tier 2: price < siblingAvg * 0.90
 const GLOBAL_FLOOR_PROXIMITY = 1.02;               // Tier 2: price <= globalFloor * 1.02
 
+/**
+ * Minimum sane price for a phone listing (TL).
+ * Anything below this is a scraping error, accessory price, or bait.
+ */
+const MIN_SANE_PHONE_PRICE_TL = 5000;
+
 const telegramPollLock = new DistributedLock('telegram-poll', 60_000);
 
 /** Istanbul-local timestamp with ms precision for message footers */
@@ -495,6 +501,12 @@ function buildArbitrageAlertMessage(
 export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> {
   if (!TELEGRAM_ENABLED) {
     console.log(`[telegram-arb] TELEGRAM_ENABLED=false, skipping: ${payload.variantLabel}`);
+    return;
+  }
+
+  // ── Price sanity check: reject garbage scrape results ──
+  if (payload.newPrice < MIN_SANE_PHONE_PRICE_TL) {
+    console.log(`[telegram-arb] Saçma fiyat atlandı: ${payload.variantLabel} = ${payload.newPrice} TL (< ${MIN_SANE_PHONE_PRICE_TL} TL minimum)`);
     return;
   }
 

@@ -21,6 +21,20 @@ const BAKI_GAP_PERCENT = 10; // minimum % gap to next-gen model
 const MIN_RADAR_DROP_TL = 1000;
 const MIN_RADAR_DROP_PERCENT = 2;
 
+/**
+ * Minimum snapshot count before ATL/30-day low are considered meaningful.
+ * The first scrape of any product IS its ATL by definition — that's not a deal.
+ * We need at least this many historical data points to confirm a real low.
+ */
+const MIN_SNAPSHOT_COUNT_FOR_RADAR = 3;
+
+/**
+ * Minimum sane price for a phone listing (TL).
+ * Anything below this is a scraping error, accessory price, or bait.
+ * Galaxy A36 starts at ~14,000 TL, so 5000 TL is a safe floor.
+ */
+const MIN_SANE_PHONE_PRICE_TL = 5000;
+
 // Track last notification per family+storage to avoid spam
 const lastNotifiedMap = new Map<string, number>(); // key → timestamp
 
@@ -87,6 +101,12 @@ export async function runDealRadar(): Promise<number> {
     const price = a.lowestCurrentPrice;
     if (!price || price <= 0) continue;
 
+    // ── Sanity check: reject garbage prices from scraping errors ──
+    if (price < MIN_SANE_PHONE_PRICE_TL) {
+      console.log(`[deal-radar] Saçma fiyat atlandı: ${a.variant.normalizedName} = ${price} TL (< ${MIN_SANE_PHONE_PRICE_TL} TL minimum)`);
+      continue;
+    }
+
     const isATL = a.allTimeLowest != null && price <= a.allTimeLowest;
     const is30DayLow = a.lowest30d != null && price <= a.lowest30d;
 
@@ -117,6 +137,20 @@ export async function runDealRadar(): Promise<number> {
       if (dropFromLast < MIN_RADAR_DROP_TL && dropFromLastPercent < MIN_RADAR_DROP_PERCENT) {
         continue;
       }
+    }
+
+    // ── First-observation guard: require enough price history ──
+    // On first scrape, the first price IS the ATL by definition — not a real deal.
+    const listingIds = a.variant.listings.map((l: { id: string }) => l.id);
+    let snapshotCount = 0;
+    if (listingIds.length > 0) {
+      snapshotCount = await prisma.priceSnapshot.count({
+        where: { listingId: { in: listingIds } },
+      });
+    }
+    if (snapshotCount < MIN_SNAPSHOT_COUNT_FOR_RADAR) {
+      console.log(`[deal-radar] Yetersiz veri geçmişi: ${a.variant.normalizedName} (${snapshotCount}/${MIN_SNAPSHOT_COUNT_FOR_RADAR} snapshot)`);
+      continue;
     }
 
     candidates.push({

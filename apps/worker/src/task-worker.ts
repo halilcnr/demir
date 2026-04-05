@@ -313,9 +313,10 @@ async function processOneTask(task: ClaimedTask): Promise<'success' | 'failure' 
         },
       });
 
-      // Telegram: intelligent deal alert (price drop or first observation)
-      if (!previousPrice || result.price < previousPrice) {
-        console.log(`[task-worker] Deal trigger: ${variantLabel} @ ${slug} — ${previousPrice ?? 'null'} → ${result.price} TL`);
+      // Telegram: intelligent deal alert (price drop only — first observations skipped)
+      // First observations (previousPrice == null) have no history → ATL by definition → not a real deal.
+      if (previousPrice && result.price < previousPrice) {
+        console.log(`[task-worker] Deal trigger: ${variantLabel} @ ${slug} — ${previousPrice} → ${result.price} TL`);
         try {
           await notifySmartDeal({
             listingId,
