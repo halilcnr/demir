@@ -123,11 +123,16 @@ const GLOBAL_FLOOR_TOLERANCE = 1.02;  // 2% tolerance for discard
 const NOISE_THRESHOLD = 0.01;         // 1% noise range
 
 /**
- * Minimum sane price for a phone listing (TL).
- * Anything below this is a scraping error, accessory price, or bait listing.
- * Excluded from market snapshot calculations to prevent poisoning the floor.
+ * Sane price band for a phone listing (TL).
+ *
+ * MIN guards against scrape garbage (e.g. accessory price pulled from a cross-sell widget).
+ * MAX guards against decimal/thousand-separator typos (e.g. "1.299.990,00" parsed as 129999000)
+ * that would poison the market average and make every real listing look like an elite deal.
+ *
+ * Both bounds are checked in fetchGlobalMarketSnapshot and deal-radar / telegram paths.
  */
 const MIN_SANE_PHONE_PRICE_TL = 5000;
+const MAX_SANE_PHONE_PRICE_TL = 500_000;
 
 // ═══════════════════════════════════════════════════════════════════
 //  GENERATIONAL BARRIER (BAKİ PROTOCOL)
@@ -404,7 +409,7 @@ export async function fetchGlobalMarketSnapshot(
   if (allListings.length === 0) return null;
 
   const allPrices: MarketPrice[] = allListings
-    .filter(l => l.currentPrice! >= MIN_SANE_PHONE_PRICE_TL) // Exclude garbage scrape prices
+    .filter(l => l.currentPrice! >= MIN_SANE_PHONE_PRICE_TL && l.currentPrice! <= MAX_SANE_PHONE_PRICE_TL) // Exclude garbage scrape prices on both ends
     .map(l => ({
     price: l.currentPrice!,
     retailerSlug: l.retailer.slug,
@@ -978,6 +983,36 @@ export async function checkAlertRules(
     (rule.variantId === null && rule.familyId === null)
   );
 
+  if (rules.length === 0) return;
+
+  // Hoist per-rule DB lookups out of the loop — previously each NEW_LOWEST /
+  // CROSS_RETAILER rule issued its own query, so N rules = 2N queries per
+  // price update. Fetch both prerequisites once, lazily (only if at least one
+  // matching rule actually needs them).
+  const needsLowest = rules.some(r => r.type === 'NEW_LOWEST' && (!r.retailerSlug || r.retailerSlug === retailerSlug));
+  const needsCrossRetailer = rules.some(r => r.type === 'CROSS_RETAILER' && (!r.retailerSlug || r.retailerSlug === retailerSlug));
+
+  const [listingForLowest, crossRetailerPrices] = await Promise.all([
+    needsLowest
+      ? prisma.listing.findUnique({ where: { id: listingId }, select: { lowestPrice: true } })
+      : Promise.resolve(null as { lowestPrice: number | null } | null),
+    needsCrossRetailer
+      ? prisma.listing.findMany({
+          where: {
+            variantId,
+            retailer: { slug: { not: retailerSlug } },
+            currentPrice: { not: null },
+            stockStatus: { in: ['IN_STOCK', 'LIMITED', 'UNKNOWN'] },
+          },
+          select: { currentPrice: true },
+        })
+      : Promise.resolve([] as Array<{ currentPrice: number | null }>),
+  ]);
+
+  const minCrossRetailerPrice = crossRetailerPrices.length > 0
+    ? Math.min(...crossRetailerPrices.map(o => o.currentPrice!).filter(p => p != null))
+    : null;
+
   for (const rule of rules) {
     if (rule.retailerSlug && rule.retailerSlug !== retailerSlug) continue;
 
@@ -1005,34 +1040,18 @@ export async function checkAlertRules(
         break;
       }
       case 'NEW_LOWEST': {
-        const listing = await prisma.listing.findUnique({
-          where: { id: listingId },
-          select: { lowestPrice: true },
-        });
-        if (listing?.lowestPrice && currentPrice <= listing.lowestPrice) {
+        if (listingForLowest?.lowestPrice && currentPrice <= listingForLowest.lowestPrice) {
           shouldTrigger = true;
           reason = `Yeni en düşük fiyat: ${currentPrice} TL`;
         }
         break;
       }
       case 'CROSS_RETAILER': {
-        const others = await prisma.listing.findMany({
-          where: {
-            variantId,
-            retailer: { slug: { not: retailerSlug } },
-            currentPrice: { not: null },
-            stockStatus: { in: ['IN_STOCK', 'LIMITED', 'UNKNOWN'] },
-          },
-          select: { currentPrice: true },
-        });
-        if (others.length > 0) {
-          const minOther = Math.min(...others.map((o) => o.currentPrice!));
-          if (currentPrice < minOther) {
-            shouldTrigger = true;
-            const diff = ((minOther - currentPrice) / minOther) * 100;
-            reason = `En ucuz site! Diğerlerinden %${diff.toFixed(1)} daha ucuz`;
-            dropPercent = diff;
-          }
+        if (minCrossRetailerPrice != null && currentPrice < minCrossRetailerPrice) {
+          shouldTrigger = true;
+          const diff = ((minCrossRetailerPrice - currentPrice) / minCrossRetailerPrice) * 100;
+          reason = `En ucuz site! Diğerlerinden %${diff.toFixed(1)} daha ucuz`;
+          dropPercent = diff;
         }
         break;
       }

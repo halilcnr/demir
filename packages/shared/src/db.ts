@@ -6,6 +6,9 @@ const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 // Railway Postgres is a direct TCP connection (no PgBouncer in front) — do NOT set
 // pgbouncer=true here; that would disable Prisma's prepared-statement cache and
 // regress perf. connection_limit + pool_timeout are the two knobs that matter.
+// (A server-side statement_timeout would be a nice-to-have stability cap, but
+// the URL-based `options=-c ...` variant isn't universally passed through by
+// Prisma's query-engine parser — skipped here to keep boot bulletproof.)
 function withPoolLimit(url: string | undefined): string | undefined {
   if (!url) return url;
   const params: string[] = [];

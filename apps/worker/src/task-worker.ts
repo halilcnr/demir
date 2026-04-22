@@ -443,6 +443,7 @@ async function handleTaskError(task: ClaimedTask, err: unknown): Promise<'succes
         lastCheckedAt: new Date(),
       },
     }).catch(() => {});
+    await handleScrapeFailure(listingId).catch(() => {});
     recordTaskFailed();
     recordHealthFailure(slug, listingId, 'error', 404);
     addSyncLog({ type: 'warn', retailer: slug, variant: variantLabel, message: `${slug} — ürün bulunamadı (stok dışı)` });
@@ -455,6 +456,7 @@ async function handleTaskError(task: ClaimedTask, err: unknown): Promise<'succes
       where: { id: listingId },
       data: { stockStatus: 'OUT_OF_STOCK', lastFailureAt: new Date(), lastCheckedAt: new Date() },
     }).catch(() => {});
+    await handleScrapeFailure(listingId).catch(() => {});
     recordTaskFailed();
     return 'failure';
   }
@@ -464,6 +466,7 @@ async function handleTaskError(task: ClaimedTask, err: unknown): Promise<'succes
     await recordFailure(slug);
     recordTaskFailed();
     await prisma.listing.update({ where: { id: listingId }, data: { lastFailureAt: new Date() } }).catch(() => {});
+    await handleScrapeFailure(listingId).catch(() => {});
     addSyncLog({ type: 'error', retailer: slug, variant: variantLabel, message: `${slug} — ayrıştırma hatası` });
     return 'failure';
   }
@@ -473,6 +476,7 @@ async function handleTaskError(task: ClaimedTask, err: unknown): Promise<'succes
     await recordFailure(slug);
     recordTaskFailed();
     await prisma.listing.update({ where: { id: listingId }, data: { lastFailureAt: new Date() } }).catch(() => {});
+    await handleScrapeFailure(listingId).catch(() => {});
     addSyncLog({ type: 'error', retailer: slug, variant: variantLabel, message: `${slug} — sunucu hatası (${err.statusCode})` });
     return 'failure';
   }
@@ -482,6 +486,7 @@ async function handleTaskError(task: ClaimedTask, err: unknown): Promise<'succes
     await recordFailure(slug);
     recordTaskFailed();
     await prisma.listing.update({ where: { id: listingId }, data: { lastFailureAt: new Date() } }).catch(() => {});
+    await handleScrapeFailure(listingId).catch(() => {});
     addSyncLog({ type: 'error', retailer: slug, variant: variantLabel, message: `${slug} — ağ hatası` });
     return 'failure';
   }
@@ -492,6 +497,7 @@ async function handleTaskError(task: ClaimedTask, err: unknown): Promise<'succes
   await recordFailure(slug);
   recordTaskFailed();
   await prisma.listing.update({ where: { id: listingId }, data: { lastFailureAt: new Date() } }).catch(() => {});
+  await handleScrapeFailure(listingId).catch(() => {});
   addSyncLog({ type: 'error', retailer: slug, variant: variantLabel, message: `${slug} — beklenmeyen hata` });
   return 'failure';
 }

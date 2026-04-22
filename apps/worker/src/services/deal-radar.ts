@@ -29,11 +29,12 @@ const MIN_RADAR_DROP_PERCENT = 2;
 const MIN_SNAPSHOT_COUNT_FOR_RADAR = 3;
 
 /**
- * Minimum sane price for a phone listing (TL).
- * Anything below this is a scraping error, accessory price, or bait.
- * Galaxy A36 starts at ~14,000 TL, so 5000 TL is a safe floor.
+ * Sane price band for a phone listing (TL).
+ * MIN guards against scrape errors / accessory prices. Galaxy A36 starts ~14K TL.
+ * MAX guards against decimal-separator typos that would otherwise trigger fake deals.
  */
 const MIN_SANE_PHONE_PRICE_TL = 5000;
+const MAX_SANE_PHONE_PRICE_TL = 500_000;
 
 // Track last notification per family+storage to avoid spam
 const lastNotifiedMap = new Map<string, number>(); // key → timestamp
@@ -101,9 +102,9 @@ export async function runDealRadar(): Promise<number> {
     const price = a.lowestCurrentPrice;
     if (!price || price <= 0) continue;
 
-    // ── Sanity check: reject garbage prices from scraping errors ──
-    if (price < MIN_SANE_PHONE_PRICE_TL) {
-      console.log(`[deal-radar] Saçma fiyat atlandı: ${a.variant.normalizedName} = ${price} TL (< ${MIN_SANE_PHONE_PRICE_TL} TL minimum)`);
+    // ── Sanity check: reject garbage prices from scraping errors (both ends) ──
+    if (price < MIN_SANE_PHONE_PRICE_TL || price > MAX_SANE_PHONE_PRICE_TL) {
+      console.log(`[deal-radar] Saçma fiyat atlandı: ${a.variant.normalizedName} = ${price} TL (outside ${MIN_SANE_PHONE_PRICE_TL}–${MAX_SANE_PHONE_PRICE_TL} TL band)`);
       continue;
     }
 

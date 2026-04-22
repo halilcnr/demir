@@ -25,10 +25,13 @@ const SIBLING_DISCOUNT_THRESHOLD = 0.90;           // Tier 2: price < siblingAvg
 const GLOBAL_FLOOR_PROXIMITY = 1.02;               // Tier 2: price <= globalFloor * 1.02
 
 /**
- * Minimum sane price for a phone listing (TL).
- * Anything below this is a scraping error, accessory price, or bait.
+ * Sane price band for a phone listing (TL).
+ * MIN protects against scrape errors / accessory prices.
+ * MAX protects against decimal-separator typos ("1.299.990" misread as 129999000)
+ * that would otherwise flood Telegram with fake deal alerts.
  */
 const MIN_SANE_PHONE_PRICE_TL = 5000;
+const MAX_SANE_PHONE_PRICE_TL = 500_000;
 
 const telegramPollLock = new DistributedLock('telegram-poll', 60_000);
 
@@ -504,9 +507,9 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
     return;
   }
 
-  // ── Price sanity check: reject garbage scrape results ──
-  if (payload.newPrice < MIN_SANE_PHONE_PRICE_TL) {
-    console.log(`[telegram-arb] Saçma fiyat atlandı: ${payload.variantLabel} = ${payload.newPrice} TL (< ${MIN_SANE_PHONE_PRICE_TL} TL minimum)`);
+  // ── Price sanity check: reject garbage scrape results (both ends) ──
+  if (payload.newPrice < MIN_SANE_PHONE_PRICE_TL || payload.newPrice > MAX_SANE_PHONE_PRICE_TL) {
+    console.log(`[telegram-arb] Saçma fiyat atlandı: ${payload.variantLabel} = ${payload.newPrice} TL (outside ${MIN_SANE_PHONE_PRICE_TL}–${MAX_SANE_PHONE_PRICE_TL} TL band)`);
     return;
   }
 

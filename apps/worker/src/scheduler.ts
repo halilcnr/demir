@@ -56,8 +56,10 @@ export async function startScheduler(): Promise<void> {
   console.log(`[scheduler] 🚀 Worker ${WORKER_ID.slice(0, 12)} starting — mode: ${config.activeMode}`);
   console.log(`[scheduler] ⏰ ${new Date().toISOString()}`);
 
-  // Startup delay + jitter to stagger
-  const jitter = Math.floor(Math.random() * 10_000);
+  // Startup delay + jitter to stagger multi-instance restarts. Widened from 10s → 30s
+  // so rolling deploys on Railway don't produce a thundering-herd at advanceCycle /
+  // recoverStaleTasks when N workers boot within the same second.
+  const jitter = Math.floor(Math.random() * 30_000);
   const totalDelay = STARTUP_DELAY_MS + jitter;
   if (totalDelay > 0) {
     console.log(`[scheduler] ⏳ Waiting ${totalDelay}ms (${STARTUP_DELAY_MS}ms + ${jitter}ms jitter)...`);
