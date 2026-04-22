@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@repo/shared';
 
+export const maxDuration = 30;
+
 /** Genel arama: variant, family, listing üzerinde text araması */
 export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams.get('q');

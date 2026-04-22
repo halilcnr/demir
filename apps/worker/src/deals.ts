@@ -3,6 +3,7 @@ import type { DetectedDeal } from '@repo/shared';
 import { DEAL_THRESHOLDS } from '@repo/shared';
 import { computePriceIntelligence, detectSuspiciousDiscount } from './price-intelligence';
 import { enqueueEmergencyScrape } from './task-queue';
+import { getPersistedSnapshot, setPersistedSnapshot } from './services/market-snapshot-cache';
 
 // ═══════════════════════════════════════════════════════════════════
 //  GLOBAL MARKET-AWARE ARBITRAGE & DEAL ENGINE
@@ -336,11 +337,12 @@ export async function checkGenerationalBarrier(
   };
 }
 
-// ─── Cycle-scoped market snapshot cache (saves ~4 DB calls per duplicate variant group) ──
+// ─── Cycle-scoped market snapshot cache (L1: in-memory, saves ~4 DB calls per duplicate variant group) ──
+// L2 (persistent, cross-cycle / cross-worker) lives in services/market-snapshot-cache.ts
 const marketSnapshotCache = new Map<string, { data: GlobalMarketSnapshot | null; ts: number }>();
 const MARKET_CACHE_TTL_MS = 60_000; // 60s — covers one cycle
 
-/** Clear the market snapshot cache (call at cycle start) */
+/** Clear the in-memory market snapshot cache (call at cycle start) */
 export function clearMarketSnapshotCache(): void {
   marketSnapshotCache.clear();
 }
@@ -362,9 +364,18 @@ export async function fetchGlobalMarketSnapshot(
 
   // Cache key = familyId + storageGb (all colors in same group share this)
   const cacheKey = `${variant.familyId}:${variant.storageGb}`;
+
+  // L1: in-process cycle cache
   const cached = marketSnapshotCache.get(cacheKey);
   if (cached && (Date.now() - cached.ts) < MARKET_CACHE_TTL_MS) {
     return cached.data;
+  }
+
+  // L2: persistent cross-cycle cache (shared across workers)
+  const persisted = await getPersistedSnapshot(cacheKey);
+  if (persisted) {
+    marketSnapshotCache.set(cacheKey, { data: persisted, ts: Date.now() });
+    return persisted;
   }
 
   // ── Single optimized query: all in-stock listings for this global group ──
@@ -520,6 +531,9 @@ export async function fetchGlobalMarketSnapshot(
 
   // Cache for subsequent calls with same variant group
   marketSnapshotCache.set(cacheKey, { data: result, ts: Date.now() });
+
+  // L2 write (fire-and-forget; never awaits to avoid slowing the caller)
+  void setPersistedSnapshot(cacheKey, result);
 
   return result;
 }

@@ -48,6 +48,7 @@ import { acquireRateSlot, releaseRateSlot } from './distributed-rate-limiter';
 import { WORKER_ID, recordTaskComplete, recordTaskFailed, recordTaskSkipped, setWorkerStatus, setCurrentTask } from './worker-identity';
 import { getWorkerConfig } from './worker-config';
 import { recordHealthSuccess, recordHealthFailure } from './services/scrape-health';
+import { handleScrapeFailure, pulseSuccessFields } from './services/pulse-protocol';
 
 const DEFAULT_CONCURRENCY = parseInt(process.env.WORKER_CONCURRENCY ?? '5', 10);
 
@@ -287,7 +288,8 @@ async function processOneTask(task: ClaimedTask): Promise<'success' | 'failure' 
         }
       }
 
-      // Single listing update (merged: prices + deal status)
+      // Single listing update (merged: prices + deal status + pulse reset)
+      // Pulse Protocol: successful scrape resets consecutiveFailures, skipUntilCycle, isFresh=true
       await prisma.listing.update({
         where: { id: listingId },
         data: {
@@ -310,6 +312,7 @@ async function processOneTask(task: ClaimedTask): Promise<'success' | 'failure' 
           discoverySource: 'direct',
           isDeal,
           dealScore,
+          ...pulseSuccessFields,
         },
       });
 
@@ -368,6 +371,7 @@ async function processOneTask(task: ClaimedTask): Promise<'success' | 'failure' 
           lastCheckedAt: new Date(),
         },
       }).catch(() => {});
+      await handleScrapeFailure(listingId).catch(() => {});
 
       await failTask(taskId, 'scrape returned null');
       await recordFailure(slug);
@@ -411,6 +415,7 @@ async function handleTaskError(task: ClaimedTask, err: unknown): Promise<'succes
     recordTaskFailed();
     recordHealthFailure(slug, listingId, 'blocked', 403);
     await prisma.listing.update({ where: { id: listingId }, data: { lastBlockedAt: new Date(), lastFailureAt: new Date() } }).catch(() => {});
+    await handleScrapeFailure(listingId).catch(() => {});
     addSyncLog({ type: 'error', retailer: slug, variant: variantLabel, message: `${slug} engellendi (403)`, blocked: true });
     return 'failure';
   }
@@ -423,6 +428,7 @@ async function handleTaskError(task: ClaimedTask, err: unknown): Promise<'succes
     recordMetricEvent(slug, 'rate_limited', 0);
     incrementProviderCounter(slug, 'rateLimitCount');
     recordTaskFailed();    recordHealthFailure(slug, listingId, 'blocked', 429);    addSyncLog({ type: 'warn', retailer: slug, variant: variantLabel, message: `${slug} hız limiti (429)` });
+    await handleScrapeFailure(listingId).catch(() => {});
     return 'failure';
   }
 

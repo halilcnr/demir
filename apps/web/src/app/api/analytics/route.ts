@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@repo/shared';
 import type { StorageGroupAnalytics } from '@repo/shared';
 
+export const maxDuration = 30;
+
 function normalizeWorkerUrl(raw: string): string {
   let url = raw.trim();
   if (!url) return 'http://localhost:3001';

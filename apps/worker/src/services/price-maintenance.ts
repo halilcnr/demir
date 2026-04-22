@@ -1,5 +1,5 @@
 /**
- * Price Maintenance Worker
+ * Price Maintenance Worker (V2 — batched, semantics-preserving)
  *
  * Runs daily to:
  * 1. Merge consecutive duplicate snapshots (same listing + same price in a row)
@@ -7,7 +7,9 @@
  * 3. Prune non-significant raw snapshots that have been aggregated (>30 days old)
  *
  * NEVER deletes significant records (price drops ≥2%, changes ≥5%, >500 TL swings).
- * Existing learning data is preserved — only true duplicates are merged.
+ * V2 change: the per-listing N+1 was collapsed to bulk reads / writes. The
+ * merge logic runs byte-for-byte identically to the V1 implementation, just
+ * over in-memory batches instead of one Prisma round-trip per listing.
  */
 
 import { prisma } from '@repo/shared';
@@ -72,149 +74,140 @@ function daysAgo(n: number): Date {
   return d;
 }
 
+// Bound each bulk fetch so memory stays predictable even on very large tables.
+const LISTING_BATCH_SIZE = 500;
+
+async function listingIdBatches(): Promise<string[][]> {
+  const listings = await prisma.listing.findMany({ select: { id: true } });
+  const batches: string[][] = [];
+  for (let i = 0; i < listings.length; i += LISTING_BATCH_SIZE) {
+    batches.push(listings.slice(i, i + LISTING_BATCH_SIZE).map((l) => l.id));
+  }
+  return batches;
+}
+
 // ─── Phase 1: Merge consecutive duplicate snapshots ──────────────
 
 /**
  * Find consecutive snapshots with the same listingId and observedPrice,
  * keep the earliest one (extend its lastSeenAt), delete the rest.
+ *
+ * Semantics preserved from V1: significant snapshots always break a run
+ * (they're never deleted, and they always start a new anchor).
  */
 async function mergeDuplicateSnapshots(): Promise<number> {
-  let totalMerged = 0;
+  const batches = await listingIdBatches();
+  const anchorUpdates = new Map<string, Date>();
+  const allIdsToDelete: string[] = [];
 
-  // Process in batches by listing to avoid loading everything into memory
-  const listings = await prisma.listing.findMany({
-    select: { id: true },
-  });
-
-  for (const listing of listings) {
-    const snapshots = await prisma.priceSnapshot.findMany({
-      where: { listingId: listing.id },
-      orderBy: { observedAt: 'asc' },
-      select: { id: true, observedPrice: true, observedAt: true, lastSeenAt: true, isSignificant: true },
+  for (const batch of batches) {
+    // One query per batch of LISTING_BATCH_SIZE listings instead of one per listing.
+    const rows = await prisma.priceSnapshot.findMany({
+      where: { listingId: { in: batch } },
+      orderBy: [{ listingId: 'asc' }, { observedAt: 'asc' }],
+      select: {
+        id: true,
+        listingId: true,
+        observedPrice: true,
+        observedAt: true,
+        lastSeenAt: true,
+        isSignificant: true,
+      },
     });
 
-    if (snapshots.length < 2) continue;
+    // Group by listing in memory, then apply identical V1 per-listing logic.
+    const byListing = new Map<string, typeof rows>();
+    for (const s of rows) {
+      const arr = byListing.get(s.listingId);
+      if (arr) arr.push(s);
+      else byListing.set(s.listingId, [s]);
+    }
 
-    const idsToDelete: string[] = [];
-    let anchor = snapshots[0]!;
+    for (const snapshots of byListing.values()) {
+      if (snapshots.length < 2) continue;
 
-    for (let i = 1; i < snapshots.length; i++) {
-      const current = snapshots[i]!;
-      if (current.observedPrice === anchor.observedPrice && !current.isSignificant) {
-        // Same price → mark for deletion, extend anchor's lastSeenAt
-        idsToDelete.push(current.id);
-      } else {
-        // Price changed → update anchor's lastSeenAt to the last seen time, move anchor
-        if (idsToDelete.length > 0) {
-          const lastDeleted = snapshots[i - 1]!;
-          await prisma.priceSnapshot.update({
-            where: { id: anchor.id },
-            data: { lastSeenAt: lastDeleted.lastSeenAt ?? lastDeleted.observedAt },
-          });
+      const idsToDelete: string[] = [];
+      let anchor = snapshots[0]!;
+
+      for (let i = 1; i < snapshots.length; i++) {
+        const current = snapshots[i]!;
+        if (current.observedPrice === anchor.observedPrice && !current.isSignificant) {
+          idsToDelete.push(current.id);
+        } else {
+          if (idsToDelete.length > 0) {
+            const lastDeleted = snapshots[i - 1]!;
+            anchorUpdates.set(anchor.id, lastDeleted.lastSeenAt ?? lastDeleted.observedAt);
+          }
+          anchor = current;
         }
-        anchor = current;
+      }
+
+      if (idsToDelete.length > 0) {
+        const lastSnapshot = snapshots[snapshots.length - 1]!;
+        if (idsToDelete.includes(lastSnapshot.id)) {
+          anchorUpdates.set(anchor.id, lastSnapshot.lastSeenAt ?? lastSnapshot.observedAt);
+        }
+        allIdsToDelete.push(...idsToDelete);
       }
     }
-
-    // Handle trailing duplicates
-    if (idsToDelete.length > 0) {
-      const lastSnapshot = snapshots[snapshots.length - 1]!;
-      if (idsToDelete.includes(lastSnapshot.id)) {
-        await prisma.priceSnapshot.update({
-          where: { id: anchor.id },
-          data: { lastSeenAt: lastSnapshot.lastSeenAt ?? lastSnapshot.observedAt },
-        });
-      }
-    }
-
-    // Batch delete duplicates (100 at a time to avoid query size limits)
-    for (let i = 0; i < idsToDelete.length; i += 100) {
-      const batch = idsToDelete.slice(i, i + 100);
-      await prisma.priceSnapshot.deleteMany({
-        where: { id: { in: batch } },
-      });
-    }
-
-    totalMerged += idsToDelete.length;
   }
 
-  return totalMerged;
+  // Bulk apply anchor lastSeenAt extensions. Fire concurrently in chunks so a
+  // single long query does not stall the pool.
+  if (anchorUpdates.size > 0) {
+    const entries = Array.from(anchorUpdates.entries());
+    for (let i = 0; i < entries.length; i += 50) {
+      const chunk = entries.slice(i, i + 50);
+      await Promise.all(
+        chunk.map(([id, lastSeenAt]) =>
+          prisma.priceSnapshot.update({ where: { id }, data: { lastSeenAt } })
+        )
+      );
+    }
+  }
+
+  // Bulk delete duplicates (Postgres handles `id IN (...)` with ~1000 values fine).
+  for (let i = 0; i < allIdsToDelete.length; i += 1000) {
+    const chunk = allIdsToDelete.slice(i, i + 1000);
+    await prisma.priceSnapshot.deleteMany({ where: { id: { in: chunk } } });
+  }
+
+  return allIdsToDelete.length;
 }
 
 // ─── Phase 2: Generate daily aggregations ────────────────────────
 
 /**
- * For snapshots older than 30 days, generate PriceDailyStats
- * grouped by (listingId, date). Skip days that already have stats.
+ * For snapshots older than 30 days, generate PriceDailyStats grouped by
+ * (listingId, date). Skip days that already have stats (ON CONFLICT DO NOTHING).
+ *
+ * Single statement — Postgres does the grouping. Idempotent: re-running only
+ * inserts newly-eligible (listingId, date) pairs.
  */
 async function generateDailyAggregations(): Promise<number> {
   const cutoff = daysAgo(30);
-  let daysCreated = 0;
 
-  const listings = await prisma.listing.findMany({
-    select: { id: true },
-  });
+  const result = await prisma.$executeRaw`
+    INSERT INTO "PriceDailyStats"
+      ("id", "listingId", "date", "minPrice", "maxPrice", "avgPrice",
+       "openPrice", "closePrice", "sampleCount")
+    SELECT
+      gen_random_uuid()::text,
+      "listingId",
+      date_trunc('day', "observedAt")::date,
+      MIN("observedPrice"),
+      MAX("observedPrice"),
+      ROUND(AVG("observedPrice")::numeric, 2)::float,
+      (ARRAY_AGG("observedPrice" ORDER BY "observedAt" ASC))[1],
+      (ARRAY_AGG("observedPrice" ORDER BY "observedAt" DESC))[1],
+      COUNT(*)::int
+    FROM "PriceSnapshot"
+    WHERE "observedAt" < ${cutoff}
+    GROUP BY "listingId", date_trunc('day', "observedAt")::date
+    ON CONFLICT ("listingId", "date") DO NOTHING
+  `;
 
-  for (const listing of listings) {
-    // Get old snapshots grouped by date
-    const oldSnapshots = await prisma.priceSnapshot.findMany({
-      where: {
-        listingId: listing.id,
-        observedAt: { lt: cutoff },
-      },
-      orderBy: { observedAt: 'asc' },
-      select: { observedPrice: true, observedAt: true },
-    });
-
-    if (oldSnapshots.length === 0) continue;
-
-    // Group by date (YYYY-MM-DD)
-    const byDate = new Map<string, number[]>();
-    for (const snap of oldSnapshots) {
-      const dateKey = snap.observedAt.toISOString().slice(0, 10);
-      if (!byDate.has(dateKey)) byDate.set(dateKey, []);
-      byDate.get(dateKey)!.push(snap.observedPrice);
-    }
-
-    for (const [dateStr, prices] of byDate) {
-      const date = new Date(dateStr + 'T00:00:00.000Z');
-
-      // Skip if already aggregated
-      const existing = await prisma.priceDailyStats.findUnique({
-        where: { listingId_date: { listingId: listing.id, date } },
-      });
-      if (existing) continue;
-
-      const sorted = [...prices].sort((a, b) => a - b);
-      const min = sorted[0]!;
-      const max = sorted[sorted.length - 1]!;
-      const avg = prices.reduce((s, p) => s + p, 0) / prices.length;
-
-      // Get first and last of the day for open/close
-      const daySnapshots = oldSnapshots.filter(
-        (s) => s.observedAt.toISOString().slice(0, 10) === dateStr
-      );
-      const openPrice = daySnapshots[0]!.observedPrice;
-      const closePrice = daySnapshots[daySnapshots.length - 1]!.observedPrice;
-
-      await prisma.priceDailyStats.create({
-        data: {
-          listingId: listing.id,
-          date,
-          minPrice: min,
-          maxPrice: max,
-          avgPrice: Math.round(avg * 100) / 100,
-          openPrice,
-          closePrice,
-          sampleCount: prices.length,
-        },
-      });
-
-      daysCreated++;
-    }
-  }
-
-  return daysCreated;
+  return Number(result);
 }
 
 // ─── Phase 3: Prune old non-significant snapshots ────────────────
@@ -224,51 +217,22 @@ async function generateDailyAggregations(): Promise<number> {
  * - Are NOT significant (no big price changes)
  * - Have been aggregated into PriceDailyStats
  *
- * This preserves significant records forever as learning data.
+ * Preserves all significant records forever. Correlated DELETE with EXISTS —
+ * guarantees we only remove rows whose day already lives in PriceDailyStats.
  */
 async function pruneAggregatedSnapshots(): Promise<number> {
   const cutoff = daysAgo(30);
-  let totalPruned = 0;
 
-  // Only delete non-significant snapshots whose day has been aggregated
-  const aggregatedDays = await prisma.priceDailyStats.findMany({
-    select: { listingId: true, date: true },
-  });
+  const result = await prisma.$executeRaw`
+    DELETE FROM "PriceSnapshot" ps
+    WHERE ps."isSignificant" = false
+      AND ps."observedAt" < ${cutoff}
+      AND EXISTS (
+        SELECT 1 FROM "PriceDailyStats" ds
+        WHERE ds."listingId" = ps."listingId"
+          AND ds."date" = date_trunc('day', ps."observedAt")::date
+      )
+  `;
 
-  // Build a Set for fast lookup
-  const aggregatedSet = new Set(
-    aggregatedDays.map((d) => `${d.listingId}|${d.date.toISOString().slice(0, 10)}`)
-  );
-
-  // Process in batches
-  const listings = await prisma.listing.findMany({
-    select: { id: true },
-  });
-
-  for (const listing of listings) {
-    const candidates = await prisma.priceSnapshot.findMany({
-      where: {
-        listingId: listing.id,
-        isSignificant: false,
-        observedAt: { lt: cutoff },
-      },
-      select: { id: true, observedAt: true },
-    });
-
-    const idsToDelete = candidates.filter((snap) => {
-      const dateKey = snap.observedAt.toISOString().slice(0, 10);
-      return aggregatedSet.has(`${listing.id}|${dateKey}`);
-    }).map((s) => s.id);
-
-    for (let i = 0; i < idsToDelete.length; i += 100) {
-      const batch = idsToDelete.slice(i, i + 100);
-      await prisma.priceSnapshot.deleteMany({
-        where: { id: { in: batch } },
-      });
-    }
-
-    totalPruned += idsToDelete.length;
-  }
-
-  return totalPruned;
+  return Number(result);
 }

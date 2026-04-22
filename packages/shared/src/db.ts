@@ -2,13 +2,17 @@ import { PrismaClient } from '@prisma/client';
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 
-/** Ensure connection pool is capped to prevent "too many clients" */
+/** Ensure connection pool is capped and gives up gracefully under spikes. */
+// Railway Postgres is a direct TCP connection (no PgBouncer in front) — do NOT set
+// pgbouncer=true here; that would disable Prisma's prepared-statement cache and
+// regress perf. connection_limit + pool_timeout are the two knobs that matter.
 function withPoolLimit(url: string | undefined): string | undefined {
   if (!url) return url;
-  if (url.includes('connection_limit')) return url;
-  // Increased from 3 → 10: worker runs 6+ concurrent periodic DB writers
-  // (heartbeat, rate-limiter sync, metrics persist, counter flush, health snapshots, analytics)
-  return url + (url.includes('?') ? '&' : '?') + 'connection_limit=10';
+  const params: string[] = [];
+  if (!url.includes('connection_limit')) params.push('connection_limit=10');
+  if (!url.includes('pool_timeout')) params.push('pool_timeout=20');
+  if (params.length === 0) return url;
+  return url + (url.includes('?') ? '&' : '?') + params.join('&');
 }
 
 // Use event-based error logging only on the server (Node.js).

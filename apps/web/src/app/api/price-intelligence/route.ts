@@ -3,6 +3,8 @@ import { prisma, calculateChangePercent } from '@repo/shared';
 import type { PriceIntelligence } from '@repo/shared';
 import { DEAL_THRESHOLDS } from '@repo/shared';
 
+export const maxDuration = 30;
+
 /** GET /api/price-intelligence?listingId=xxx — full price intelligence for a listing */
 export async function GET(req: NextRequest) {
   const listingId = req.nextUrl.searchParams.get('listingId');

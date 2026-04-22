@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm --filter @repo/worker exec tsc --noEmit)",
+      "Bash(npx tsc *)",
+      "Bash(echo \"EXIT=$?\")"
+    ]
+  }
+}

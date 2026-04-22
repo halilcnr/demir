@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@repo/shared';
 
+export const maxDuration = 30;
+
 /** Dashboard özet verileri: fırsatlar, düşüşler, alertler */
 export async function GET() {
   const oneDayAgo = new Date();

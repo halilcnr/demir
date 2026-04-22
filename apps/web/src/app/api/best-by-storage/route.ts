@@ -3,174 +3,173 @@ import { prisma } from '@repo/shared';
 import type { BestByStorageGroup } from '@repo/shared';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 30;
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const familyFilter = searchParams.get('family');
 
-  // Get all active families with their variants and listings
-  const families = await prisma.productFamily.findMany({
-    where: {
-      isActive: true,
-      ...(familyFilter ? { name: familyFilter } : {}),
-    },
-    include: {
-      variants: {
-        where: { isActive: true },
-        include: {
-          listings: {
-            where: {
-              isActive: true,
-              currentPrice: { not: null },
-            },
-            include: { retailer: true },
-            orderBy: { currentPrice: 'asc' },
-          },
+  const familyWhere = {
+    isActive: true,
+    ...(familyFilter ? { name: familyFilter } : {}),
+  };
+
+  // V2: flat fetch. No nested includes — two parallel queries, join in memory.
+  const [families, listings] = await Promise.all([
+    prisma.productFamily.findMany({
+      where: familyWhere,
+      select: { id: true, name: true, slug: true, sortOrder: true },
+      orderBy: { sortOrder: 'asc' },
+    }),
+    prisma.listing.findMany({
+      where: {
+        isActive: true,
+        currentPrice: { not: null },
+        variant: {
+          isActive: true,
+          family: familyWhere,
         },
       },
-    },
-    orderBy: { sortOrder: 'asc' },
-  });
+      select: {
+        id: true,
+        currentPrice: true,
+        stockStatus: true,
+        productUrl: true,
+        lastSeenAt: true,
+        variant: {
+          select: { id: true, color: true, storageGb: true, familyId: true },
+        },
+        retailer: { select: { name: true, slug: true } },
+      },
+      orderBy: { currentPrice: 'asc' },
+    }),
+  ]);
 
-  // --- Batch historical context: aggregate 30-day lowest for ALL groups in one query ---
-  const d30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-
-  // Collect listingIds per group key (familySlug:storageGb)
-  const groupListingIds = new Map<string, string[]>();
-  const groupsPreData: Array<{
-    key: string;
-    family: typeof families[number];
+  // Bucket listings by (familyId, storageGb) — single pass.
+  type Bucket = {
+    familyId: string;
     storageGb: number;
-    variants: typeof families[number]['variants'];
+    listingIds: string[];
     allRetailers: BestByStorageGroup['allRetailers'];
     cheapest: BestByStorageGroup['cheapest'];
     secondCheapestPrice: number | null;
     totalPrice: number;
     priceCount: number;
-  }> = [];
+  };
+  const buckets = new Map<string, Bucket>();
 
-  for (const family of families) {
-    const storageMap = new Map<number, typeof family.variants>();
-    for (const variant of family.variants) {
-      if (!storageMap.has(variant.storageGb)) {
-        storageMap.set(variant.storageGb, []);
-      }
-      storageMap.get(variant.storageGb)!.push(variant);
+  for (const l of listings) {
+    if (l.currentPrice == null) continue;
+    const bucketKey = `${l.variant.familyId}:${l.variant.storageGb}`;
+    let bucket = buckets.get(bucketKey);
+    if (!bucket) {
+      bucket = {
+        familyId: l.variant.familyId,
+        storageGb: l.variant.storageGb,
+        listingIds: [],
+        allRetailers: [],
+        cheapest: null,
+        secondCheapestPrice: null,
+        totalPrice: 0,
+        priceCount: 0,
+      };
+      buckets.set(bucketKey, bucket);
     }
 
-    const sortedStorages = [...storageMap.keys()].sort((a, b) => a - b);
+    bucket.listingIds.push(l.id);
+    bucket.allRetailers.push({
+      variantId: l.variant.id,
+      color: l.variant.color,
+      retailerName: l.retailer.name,
+      retailerSlug: l.retailer.slug,
+      price: l.currentPrice,
+      stockStatus: l.stockStatus,
+      productUrl: l.productUrl,
+      lastSeenAt: l.lastSeenAt?.toISOString() ?? null,
+    });
+    bucket.totalPrice += l.currentPrice;
+    bucket.priceCount++;
 
-    for (const storageGb of sortedStorages) {
-      const variants = storageMap.get(storageGb)!;
-      const allRetailers: BestByStorageGroup['allRetailers'] = [];
-      let cheapest: BestByStorageGroup['cheapest'] = null;
-      let totalPrice = 0;
-      let priceCount = 0;
-      let secondCheapestPrice: number | null = null;
-
-      for (const variant of variants) {
-        for (const listing of variant.listings) {
-          if (listing.currentPrice == null) continue;
-
-          const entry = {
-            variantId: variant.id,
-            color: variant.color,
-            retailerName: listing.retailer.name,
-            retailerSlug: listing.retailer.slug,
-            price: listing.currentPrice,
-            stockStatus: listing.stockStatus,
-            productUrl: listing.productUrl,
-            lastSeenAt: listing.lastSeenAt?.toISOString() ?? null,
-          };
-
-          allRetailers.push(entry);
-          totalPrice += listing.currentPrice;
-          priceCount++;
-
-          if (!cheapest || listing.currentPrice < cheapest.price) {
-            if (cheapest) secondCheapestPrice = cheapest.price;
-            cheapest = {
-              variantId: variant.id,
-              color: variant.color,
-              price: listing.currentPrice,
-              retailerName: listing.retailer.name,
-              retailerSlug: listing.retailer.slug,
-              productUrl: listing.productUrl,
-              lastSeenAt: listing.lastSeenAt?.toISOString() ?? null,
-            };
-          } else if (secondCheapestPrice === null || listing.currentPrice < secondCheapestPrice) {
-            secondCheapestPrice = listing.currentPrice;
-          }
-        }
-      }
-
-      allRetailers.sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
-
-      const key = `${family.slug}:${storageGb}`;
-      const listingIds = variants.flatMap(v => v.listings.map(l => l.id));
-      groupListingIds.set(key, listingIds);
-
-      groupsPreData.push({
-        key, family, storageGb, variants, allRetailers,
-        cheapest, secondCheapestPrice, totalPrice, priceCount,
-      });
+    if (!bucket.cheapest || l.currentPrice < bucket.cheapest.price) {
+      if (bucket.cheapest) bucket.secondCheapestPrice = bucket.cheapest.price;
+      bucket.cheapest = {
+        variantId: l.variant.id,
+        color: l.variant.color,
+        price: l.currentPrice,
+        retailerName: l.retailer.name,
+        retailerSlug: l.retailer.slug,
+        productUrl: l.productUrl,
+        lastSeenAt: l.lastSeenAt?.toISOString() ?? null,
+      };
+    } else if (bucket.secondCheapestPrice === null || l.currentPrice < bucket.secondCheapestPrice) {
+      bucket.secondCheapestPrice = l.currentPrice;
     }
   }
 
-  // Single batch query for all listing IDs across all groups
-  const allListingIds = [...groupListingIds.values()].flat();
-  const historicalMap = new Map<string, number>();
+  // Single batched 30-day lowest across ALL listings.
+  const d30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const allListingIds = [...buckets.values()].flatMap((b) => b.listingIds);
+  const historicalByListing = new Map<string, number>();
 
   if (allListingIds.length > 0) {
-    // Use raw query to get min price per listing, then aggregate per group in JS
-    const allSnapshots = await prisma.priceSnapshot.groupBy({
+    const snapshots = await prisma.priceSnapshot.groupBy({
       by: ['listingId'],
       where: { listingId: { in: allListingIds }, observedAt: { gte: d30 } },
       _min: { observedPrice: true },
     });
-
-    const listingMinPrice = new Map<string, number>();
-    for (const row of allSnapshots) {
+    for (const row of snapshots) {
       if (row._min.observedPrice != null) {
-        listingMinPrice.set(row.listingId, row._min.observedPrice);
+        historicalByListing.set(row.listingId, row._min.observedPrice);
       }
-    }
-
-    // Aggregate per group
-    for (const [key, ids] of groupListingIds) {
-      let groupMin: number | null = null;
-      for (const id of ids) {
-        const p = listingMinPrice.get(id);
-        if (p != null && (groupMin === null || p < groupMin)) groupMin = p;
-      }
-      if (groupMin !== null) historicalMap.set(key, groupMin);
     }
   }
 
-  // Build final groups
+  // Emit groups in family sortOrder, then storageGb asc.
+  const familyOrder = new Map(families.map((f) => [f.id, f] as const));
   const groups: BestByStorageGroup[] = [];
-  for (const g of groupsPreData) {
-    const prices = g.allRetailers.filter(r => r.price != null).map(r => r.price!);
+
+  const sortedBuckets = [...buckets.values()]
+    .filter((b) => familyOrder.has(b.familyId))
+    .sort((a, b) => {
+      const fa = familyOrder.get(a.familyId)!;
+      const fb = familyOrder.get(b.familyId)!;
+      if (fa.sortOrder !== fb.sortOrder) return fa.sortOrder - fb.sortOrder;
+      return a.storageGb - b.storageGb;
+    });
+
+  for (const bucket of sortedBuckets) {
+    const family = familyOrder.get(bucket.familyId)!;
+    bucket.allRetailers.sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
+
+    let groupHistoricalMin: number | null = null;
+    for (const id of bucket.listingIds) {
+      const p = historicalByListing.get(id);
+      if (p != null && (groupHistoricalMin === null || p < groupHistoricalMin)) {
+        groupHistoricalMin = p;
+      }
+    }
+
+    const prices = bucket.allRetailers.filter((r) => r.price != null).map((r) => r.price!);
     const priceSpread = prices.length >= 2 ? prices[prices.length - 1] - prices[0] : null;
-    const averagePrice = g.priceCount > 0 ? Math.round(g.totalPrice / g.priceCount) : null;
-    const historicalLowest30d = historicalMap.get(g.key) ?? null;
-    const isBestIn30d = g.cheapest != null && historicalLowest30d != null && g.cheapest.price <= historicalLowest30d;
+    const averagePrice = bucket.priceCount > 0 ? Math.round(bucket.totalPrice / bucket.priceCount) : null;
+    const isBestIn30d =
+      bucket.cheapest != null && groupHistoricalMin != null && bucket.cheapest.price <= groupHistoricalMin;
 
     groups.push({
-      familyName: g.family.name,
-      familySlug: g.family.slug,
-      storageGb: g.storageGb,
-      cheapest: g.cheapest,
-      allRetailers: g.allRetailers,
+      familyName: family.name,
+      familySlug: family.slug,
+      storageGb: bucket.storageGb,
+      cheapest: bucket.cheapest,
+      allRetailers: bucket.allRetailers,
       priceInsights: {
-        cheapestRetailer: g.cheapest?.retailerName ?? null,
-        secondCheapest: g.secondCheapestPrice
-          ? g.allRetailers.find(r => r.price === g.secondCheapestPrice)?.retailerName ?? null
+        cheapestRetailer: bucket.cheapest?.retailerName ?? null,
+        secondCheapest: bucket.secondCheapestPrice
+          ? bucket.allRetailers.find((r) => r.price === bucket.secondCheapestPrice)?.retailerName ?? null
           : null,
         priceSpread,
         averagePrice,
-        cheapestColor: g.cheapest?.color ?? null,
-        historicalLowest30d,
+        cheapestColor: bucket.cheapest?.color ?? null,
+        historicalLowest30d: groupHistoricalMin,
         isBestIn30d,
       },
     });

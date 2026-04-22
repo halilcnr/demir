@@ -202,7 +202,9 @@ export const PRODUCT_URLS: ProductUrlMap = {
   'iphone-14-512gb-starlight': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-512-gb-beyaz-p-HBCV00002VUQ82',
   },
-  'iphone-14-512gb-purple': {},
+  'iphone-14-512gb-purple': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-14-512-gb-mor-p-HBCV00002VUQ83',
+  },
   'iphone-14-512gb-red': {
     trendyol: 'https://www.trendyol.com/apple/iphone-14-512-gb-product-red-p-355707169',
   },
@@ -427,7 +429,9 @@ export const PRODUCT_URLS: ProductUrlMap = {
     a101: 'https://www.a101.com.tr/elektronik/apple-iphone-16-512-gb-cep-telefonu-laciverttas_p-26065439',
     idefix: 'https://www.idefix.com/apple-iphone-16-512-gb-laciverttas-apple-turkiye-garantili-p-11903171',
   },
-  'iphone-16-512gb-pink': {},
+  'iphone-16-512gb-pink': {
+    amazon: 'https://www.amazon.com.tr/Apple-iPhone-16-512-GB/dp/B0DGJJKYFY',
+  },
   'iphone-16-512gb-teal': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-512gb-deniz-mavisi-p-HBCV00006Y4HG3',
   },
@@ -541,9 +545,15 @@ export const PRODUCT_URLS: ProductUrlMap = {
   // ═══════════════════════════════════════════════════════
   //  iPhone 16 Pro — 1 TB
   // ═══════════════════════════════════════════════════════
-  'iphone-16-pro-1tb-natural-titanium': {},
-  'iphone-16-pro-1tb-black-titanium': {},
-  'iphone-16-pro-1tb-white-titanium': {},
+  'iphone-16-pro-1tb-natural-titanium': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-pro-1-tb-naturel-titanyum-p-HBCV00006Y4HC3',
+  },
+  'iphone-16-pro-1tb-black-titanium': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-pro-1-tb-siyah-p-HBCV00006Y4HGR',
+  },
+  'iphone-16-pro-1tb-white-titanium': {
+    hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-pro-1-tb-beyaz-p-HBCV00006Y4HBZ',
+  },
   'iphone-16-pro-1tb-desert-titanium': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-pro-1-tb-col-beji-p-HBCV00006Y4HC1',
     trendyol: 'https://www.trendyol.com/apple/iphone-16-pro-1tb-col-titanyum-p-857296107',
@@ -622,7 +632,9 @@ export const PRODUCT_URLS: ProductUrlMap = {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-pro-max-1-tb-siyah-p-HBCV00006Y4I9T',
     trendyol: 'https://www.trendyol.com/apple/iphone-16-pro-max-1tb-siyah-titanyum-p-857296092',
   },
-  'iphone-16-pro-max-1tb-white-titanium': {},
+  'iphone-16-pro-max-1tb-white-titanium': {
+    amazon: 'https://www.amazon.com.tr/Apple-iPhone-16-Pro-Max/dp/B0DGJTCP26/ref=cs_sr_dp_2?dib=eyJ2IjoiMSJ9.l8L6XXzAXWqmKB6DG_-ZyNZ2KRMFGr_50k43tfrnbQdECTn9XQ6Pw7VAniky7l1WO-TA-BHRoRCn15YsDWiuPOR64L5BGZY3uVioT08HhoTez-1W8RldsCL0vdIzNggKSL5ggqz-pWx1gH626jJOhCznIu9vOrqu1HGQUApYlATB5tubyANgu2GCabtyymp4n59skBpxemVOsrIe4kcf30q2HnETWA-teOokf6a-IfYU-XL2-f2wnS_w5rRX9c6FXQVVfHposteG0QO6MStlQTtVxIxawsRWsrocDO4r0TY.uHnAm6fpbF7dHRxRa21A-UmWJ-O72tXy_8RNk708bKE&dib_tag=se&keywords=iphone+16+pro+1tb+natural+titanium&qid=1776882318&sr=8-1',
+  },
   'iphone-16-pro-max-1tb-desert-titanium': {
     hepsiburada: 'https://www.hepsiburada.com/apple-iphone-16-pro-max-1-tb-col-beji-p-HBCV00006Y4I9X',
     trendyol: 'https://www.trendyol.com/apple/iphone-16-pro-max-1tb-col-titanyum-p-857296132',
@@ -854,6 +866,7 @@ export const PRODUCT_URLS: ProductUrlMap = {
     trendyol: 'https://www.trendyol.com/apple/iphone-17-pro-256gb-kozmik-turuncu-p-985256852',
     n11: 'https://www.n11.com/urun/apple-iphone-17-pro-256-gb-apple-turkiye-garantili-100712128',
     amazon: 'https://www.amazon.com.tr/dp/B0FQFYN66J',
+    pazarama: 'https://www.pazarama.com/iphone-17-pro-256gb-cosmic-orange-mg8h4tua-p-195950627404',
     mediamarkt: 'https://www.mediamarkt.com.tr/tr/product/_apple-mg8h4tua-iphone-17-pro-256gb-akilli-telefon-kozmik-turuncu-1249238.html',
     a101: 'https://www.a101.com.tr/elektronik/apple-iphone-17-pro-256-gb-cep-telefonu-turuncu-_p-26066122',
     idefix: 'https://www.idefix.com/apple-iphone-17-pro-256-gb-kozmik-turuncu-apple-turkiye-garantili-p-14003961',

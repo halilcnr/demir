@@ -13,6 +13,7 @@
 
 import { prisma } from '@repo/shared';
 import { WORKER_ID } from './worker-identity';
+import { getCurrentCycle, getLazarusSample } from './services/pulse-protocol';
 
 const TASK_LOCK_TIMEOUT_MS = 5 * 60_000; // 5 minutes — tasks stuck longer are recoverable
 
@@ -25,13 +26,27 @@ export async function generateTasks(
   retailerSlug?: string,
   variantId?: string,
 ): Promise<{ syncJobId: string; taskCount: number }> {
+  // Pulse Protocol: ask the singleton cycle counter which listings are eligible.
+  // Eligible = isActive AND skipUntilCycle <= currentCycle. Dormant listings are
+  // sprinkled back in via a 1% Lazarus sample for silent restock detection.
+  const currentCycle = await getCurrentCycle();
+  const lazarusIds = await getLazarusSample(currentCycle);
+
   const listings = await prisma.listing.findMany({
     where: {
-      isActive: true,
-      productUrl: { not: '' },
-      ...(retailerSlug ? { retailer: { slug: retailerSlug } } : {}),
-      ...(variantId ? { variantId } : {}),
-      retailer: { isActive: true },
+      OR: [
+        {
+          isActive: true,
+          skipUntilCycle: { lte: currentCycle },
+          productUrl: { not: '' },
+          ...(retailerSlug ? { retailer: { slug: retailerSlug } } : {}),
+          ...(variantId ? { variantId } : {}),
+          retailer: { isActive: true },
+        },
+        // Lazarus: force-include dormant listings picked by the random sampler,
+        // bypassing isActive/skipUntilCycle filters. productUrl sanity still enforced by the sampler.
+        ...(lazarusIds.length > 0 ? [{ id: { in: lazarusIds } }] : []),
+      ],
     },
     include: {
       variant: { include: { family: true } },
@@ -42,6 +57,10 @@ export async function generateTasks(
       { variant: { storageGb: 'asc' } },
     ],
   });
+
+  if (lazarusIds.length > 0) {
+    console.log(`[task-queue] 🕯️ Lazarus sample: ${lazarusIds.length} dormant listings resurrected for pulse cycle ${currentCycle}`);
+  }
 
   // Filter out search/browse URLs
   const validListings = listings.filter(l =>

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@repo/shared';
 
+export const maxDuration = 30;
+
 /** Variant fiyat geçmişi: retailer bazlı ve flat format */
 export async function GET(
   req: NextRequest,

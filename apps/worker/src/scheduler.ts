@@ -8,6 +8,7 @@ import { resetCycleState } from './provider-health';
 import { clearSyncLogs, addSyncLog, finishSyncLogs, updateSyncProgress } from './sync-logger';
 import { resetAllConcurrency } from './distributed-rate-limiter';
 import { clearMarketSnapshotCache, clearAlertRulesCache } from './deals';
+import { advanceCycle } from './services/pulse-protocol';
 
 const STARTUP_DELAY_MS = parseInt(process.env.STARTUP_DELAY_MS ?? '5000', 10);
 
@@ -142,10 +143,14 @@ async function runCycle(): Promise<void> {
         // Double-check after acquiring lock (another worker may have just created a job)
         syncJobId = await getActiveSyncJobId();
         if (!syncJobId) {
-          addSyncLog({ type: 'info', message: 'Yeni sync döngüsü başlatılıyor...' });
+          // Pulse Protocol: bump the global cycle counter exactly once per generated job.
+          // Doing this here (inside the leader lock) guarantees one advance per cycle
+          // regardless of how many worker instances are running.
+          const pulseCycle = await advanceCycle();
+          addSyncLog({ type: 'info', message: `Yeni sync döngüsü başlatılıyor (pulse #${pulseCycle})...` });
           const { syncJobId: newJobId, taskCount } = await generateTasks();
           syncJobId = newJobId;
-          console.log(`[scheduler] 📋 Generated ${taskCount} tasks (job: ${syncJobId.slice(0, 8)})`);
+          console.log(`[scheduler] 📋 Generated ${taskCount} tasks (job: ${syncJobId.slice(0, 8)}, pulse cycle #${pulseCycle})`);
           addSyncLog({ type: 'info', message: `${taskCount} görev oluşturuldu` });
         }
         await taskGenLock.release();

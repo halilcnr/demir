@@ -111,6 +111,10 @@ model Listing {
   // Telegram notification tracking
   lastNotifiedPrice   Float?    // Son bildirim gönderilen fiyat
   notificationSentAt  DateTime? // Son bildirim zamanı
+  // Pulse Protocol (cycle-based dynamic backoff)
+  consecutiveFailures Int       @default(0)
+  skipUntilCycle      Int       @default(0)  // Absolute scheduler cycle to wait for (0 = ready)
+  isFresh             Boolean   @default(false) // True if last scrape succeeded — replaces lastSeenAt window check
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
@@ -131,6 +135,12 @@ model Listing {
   @@index([isDeal, stockStatus, dealScore])      // deals API + dashboard topDeals
   @@index([variantId, isActive, currentPrice])   // market snapshot + best-by-storage
   @@index([isDeal, lastSeenAt])                  // dashboard 24h deal count
+  // V2 additions
+  @@index([isDeal, lastSeenAt, dealScore])       // /api/deals deep sort
+  @@index([variantId, retailerId, isActive])     // snapshot + cross-retailer lookup
+  // Pulse Protocol queue filter
+  @@index([isActive, skipUntilCycle])
+  @@index([isFresh])
 }
 
 enum StockStatus {
@@ -164,6 +174,9 @@ model PriceSnapshot {
   @@index([changePercent])
   @@index([isSignificant])
   @@index([observedAt, changePercent])            // biggest-drops API query
+  // V2 additions
+  @@index([listingId, observedAt, changePercent]) // biggest-drops by listing
+  @@index([listingId, isSignificant, observedAt]) // prune candidate scan
 }
 
 // ─── Fırsat/Deal Olayları ────────────────────────────────────────
@@ -675,4 +688,26 @@ model PriceDailyStats {
   @@unique([listingId, date])
   @@index([listingId])
   @@index([date])
+}
+
+// ─── V2 Cross-Cycle Market Snapshot Cache ───────────────────────
+// Persists fetchGlobalMarketSnapshot results across worker restarts / multi-instance deployments.
+// Key format: "{familyId}:{storageGb}". TTL enforced in code (read-time freshness check).
+model MarketSnapshotCache {
+  key       String   @id
+  data      Json
+  ts        DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ts])
+}
+
+// ─── Pulse Protocol: Scheduler Cycle Counter (singleton) ────────
+// Monotonically incremented once per scheduler run. Listings store the
+// absolute cycle after which they become eligible again (`skipUntilCycle`).
+// This avoids the N-row UPDATE-per-cycle that a decrementing counter would need.
+model SchedulerState {
+  id           String   @id @default("default")
+  currentCycle Int      @default(0)
+  updatedAt    DateTime @updatedAt
 }

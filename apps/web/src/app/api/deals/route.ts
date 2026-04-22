@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@repo/shared';
 
+export const maxDuration = 30;
+
 /** Aktif fırsatlar: deal olarak işaretlenmiş listing'ler */
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;

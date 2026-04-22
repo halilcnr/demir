@@ -1,0 +1,2 @@
+- [Project: Baki-Quant Arbitrage Engine](project_baki_quant.md) — Next.js + Prisma + Postgres scraper/arbitrage stack; monorepo with apps/web + apps/worker
+- [Infra: Railway DB+worker, Vercel web](feedback_infra_stack.md) — no Neon/pgbouncer/directUrl; stale `.env.example` comment is misleading
