@@ -10,6 +10,12 @@ import {
   type BakiQuantResult,
   type BakiNotificationInput,
 } from '../baki-quant';
+import {
+  buildFeedbackKeyboard,
+  parseCallbackData,
+  handleFeedbackVote,
+  answerCallbackQuery,
+} from './telegram-feedback';
 
 // ─── Configuration ───────────────────────────────────────────────
 const TELEGRAM_ENABLED = process.env.TELEGRAM_ENABLED === 'true';
@@ -142,7 +148,12 @@ export function getTelegramStats() {
 }
 
 // ─── Core: Send message to a single chat ─────────────────────────
-async function sendToChat(chatId: string, text: string): Promise<{ ok: boolean; error?: string }> {
+interface SendOptions {
+  /** Optional inline keyboard (e.g. feedback buttons on deal alerts) */
+  replyMarkup?: Record<string, unknown>;
+}
+
+async function sendToChat(chatId: string, text: string, opts: SendOptions = {}): Promise<{ ok: boolean; error?: string }> {
   const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
 
   try {
@@ -154,6 +165,7 @@ async function sendToChat(chatId: string, text: string): Promise<{ ok: boolean; 
         text,
         parse_mode: 'HTML',
         disable_web_page_preview: true,
+        ...(opts.replyMarkup ? { reply_markup: opts.replyMarkup } : {}),
       }),
     });
 
@@ -177,7 +189,10 @@ async function sendToChat(chatId: string, text: string): Promise<{ ok: boolean; 
 }
 
 // ─── Broadcast: send to ALL active subscribers ───────────────────
-export async function broadcast(text: string): Promise<{ sent: number; failed: number }> {
+export async function broadcast(
+  text: string,
+  opts: SendOptions = {},
+): Promise<{ sent: number; failed: number }> {
   const subscribers = await prisma.telegramSubscriber.findMany({
     where: { isActive: true },
     select: { chatId: true },
@@ -194,7 +209,7 @@ export async function broadcast(text: string): Promise<{ sent: number; failed: n
   let failed = 0;
 
   for (const sub of subscribers) {
-    const result = await sendToChat(sub.chatId, text);
+    const result = await sendToChat(sub.chatId, text, opts);
     if (result.ok) {
       sent++;
     } else {
@@ -647,7 +662,9 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
   };
 
   const flashMsg = buildBakiFlashMessage(bakiNotifInput);
-  const flashResult = await broadcast(flashMsg);
+  // Attach feedback keyboard so the community can train the model on this alert.
+  const feedbackKb = buildFeedbackKeyboard(payload.listingId);
+  const flashResult = await broadcast(flashMsg, { replyMarkup: feedbackKb });
 
   // Record the 48h lock for this variant group
   const variantInfo = await prisma.productVariant.findUnique({
@@ -945,12 +962,18 @@ interface TelegramUpdate {
     chat: { id: number; type: string; title?: string };
     new_chat_member?: { status: string };
   };
+  callback_query?: {
+    id: string;
+    data?: string;
+    from: { id: number; username?: string; first_name?: string };
+    message?: { message_id: number; chat: { id: number } };
+  };
 }
 
 async function processUpdates(): Promise<void> {
   if (!TELEGRAM_BOT_TOKEN) return;
 
-  const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?offset=${lastUpdateId + 1}&timeout=0&allowed_updates=["message","my_chat_member"]`;
+  const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?offset=${lastUpdateId + 1}&timeout=0&allowed_updates=["message","my_chat_member","callback_query"]`;
 
   try {
     const resp = await fetch(url);
@@ -960,6 +983,25 @@ async function processUpdates(): Promise<void> {
 
     for (const update of data.result) {
       lastUpdateId = update.update_id;
+
+      // ── Handle feedback button clicks ──
+      const cb = update.callback_query;
+      if (cb?.data) {
+        const parsed = parseCallbackData(cb.data);
+        if (!parsed) {
+          await answerCallbackQuery(cb.id, 'Bilinmeyen buton.');
+          continue;
+        }
+        const voterChatId = String(cb.from.id);
+        const result = await handleFeedbackVote(
+          parsed.listingId,
+          voterChatId,
+          parsed.button,
+          cb.message?.message_id,
+        );
+        await answerCallbackQuery(cb.id, result.message, result.ghosted === true);
+        continue;
+      }
 
       // ── Handle bot added to / removed from group ──
       const memberUpdate = update.my_chat_member;

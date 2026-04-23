@@ -298,7 +298,22 @@ async function processOneTask(task: ClaimedTask): Promise<'success' | 'failure' 
         }
       }
 
-      // Single listing update (merged: prices + deal status + pulse reset)
+      // ── Community ghost-verify gate ───────────────────────────────
+      // If this listing was soft-flagged by ≥3 "STOK YOK" votes, this scrape is
+      // the verification attempt. Two outcomes:
+      //   IN_STOCK success → clear the flag, listing is real; alerts allowed.
+      //   anything else    → keep the flag, suppress deal alert this cycle.
+      const wasGhosted = listing.ghostUntil != null && listing.ghostUntil > new Date();
+      const verifiedClean = wasGhosted && result.stockStatus === 'IN_STOCK';
+      const verifySuppressed = wasGhosted && !verifiedClean;
+      const clearGhostFields = verifiedClean ? { ghostUntil: null, ghostReason: null } : {};
+      if (verifiedClean) {
+        console.log(`[task-worker] Ghost cleared for ${listingId} — verify succeeded (IN_STOCK @ ${result.price})`);
+      } else if (verifySuppressed) {
+        console.log(`[task-worker] Ghost held for ${listingId} — stockStatus=${result.stockStatus}, alert suppressed`);
+      }
+
+      // Single listing update (merged: prices + deal status + pulse reset + ghost clear)
       // Pulse Protocol: successful scrape resets consecutiveFailures, skipUntilCycle, isFresh=true
       await prisma.listing.update({
         where: { id: listingId },
@@ -322,13 +337,15 @@ async function processOneTask(task: ClaimedTask): Promise<'success' | 'failure' 
           discoverySource: 'direct',
           isDeal,
           dealScore,
+          ...clearGhostFields,
           ...pulseSuccessFields,
         },
       });
 
       // Telegram: intelligent deal alert (price drop only — first observations skipped)
       // First observations (previousPrice == null) have no history → ATL by definition → not a real deal.
-      if (previousPrice && result.price < previousPrice) {
+      // Also skip if this scrape was held in the ghost-verify window without confirmation.
+      if (!verifySuppressed && previousPrice && result.price < previousPrice) {
         console.log(`[task-worker] Deal trigger: ${variantLabel} @ ${slug} — ${previousPrice} → ${result.price} TL`);
         try {
           await notifySmartDeal({

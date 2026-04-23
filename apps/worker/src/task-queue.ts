@@ -32,6 +32,10 @@ export async function generateTasks(
   const currentCycle = await getCurrentCycle();
   const lazarusIds = await getLazarusSample(currentCycle);
 
+  // Soft-ghost policy: community-flagged listings are NOT skipped from scraping —
+  // we keep scraping them so an instant restock isn't missed. The ghostUntil flag
+  // is consumed downstream to suppress duplicate deal alerts and to clear the flag
+  // on the first successful verify.
   const listings = await prisma.listing.findMany({
     where: {
       OR: [
@@ -43,8 +47,7 @@ export async function generateTasks(
           ...(variantId ? { variantId } : {}),
           retailer: { isActive: true },
         },
-        // Lazarus: force-include dormant listings picked by the random sampler,
-        // bypassing isActive/skipUntilCycle filters. productUrl sanity still enforced by the sampler.
+        // Lazarus: force-include dormant listings picked by the random sampler.
         ...(lazarusIds.length > 0 ? [{ id: { in: lazarusIds } }] : []),
       ],
     },
@@ -73,11 +76,11 @@ export async function generateTasks(
 
   // OUT_OF_STOCK listings: only include if last check was >6h ago (reduced frequency)
   const OOS_RECHECK_MS = 6 * 60 * 60 * 1000;
-  const now = Date.now();
+  const nowMs = Date.now();
   const scheduled = validListings.filter(l => {
     if (l.stockStatus !== 'OUT_OF_STOCK') return true;
     const lastChecked = l.lastCheckedAt?.getTime() ?? 0;
-    return (now - lastChecked) > OOS_RECHECK_MS;
+    return (nowMs - lastChecked) > OOS_RECHECK_MS;
   });
 
   const syncJob = await prisma.syncJob.create({

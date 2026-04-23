@@ -69,6 +69,10 @@ model Retailer {
   consecutiveFailures Int       @default(0)
   blockedCount        Int       @default(0)
 
+  // User-feedback driven score: 0..1. Increment on "ALABİLDİM", decrement on "STOK YOK".
+  // Used as a secondary ranking signal in deal detection.
+  confidenceScore     Float     @default(0.5)
+
   listings  Listing[]
   syncJobs  SyncJob[]
 }
@@ -115,6 +119,10 @@ model Listing {
   consecutiveFailures Int       @default(0)
   skipUntilCycle      Int       @default(0)  // Absolute scheduler cycle to wait for (0 = ready)
   isFresh             Boolean   @default(false) // True if last scrape succeeded — replaces lastSeenAt window check
+  // Ghost flag from Telegram feedback: when community votes "stok yok / hatalı" ≥3 times
+  // within 10 minutes, ghostUntil is set. generateTasks() skips ghosted listings.
+  ghostUntil          DateTime?
+  ghostReason         String?   // "community-vote", "admin", etc.
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
@@ -141,6 +149,7 @@ model Listing {
   // Pulse Protocol queue filter
   @@index([isActive, skipUntilCycle])
   @@index([isFresh])
+  @@index([ghostUntil])
 }
 
 enum StockStatus {
@@ -710,4 +719,34 @@ model SchedulerState {
   id           String   @id @default("default")
   currentCycle Int      @default(0)
   updatedAt    DateTime @updatedAt
+}
+
+// ─── Telegram Feedback (community RL loop) ───────────────────────
+// Each inline-button click from a deal alert is recorded here. The aggregator
+// reads this table to (a) flag ghost listings after 3+ "stok yok" votes in 10min,
+// (b) adjust Retailer.confidenceScore on "alabildim" / "kötü fiyat".
+//
+// Unique constraint on (listingId, chatId, button) makes repeated clicks idempotent —
+// a user can only count once per button per listing.
+model TelegramFeedbackEvent {
+  id            String   @id @default(cuid())
+  listingId     String
+  chatId        String   // Telegram chat id who voted
+  button        TelegramFeedbackButton
+  messageId     Int?     // original deal-alert message id (for potential edit)
+  variantId     String?  // denorm for fast margin override lookups
+  retailerSlug  String?  // denorm for confidence score updates
+  createdAt     DateTime @default(now())
+
+  @@unique([listingId, chatId, button])
+  @@index([listingId, createdAt])
+  @@index([button, createdAt])
+  @@index([retailerSlug, button, createdAt])
+}
+
+enum TelegramFeedbackButton {
+  GOT_IT          // ✅ ALABİLDİM
+  OUT_OF_STOCK    // ❌ STOK YOK / HATALI
+  GOOD_PRICE      // 🔥 GÜZEL FİYAT
+  BAD_PRICE       // 💩 KÖTÜ FİYAT
 }

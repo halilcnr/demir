@@ -46,6 +46,7 @@ function percentile(sorted: number[], p: number): number {
 export function getRollingLatency(): {
   windowMs: number;
   sampleCount: number;
+  scrapesPerSec: number;
   p50: number;
   p95: number;
   p99: number;
@@ -76,6 +77,9 @@ export function getRollingLatency(): {
   return {
     windowMs: WINDOW_MS,
     sampleCount: samples.length,
+    // Rolling throughput: scrapes observed in the last window, per second.
+    // One decimal precision — at low volume this is often <1/sec.
+    scrapesPerSec: Math.round((samples.length / (WINDOW_MS / 1000)) * 10) / 10,
     p50: percentile(all, 50),
     p95: percentile(all, 95),
     p99: percentile(all, 99),

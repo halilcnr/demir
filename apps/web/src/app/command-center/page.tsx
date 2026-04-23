@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import Link from 'next/link';
 import {
   Radio,
   Activity,
@@ -8,11 +9,12 @@ import {
   Zap,
   Clock,
   Server,
-  TrendingUp,
-  AlertCircle,
   CheckCircle2,
   Loader2,
-  Gauge,
+  Ghost,
+  ThumbsUp,
+  ThumbsDown,
+  MessageSquare,
 } from 'lucide-react';
 import { Card, StatCard } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -56,6 +58,7 @@ interface TelemetryResponse {
     fanout: number;
     latency: {
       sampleCount: number;
+      scrapesPerSec: number;
       p50: number;
       p95: number;
       p99: number;
@@ -69,6 +72,11 @@ interface TelemetryResponse {
   perProvider: Record<string, { count: number; p50: number; p95: number; successRate: number }>;
   workers: WorkerView[];
   fetchedAt: string;
+}
+
+interface FeedbackSummary {
+  last24h: { button: string; retailerSlug: string | null; count: number }[];
+  ghostedListings: unknown[];
 }
 
 function formatUptime(sec: number): string {
@@ -98,6 +106,12 @@ export default function CommandCenterPage() {
     queryKey: ['worker-telemetry'],
     queryFn: () => fetch('/api/worker/telemetry').then(r => r.json()),
     refetchInterval: liveEnabled ? interval(5_000) : false,
+  });
+
+  const feedbackQ = useQuery<FeedbackSummary>({
+    queryKey: ['feedback-summary'],
+    queryFn: () => fetch('/api/feedback-events/summary').then(r => r.json()),
+    refetchInterval: liveEnabled ? interval(15_000) : false,
   });
 
   if (isLoading) return <LoadingShell />;
@@ -137,7 +151,7 @@ export default function CommandCenterPage() {
         </div>
       </div>
 
-      {/* ── Cluster Stats ── */}
+      {/* ── Cluster Stats (top row) ── */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatCard
           title="Aktif Worker"
@@ -145,6 +159,13 @@ export default function CommandCenterPage() {
           subtitle={`${cluster.totalActiveRequests} aktif istek`}
           icon={<Server className="h-4 w-4" />}
           accentColor={cluster.onlineWorkers > 0 ? '#10b981' : '#ef4444'}
+        />
+        <StatCard
+          title="Scrape Hızı"
+          value={`${cluster.latency.scrapesPerSec.toFixed(1)}/sn`}
+          subtitle={`${cluster.latency.sampleCount} örnek (60sn)`}
+          icon={<Zap className="h-4 w-4" />}
+          accentColor={cluster.latency.scrapesPerSec > 0.5 ? '#8b5cf6' : '#94a3b8'}
         />
         <StatCard
           title="p50 Gecikme"
@@ -156,18 +177,16 @@ export default function CommandCenterPage() {
         <StatCard
           title="Başarı"
           value={`${cluster.latency.successRate.toFixed(1)}%`}
-          subtitle={`${cluster.latency.sampleCount} örnek (60s)`}
+          subtitle={`${cluster.totalTasksCompleted}✓ · ${cluster.totalTasksFailed}✕ · Kuyruk ${cluster.totalProviderQueueDepth}`}
           icon={<CheckCircle2 className="h-4 w-4" />}
           accentColor={cluster.latency.successRate >= 95 ? '#10b981' : cluster.latency.successRate >= 80 ? '#f59e0b' : '#ef4444'}
         />
-        <StatCard
-          title="Kuyruk Derinliği"
-          value={cluster.totalProviderQueueDepth}
-          subtitle={`Tamamlanan: ${cluster.totalTasksCompleted} · Hatalı: ${cluster.totalTasksFailed}`}
-          icon={<Gauge className="h-4 w-4" />}
-          accentColor={cluster.totalProviderQueueDepth > 50 ? '#f59e0b' : '#06b6d4'}
-        />
       </div>
+
+      {/* ── Feedback Loop strip ── */}
+      {feedbackQ.data && (
+        <FeedbackStrip data={feedbackQ.data} />
+      )}
 
       {/* ── Per-Worker Grid ── */}
       <div>
@@ -311,6 +330,76 @@ function LoadingShell() {
     <div className="flex flex-col items-center justify-center py-16">
       <Loader2 className="h-6 w-6 animate-spin text-primary" />
       <p className="mt-3 text-sm text-text-tertiary">Worker'lardan telemetri toplanıyor...</p>
+    </div>
+  );
+}
+
+// ─── Feedback Strip ─────────────────────────────────────────────────
+function FeedbackStrip({ data }: { data: FeedbackSummary }) {
+  const byButton: Record<string, number> = {};
+  for (const row of data.last24h) {
+    byButton[row.button] = (byButton[row.button] ?? 0) + row.count;
+  }
+  const totalVotes = Object.values(byButton).reduce((s, n) => s + n, 0);
+  const ghostCount = data.ghostedListings.length;
+
+  return (
+    <Card>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <MessageSquare className="h-4 w-4 text-primary" />
+          <h3 className="text-sm font-semibold text-text-primary">Topluluk Geri Bildirimi</h3>
+          <span className="text-[11px] text-text-tertiary">son 24 saat</span>
+        </div>
+        <Link
+          href="/feedback-events"
+          className="flex items-center gap-1 text-[12px] font-medium text-primary hover:underline"
+        >
+          Tümünü gör →
+        </Link>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <FeedbackStat label="Toplam oy" icon={<Activity className="h-3.5 w-3.5" />} value={totalVotes} tone="neutral" />
+        <FeedbackStat label="Alabildim" icon={<CheckCircle2 className="h-3.5 w-3.5" />} value={byButton.GOT_IT ?? 0} tone="good" />
+        <FeedbackStat label="Stok yok" icon={<Ghost className="h-3.5 w-3.5" />} value={byButton.OUT_OF_STOCK ?? 0} tone="bad" />
+        <FeedbackStat label="Güzel fiyat" icon={<ThumbsUp className="h-3.5 w-3.5" />} value={byButton.GOOD_PRICE ?? 0} tone="good" />
+        <FeedbackStat label="Kötü fiyat" icon={<ThumbsDown className="h-3.5 w-3.5" />} value={byButton.BAD_PRICE ?? 0} tone="warn" />
+      </div>
+
+      {ghostCount > 0 && (
+        <div className="mt-3 flex items-center gap-2 rounded-md border border-amber-200/60 bg-amber-50/70 px-3 py-2 text-[12px] text-amber-900">
+          <Ghost className="h-3.5 w-3.5 text-amber-600" />
+          <span>
+            <strong className="font-semibold">{ghostCount}</strong> listing doğrulama aşamasında — scrape edilmeye
+            devam eder; stok bir sonraki taramada onaylanırsa bayrak otomatik kalkar.
+          </span>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function FeedbackStat({
+  label, value, icon, tone,
+}: {
+  label: string;
+  value: number;
+  icon: React.ReactNode;
+  tone: 'good' | 'bad' | 'warn' | 'neutral';
+}) {
+  const toneClass =
+    tone === 'good' ? 'text-emerald-600'
+    : tone === 'bad' ? 'text-rose-600'
+    : tone === 'warn' ? 'text-amber-600'
+    : 'text-text-secondary';
+  return (
+    <div className="rounded-lg border border-border bg-surface-secondary/30 p-2.5">
+      <div className={cn('flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider', toneClass)}>
+        {icon}
+        {label}
+      </div>
+      <div className="mt-1 text-lg font-semibold tabular-nums text-text-primary">{value}</div>
     </div>
   );
 }

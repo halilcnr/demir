@@ -20,6 +20,7 @@ import {
   VolumeX,
   Radio,
   Radar,
+  MessageSquare,
 } from 'lucide-react';
 import { cn } from '@repo/shared';
 import { SyncStatusPill } from '../sync-status-pill';
@@ -33,6 +34,7 @@ const navItems = [
   { href: '/sync', label: 'Senkronizasyon', icon: RefreshCw },
   { href: '/sync-control', label: 'Operasyon Merkezi', icon: Gauge },
   { href: '/command-center', label: 'Komuta Merkezi', icon: Radio },
+  { href: '/feedback-events', label: 'Topluluk Oyları', icon: MessageSquare },
   { href: '/scrape-diagnostics', label: 'Scrape Teşhisi', icon: Radar },
   { href: '/settings', label: 'Ayarlar', icon: Settings },
 ];

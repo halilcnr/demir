@@ -37,6 +37,7 @@ interface WorkerTelemetry {
   rollingLatency: {
     windowMs: number;
     sampleCount: number;
+    scrapesPerSec: number;
     p50: number;
     p95: number;
     p99: number;
@@ -85,6 +86,11 @@ export async function GET() {
       ? workers.reduce((s, w) => s + w.rollingLatency.successRate, 0) / workers.length
       : 0;
 
+    // Throughput across all reached workers — sum of each worker's scrapesPerSec.
+    // This is the actual cluster-wide scrape rate (near-real-time, 60s window).
+    const clusterScrapesPerSec =
+      Math.round(workers.reduce((s, w) => s + w.rollingLatency.scrapesPerSec, 0) * 10) / 10;
+
     const cluster = {
       onlineWorkers,
       reachedWorkers: workers.length,
@@ -92,6 +98,7 @@ export async function GET() {
       // Conservative aggregation: max of per-worker percentiles (pessimistic)
       latency: {
         sampleCount: totalSamples,
+        scrapesPerSec: clusterScrapesPerSec,
         p50: allP50s.length ? Math.max(...allP50s) : 0,
         p95: allP95s.length ? Math.max(...allP95s) : 0,
         p99: allP99s.length ? Math.max(...allP99s) : 0,

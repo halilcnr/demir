@@ -17,6 +17,7 @@ import {
   BarChart3,
   Radar,
   Radio,
+  MessageSquare,
 } from 'lucide-react';
 import { cn } from '@repo/shared';
 
@@ -29,6 +30,7 @@ const navItems = [
   { href: '/sync', label: 'Senkronizasyon', icon: RefreshCw },
   { href: '/sync-control', label: 'Operasyon Merkezi', icon: Gauge },
   { href: '/command-center', label: 'Komuta Merkezi', icon: Radio },
+  { href: '/feedback-events', label: 'Topluluk Oyları', icon: MessageSquare },
   { href: '/scrape-health', label: 'Scrape Sağlık', icon: Activity },
   { href: '/scrape-diagnostics', label: 'Scrape Teşhisi', icon: Radar },
   { href: '/analytics', label: 'Analitik', icon: BarChart3 },
