@@ -116,6 +116,8 @@ export abstract class BaseProvider implements RetailerProvider {
 
       if (res.status === 403) {
         recordSmartBackoffBlock(this.retailerSlug, this.pacing.baseDelayMs);
+        const body = await res.text().catch(() => '');
+        storeSnapshot(this.retailerSlug, url, body, false, { status: 403, outcome: 'blocked' });
         throw new ProviderBlockedError(this.retailerSlug, url);
       }
 
@@ -123,6 +125,12 @@ export abstract class BaseProvider implements RetailerProvider {
         recordSmartBackoffBlock(this.retailerSlug, this.pacing.baseDelayMs);
         const retryAfter = res.headers.get('retry-after');
         const retryAfterMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : undefined;
+        const body = await res.text().catch(() => '');
+        storeSnapshot(this.retailerSlug, url, body, false, {
+          status: 429,
+          outcome: 'rate-limited',
+          note: retryAfter ? `retry-after=${retryAfter}` : undefined,
+        });
         throw new RateLimitedError(this.retailerSlug, url, retryAfterMs);
       }
 
@@ -131,10 +139,14 @@ export abstract class BaseProvider implements RetailerProvider {
       }
 
       if (res.status >= 500) {
+        const body = await res.text().catch(() => '');
+        storeSnapshot(this.retailerSlug, url, body, false, { status: res.status, outcome: 'http-error' });
         throw new RetryableProviderError(this.retailerSlug, res.status, url);
       }
 
       if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        storeSnapshot(this.retailerSlug, url, body, false, { status: res.status, outcome: 'http-error' });
         throw new RetryableProviderError(this.retailerSlug, res.status, url);
       }
 
@@ -146,7 +158,7 @@ export abstract class BaseProvider implements RetailerProvider {
       const trimmedHtml = html.length > MAX_HTML_BYTES ? html.substring(0, MAX_HTML_BYTES) : html;
 
       recordSmartBackoffSuccess(this.retailerSlug);
-      storeSnapshot(this.retailerSlug, url, trimmedHtml, true);
+      storeSnapshot(this.retailerSlug, url, trimmedHtml, true, { status: res.status, outcome: 'ok' });
       return trimmedHtml;
     } catch (err) {
       if (
@@ -158,11 +170,18 @@ export abstract class BaseProvider implements RetailerProvider {
         throw err;
       }
       if (err instanceof DOMException || (err instanceof Error && err.name === 'AbortError')) {
+        storeSnapshot(this.retailerSlug, url, '', false, { status: null, outcome: 'network-error', note: 'timeout' });
         throw new RetryableNetworkError(this.retailerSlug, url, 'timeout');
       }
       if (err instanceof TypeError && (err as Error).message?.includes('fetch')) {
+        storeSnapshot(this.retailerSlug, url, '', false, { status: null, outcome: 'network-error', note: (err as Error).message });
         throw new RetryableNetworkError(this.retailerSlug, url, 'network');
       }
+      storeSnapshot(this.retailerSlug, url, '', false, {
+        status: null,
+        outcome: 'network-error',
+        note: err instanceof Error ? err.message : String(err),
+      });
       throw new RetryableNetworkError(
         this.retailerSlug,
         url,
@@ -275,7 +294,11 @@ export abstract class BaseProvider implements RetailerProvider {
     }
 
     // All strategies failed — store snapshot for debugging
-    storeSnapshot(this.retailerSlug, url, html, false);
+    storeSnapshot(this.retailerSlug, url, html, false, {
+      status: 200,
+      outcome: 'strategy-failed',
+      note: failures.map((f) => f.strategy).join(','),
+    });
     console.warn(
       `[${this.retailerSlug}] all ${strategies.length} strategies failed — ${url}: ${failures.map((f) => `${f.strategy}(${f.error})`).join(', ')}`,
     );

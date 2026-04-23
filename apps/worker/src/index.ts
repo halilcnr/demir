@@ -16,6 +16,7 @@ import { getScrapeHealthDashboard, generateDailyReport, buildHealthReportMessage
 import { computeAllVariantAnalytics, detectSmartDeals, buildSmartDealMessage } from './services/price-analytics';
 import { runPriceMaintenance, getPriceStorageStats } from './services/price-maintenance';
 import { runDealRadar } from './services/deal-radar';
+import { getRecentSnapshots } from './scrape-toolkit';
 
 const startedAt = new Date().toISOString();
 console.log('=== BakiTracker Worker ===');
@@ -104,6 +105,67 @@ const server = createServer(async (req, res) => {
     const discoverySources = getDiscoverySourceHealth();
     res.writeHead(200);
     res.end(JSON.stringify({ providers, discoverySources }));
+    return;
+  }
+
+  // ─── Scrape diagnosis: recent in-memory HTML snapshots ──────────
+  // Usage:
+  //   GET /diagnose-scrape                 → summary of all providers
+  //   GET /diagnose-scrape?retailer=n11    → list of recent snapshots (small excerpt)
+  //   GET /diagnose-scrape?retailer=n11&full=1  → include 8KB HTML excerpt per snapshot
+  //   GET /diagnose-scrape?retailer=n11&index=0 → full 8KB HTML of a specific snapshot
+  if (req.method === 'GET' && req.url?.startsWith('/diagnose-scrape')) {
+    const parsed = new URL(req.url, `http://localhost:${PORT}`);
+    const retailer = parsed.searchParams.get('retailer') ?? undefined;
+    const full = parsed.searchParams.get('full') === '1';
+    const indexParam = parsed.searchParams.get('index');
+
+    const snaps = getRecentSnapshots(retailer);
+
+    // Single-snapshot full-HTML view
+    if (indexParam !== null) {
+      const idx = parseInt(indexParam, 10);
+      const snap = snaps[idx];
+      if (!snap) {
+        res.writeHead(404);
+        res.end(JSON.stringify({ error: `No snapshot at index ${idx}` }));
+        return;
+      }
+      res.writeHead(200);
+      res.end(JSON.stringify({
+        ...snap,
+        capturedAt: new Date(snap.capturedAt).toISOString(),
+        htmlLength: snap.html.length,
+      }));
+      return;
+    }
+
+    // Summary (no retailer) — counts per provider + outcome
+    if (!retailer) {
+      const summary: Record<string, Record<string, number>> = {};
+      for (const s of snaps) {
+        summary[s.providerSlug] ??= {};
+        summary[s.providerSlug][s.outcome] = (summary[s.providerSlug][s.outcome] ?? 0) + 1;
+      }
+      res.writeHead(200);
+      res.end(JSON.stringify({ total: snaps.length, byProvider: summary }));
+      return;
+    }
+
+    // List view for a specific retailer
+    const list = snaps.map((s, i) => ({
+      index: i,
+      url: s.url,
+      capturedAt: new Date(s.capturedAt).toISOString(),
+      status: s.status,
+      outcome: s.outcome,
+      success: s.success,
+      note: s.note,
+      htmlLength: s.html.length,
+      htmlExcerpt: full ? s.html : s.html.substring(0, 500),
+    }));
+    res.writeHead(200);
+    res.end(JSON.stringify({ retailer, count: list.length, snapshots: list }));
     return;
   }
 

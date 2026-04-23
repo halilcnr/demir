@@ -311,21 +311,49 @@ export function clearSessionCookies(providerSlug: string): void {
 
 // ─── 7. HTML Snapshotting (in-memory ring buffer) ────────────────
 
+export type SnapshotOutcome =
+  | 'ok'                // 200 parsed successfully
+  | 'strategy-failed'   // 200 but no strategy produced a price
+  | 'blocked'           // 403
+  | 'rate-limited'      // 429
+  | 'http-error'        // other 4xx/5xx
+  | 'network-error';    // fetch failed, timeout, DNS, etc.
+
 interface HtmlSnapshot {
   url: string;
   providerSlug: string;
   html: string;
   capturedAt: number;
   success: boolean;
+  status: number | null;       // HTTP status code (null if request never completed)
+  outcome: SnapshotOutcome;
+  note?: string;               // optional free-form detail (e.g. network error message)
 }
 
-const MAX_SNAPSHOTS = 20;
+const MAX_SNAPSHOTS = 40;
 const snapshots: HtmlSnapshot[] = [];
 
-export function storeSnapshot(providerSlug: string, url: string, html: string, success: boolean): void {
+export function storeSnapshot(
+  providerSlug: string,
+  url: string,
+  html: string,
+  success: boolean,
+  meta?: { status?: number | null; outcome?: SnapshotOutcome; note?: string },
+): void {
   // Keep only a hash-sized excerpt to avoid memory bloat
   const excerpt = html.substring(0, 8000);
-  snapshots.push({ url, providerSlug, html: excerpt, capturedAt: Date.now(), success });
+  const outcome: SnapshotOutcome =
+    meta?.outcome ?? (success ? 'ok' : 'strategy-failed');
+  snapshots.push({
+    url,
+    providerSlug,
+    html: excerpt,
+    capturedAt: Date.now(),
+    success,
+    status: meta?.status ?? null,
+    outcome,
+    note: meta?.note,
+  });
   if (snapshots.length > MAX_SNAPSHOTS) {
     snapshots.shift();
   }

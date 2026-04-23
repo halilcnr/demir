@@ -66,6 +66,11 @@ export class N11Provider extends BaseProvider {
     return new Promise<string>((resolve, reject) => {
       execFile('curl', args, { maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
         if (error && !stdout.length) {
+          storeSnapshot(this.retailerSlug, url, '', false, {
+            status: null,
+            outcome: 'network-error',
+            note: `curl: ${error.message}`,
+          });
           reject(new RetryableNetworkError(this.retailerSlug, url, error.message));
           return;
         }
@@ -75,24 +80,30 @@ export class N11Provider extends BaseProvider {
 
         if (statusCode === 403) {
           recordSmartBackoffBlock(this.retailerSlug, this.pacing.baseDelayMs);
-          storeSnapshot(this.retailerSlug, url, html, false);
+          storeSnapshot(this.retailerSlug, url, html, false, { status: 403, outcome: 'blocked' });
           reject(new ProviderBlockedError(this.retailerSlug, url));
           return;
         }
 
         if (statusCode === 429) {
           recordSmartBackoffBlock(this.retailerSlug, this.pacing.baseDelayMs);
+          storeSnapshot(this.retailerSlug, url, html, false, { status: 429, outcome: 'rate-limited' });
           reject(new ProviderBlockedError(this.retailerSlug, url));
           return;
         }
 
         if (statusCode >= 400 || !html.length) {
+          storeSnapshot(this.retailerSlug, url, html, false, {
+            status: Number.isFinite(statusCode) ? statusCode : null,
+            outcome: 'http-error',
+            note: !html.length ? 'empty body' : undefined,
+          });
           reject(new RetryableNetworkError(this.retailerSlug, url, `HTTP ${statusCode}`));
           return;
         }
 
         recordSmartBackoffSuccess(this.retailerSlug);
-        storeSnapshot(this.retailerSlug, url, html, true);
+        storeSnapshot(this.retailerSlug, url, html, true, { status: statusCode, outcome: 'ok' });
         resolve(html);
       });
     });
