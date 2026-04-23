@@ -49,6 +49,8 @@ import { WORKER_ID, recordTaskComplete, recordTaskFailed, recordTaskSkipped, set
 import { getWorkerConfig } from './worker-config';
 import { recordHealthSuccess, recordHealthFailure } from './services/scrape-health';
 import { handleScrapeFailure, pulseSuccessFields } from './services/pulse-protocol';
+import { isShuttingDown } from './shutdown';
+import { recordScrapeLatency } from './telemetry';
 
 const DEFAULT_CONCURRENCY = parseInt(process.env.WORKER_CONCURRENCY ?? '5', 10);
 
@@ -101,6 +103,14 @@ export async function processTasksUntilDone(syncJobId: string): Promise<{
     const MAX_EMPTY_ROUNDS = 3; // Fast transition for dual-worker back-to-back cycles
 
     while (emptyRounds < MAX_EMPTY_ROUNDS) {
+      // Stop claiming new work as soon as SIGTERM lands.
+      // In-flight batches finish normally; releaseMyClaims() in shutdown
+      // takes care of anything still locked to this worker.
+      if (isShuttingDown()) {
+        console.log('[task-worker] shutdown signaled — stopping claim loop');
+        break;
+      }
+
       // Claim a batch of tasks
       const tasks = await claimTasks(concurrency);
 
@@ -344,6 +354,7 @@ async function processOneTask(task: ClaimedTask): Promise<'success' | 'failure' 
       recordCircuitSuccess(slug);
       recordMetricEvent(slug, 'success', respTime);
       recordHealthSuccess(slug, listingId, respTime);
+      recordScrapeLatency(slug, respTime, true);
       incrementProviderCounter(slug, 'successCount');
       recordTaskComplete(Date.now() - startMs);
 
@@ -377,6 +388,7 @@ async function processOneTask(task: ClaimedTask): Promise<'success' | 'failure' 
       await recordFailure(slug);
       recordTaskFailed();
       recordHealthFailure(slug, listingId, 'error');
+      recordScrapeLatency(slug, Date.now() - startMs, false);
       addSyncLog({ type: 'error', retailer: slug, variant: variantLabel, message: `${slug} — veri alınamadı` });
       return 'failure';
     }

@@ -17,6 +17,8 @@ import { computeAllVariantAnalytics, detectSmartDeals, buildSmartDealMessage } f
 import { runPriceMaintenance, getPriceStorageStats } from './services/price-maintenance';
 import { runDealRadar } from './services/deal-radar';
 import { getRecentSnapshots } from './scrape-toolkit';
+import { getRollingLatency } from './telemetry';
+import { getLocalWorkerStats } from './worker-identity';
 
 const startedAt = new Date().toISOString();
 console.log('=== BakiTracker Worker ===');
@@ -96,6 +98,64 @@ const server = createServer(async (req, res) => {
     const data = getSyncProgress();
     res.writeHead(200);
     res.end(JSON.stringify(data));
+    return;
+  }
+
+  // ─── Runtime config: view + force-refresh ────────────────────
+  // Admin writes to WorkerConfig row; workers re-read within 5s (cache TTL).
+  // POST /config/invalidate forces this worker to re-read on the next call
+  // (sub-second propagation for ops scenarios).
+  if (req.method === 'GET' && req.url === '/config') {
+    const cfg = await getWorkerConfig();
+    res.writeHead(200);
+    res.end(JSON.stringify({ workerId: WORKER_ID, config: cfg }));
+    return;
+  }
+  // ─── /telemetry — local rolling 60s snapshot for this worker ───
+  // Web aggregator calls /telemetry on every online worker and merges.
+  // No COUNT(*) on live tables — queue depth is served from a separate
+  // endpoint below that uses the (status,priority) index.
+  if (req.method === 'GET' && req.url === '/telemetry') {
+    const rolling = getRollingLatency();
+    const local = getLocalWorkerStats();
+    const tw = getTaskWorkerState();
+    const queue = getQueueDepth();
+    const active = getActiveRequests();
+    res.writeHead(200);
+    res.end(JSON.stringify({
+      workerId: WORKER_ID,
+      startedAt,
+      uptimeSec: Math.round((Date.now() - new Date(startedAt).getTime()) / 1000),
+      status: local.status,
+      concurrency: local.concurrency,
+      currentTaskId: local.currentTaskId,
+      isProcessing: tw.isProcessing,
+      localCounters: {
+        tasksCompleted: local.tasksCompleted,
+        tasksFailed: local.tasksFailed,
+        tasksSkipped: local.tasksSkipped,
+        avgTaskTimeMs: local.avgTaskTimeMs,
+      },
+      rollingLatency: rolling,
+      providerQueue: {
+        depth: queue,
+        activeGlobal: active.global,
+        activePerProvider: active.perProvider,
+      },
+    }));
+    return;
+  }
+
+  if (req.method === 'POST' && req.url === '/config/invalidate') {
+    const authHeader = req.headers['authorization'] ?? '';
+    if (TRIGGER_SECRET && authHeader !== `Bearer ${TRIGGER_SECRET}`) {
+      res.writeHead(401);
+      res.end(JSON.stringify({ error: 'Unauthorized' }));
+      return;
+    }
+    invalidateConfigCache();
+    res.writeHead(200);
+    res.end(JSON.stringify({ ok: true, workerId: WORKER_ID }));
     return;
   }
 
@@ -665,21 +725,69 @@ setInterval(async () => {
   }
 })();
 
-// Graceful shutdown with lock release + timeout
+// ─── Graceful shutdown ──────────────────────────────────────────
+// Railway SIGTERM → grace = 30s before SIGKILL.
+// Budget:
+//   0–25s : let in-flight tasks finish naturally (task-worker stops claiming)
+//   25s   : release any still-locked tasks back to PENDING
+//   26s   : release distributed locks + stop heartbeat
+//   28s   : hard force-exit (leave 2s buffer before SIGKILL)
+const SHUTDOWN_DRAIN_MS = 25_000;
+const SHUTDOWN_HARD_DEADLINE_MS = 28_000;
+
+let shuttingDownAlready = false;
 async function gracefulShutdown(signal: string) {
-  console.log(`[worker] ${signal} received — shutting down...`);
+  if (shuttingDownAlready) return;
+  shuttingDownAlready = true;
+  console.log(`[worker] ${signal} received — graceful shutdown starting`);
+
+  // Hard deadline — if anything hangs we still exit before SIGKILL
   const forceExit = setTimeout(() => {
-    console.error('[worker] Shutdown timeout — forcing exit');
+    console.error('[worker] Shutdown hard-deadline — forcing exit');
     process.exit(1);
-  }, 10_000);
+  }, SHUTDOWN_HARD_DEADLINE_MS);
+  forceExit.unref();
+
+  // 1. Flag: task-worker will stop claiming on next loop iteration
+  const { signalShutdown } = await import('./shutdown');
+  signalShutdown();
+
+  // 2. Wait for in-flight work to drain (or timeout)
+  const drainStart = Date.now();
+  const { getTaskWorkerState } = await import('./task-worker');
+  while (Date.now() - drainStart < SHUTDOWN_DRAIN_MS) {
+    if (!getTaskWorkerState().isProcessing) break;
+    await new Promise(r => setTimeout(r, 500));
+  }
+  const drainMs = Date.now() - drainStart;
+  console.log(`[worker] in-flight drain complete after ${drainMs}ms`);
+
+  // 3. Return any still-locked tasks to PENDING so peers pick them up immediately
   try {
-    await Promise.allSettled([
-      taskGenLock.release(),
-      cleanupLock.release(),
-      stopWorkerIdentity(),
-    ]);
-  } catch { /* swallow */ }
+    const { releaseMyClaims } = await import('./task-queue');
+    await releaseMyClaims();
+  } catch (err) {
+    console.error('[worker] releaseMyClaims failed:', err);
+  }
+
+  // 3b. Flush any buffered price snapshots (scaffolded; no-op until D2 is wired in)
+  try {
+    const { drainPriceBuffer } = await import('./services/price-buffer');
+    const flushed = await drainPriceBuffer();
+    if (flushed > 0) console.log(`[worker] Flushed ${flushed} buffered snapshots on shutdown`);
+  } catch (err) {
+    console.error('[worker] price-buffer drain failed:', err);
+  }
+
+  // 4. Release distributed locks + heartbeat
+  await Promise.allSettled([
+    taskGenLock.release(),
+    cleanupLock.release(),
+    stopWorkerIdentity(),
+  ]);
+
   clearTimeout(forceExit);
+  console.log('[worker] ✅ graceful shutdown complete');
   process.exit(0);
 }
 process.on('SIGTERM', () => { gracefulShutdown('SIGTERM'); });

@@ -167,90 +167,55 @@ export async function generateTasks(
 
 /**
  * Claim a batch of tasks for this worker.
- * Uses atomic updateMany to prevent two workers from claiming the same task.
- * Returns tasks with provider rotation built in.
+ *
+ * Single-round-trip implementation using a CTE with SELECT ... FOR UPDATE
+ * SKIP LOCKED + UPDATE ... RETURNING. Under contention, Postgres skips rows
+ * locked by concurrent workers instead of blocking → linear scaling.
+ *
+ * Provider rotation is approximated at the application layer in generateTasks()
+ * (tasks are interleaved round-robin by retailer when inserted), so priority-
+ * ordered dequeue already spreads providers. Overfetching + per-provider caps
+ * from the old implementation are removed; the insertion order handles it.
  */
 export async function claimTasks(batchSize: number): Promise<ClaimedTask[]> {
-  const now = new Date();
+  if (batchSize <= 0) return [];
 
-  // Find available PENDING tasks, ordered by priority DESC (provider-rotated order)
-  const available = await prisma.scrapeTask.findMany({
-    where: { status: 'PENDING' },
-    orderBy: { priority: 'desc' },
-    take: batchSize * 3, // Overfetch to have choices after provider filtering
-    select: { id: true, retailerSlug: true },
-  });
+  // Parameterised via $queryRaw — identifiers are literal, only values bound.
+  // The CTE picks `batchSize` PENDING rows highest-priority-first, locks them
+  // with SKIP LOCKED (so concurrent workers won't collide or block), and in
+  // the same statement flips them to IN_PROGRESS with our worker id.
+  const rows = await prisma.$queryRaw<Array<{
+    id: string;
+    syncJobId: string;
+    listingId: string;
+    retailerSlug: string;
+    variantLabel: string;
+    productUrl: string;
+  }>>`
+    WITH claimed AS (
+      SELECT id
+      FROM "ScrapeTask"
+      WHERE status = 'PENDING'
+      ORDER BY priority DESC, "createdAt" ASC
+      FOR UPDATE SKIP LOCKED
+      LIMIT ${batchSize}
+    )
+    UPDATE "ScrapeTask" t
+    SET status = 'IN_PROGRESS',
+        "lockedBy" = ${WORKER_ID},
+        "lockedAt" = NOW()
+    FROM claimed
+    WHERE t.id = claimed.id
+    RETURNING
+      t.id            AS "id",
+      t."syncJobId"   AS "syncJobId",
+      t."listingId"   AS "listingId",
+      t."retailerSlug" AS "retailerSlug",
+      t."variantLabel" AS "variantLabel",
+      t."productUrl"  AS "productUrl"
+  `;
 
-  if (available.length === 0) return [];
-
-  // Provider-aware selection: pick tasks that spread across providers
-  const selected: string[] = [];
-  const providerCounts = new Map<string, number>();
-
-  for (const task of available) {
-    if (selected.length >= batchSize) break;
-    const count = providerCounts.get(task.retailerSlug) ?? 0;
-    // Prefer providers with fewer tasks already selected
-    if (count < Math.ceil(batchSize / 3)) {
-      selected.push(task.id);
-      providerCounts.set(task.retailerSlug, count + 1);
-    }
-  }
-
-  // Fill remaining slots if we didn't reach batchSize
-  if (selected.length < batchSize) {
-    for (const task of available) {
-      if (selected.length >= batchSize) break;
-      if (!selected.includes(task.id)) {
-        selected.push(task.id);
-      }
-    }
-  }
-
-  if (selected.length === 0) return [];
-
-  // Bulk claim: try to claim all selected tasks in one shot, then fetch claimed ones
-  const claimed: ClaimedTask[] = [];
-
-  // Atomically claim all selected tasks that are still PENDING
-  for (const taskId of selected) {
-    const result = await prisma.scrapeTask.updateMany({
-      where: { id: taskId, status: 'PENDING' },
-      data: {
-        status: 'IN_PROGRESS',
-        lockedBy: WORKER_ID,
-        lockedAt: now,
-      },
-    });
-    if (result.count > 0) {
-      claimed.push({ id: taskId } as ClaimedTask); // placeholder
-    }
-  }
-
-  if (claimed.length === 0) return [];
-
-  // Single bulk fetch for all claimed task data (instead of N individual findUnique)
-  const claimedIds = claimed.map(c => c.id);
-  const fullTasks = await prisma.scrapeTask.findMany({
-    where: { id: { in: claimedIds } },
-    select: {
-      id: true,
-      syncJobId: true,
-      listingId: true,
-      retailerSlug: true,
-      variantLabel: true,
-      productUrl: true,
-    },
-  });
-
-  return fullTasks.map(task => ({
-    id: task.id,
-    syncJobId: task.syncJobId,
-    listingId: task.listingId,
-    retailerSlug: task.retailerSlug,
-    variantLabel: task.variantLabel,
-    productUrl: task.productUrl,
-  }));
+  return rows;
 }
 
 export interface ClaimedTask {
@@ -307,6 +272,26 @@ export async function skipTask(taskId: string, reason: string): Promise<void> {
       errorMessage: reason.slice(0, 500),
     },
   });
+}
+
+/**
+ * Release all tasks currently locked by THIS worker.
+ * Called during graceful shutdown so peers can pick them up immediately,
+ * instead of waiting for the 5-minute reaper.
+ */
+export async function releaseMyClaims(): Promise<number> {
+  const result = await prisma.scrapeTask.updateMany({
+    where: { status: 'IN_PROGRESS', lockedBy: WORKER_ID },
+    data: {
+      status: 'PENDING',
+      lockedBy: null,
+      lockedAt: null,
+    },
+  });
+  if (result.count > 0) {
+    console.log(`[task-queue] Released ${result.count} in-flight tasks back to PENDING (shutdown)`);
+  }
+  return result.count;
 }
 
 /**

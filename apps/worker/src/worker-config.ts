@@ -32,7 +32,9 @@ const ENV_DEFAULTS: WorkerSettings = {
 
 let configCache: WorkerSettings | null = null;
 let configCacheTime = 0;
-const CONFIG_CACHE_TTL = 30_000;
+// 5s TTL: hot-swap propagates within one loop iteration without hammering DB.
+// 15 workers × 1 fetch per 5s = 3 queries/sec — negligible.
+const CONFIG_CACHE_TTL = parseInt(process.env.WORKER_CONFIG_TTL_MS ?? '5000', 10);
 
 export async function getWorkerConfig(): Promise<WorkerSettings> {
   const now = Date.now();

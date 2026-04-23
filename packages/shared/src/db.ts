@@ -6,14 +6,20 @@ const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 // Railway Postgres is a direct TCP connection (no PgBouncer in front) — do NOT set
 // pgbouncer=true here; that would disable Prisma's prepared-statement cache and
 // regress perf. connection_limit + pool_timeout are the two knobs that matter.
-// (A server-side statement_timeout would be a nice-to-have stability cap, but
-// the URL-based `options=-c ...` variant isn't universally passed through by
-// Prisma's query-engine parser — skipped here to keep boot bulletproof.)
+//
+// Sizing math for N workers against Railway's 100-connection ceiling:
+//   workers × PRISMA_CONNECTION_LIMIT + (web app serverless peak) ≤ 100
+//   e.g. 15 workers × 5 + 20 web peak = 95 → safe with 5.
+//        5 workers  × 10 + 20         = 70 → safe with 10.
+// Default 5 is the conservative choice that keeps 15-worker scale in budget.
+// Bump via env if you're on a single worker or moved to PgBouncer.
 function withPoolLimit(url: string | undefined): string | undefined {
   if (!url) return url;
   const params: string[] = [];
-  if (!url.includes('connection_limit')) params.push('connection_limit=10');
-  if (!url.includes('pool_timeout')) params.push('pool_timeout=20');
+  const limit = parseInt(process.env.PRISMA_CONNECTION_LIMIT ?? '5', 10);
+  const timeout = parseInt(process.env.PRISMA_POOL_TIMEOUT ?? '20', 10);
+  if (!url.includes('connection_limit')) params.push(`connection_limit=${limit}`);
+  if (!url.includes('pool_timeout')) params.push(`pool_timeout=${timeout}`);
   if (params.length === 0) return url;
   return url + (url.includes('?') ? '&' : '?') + params.join('&');
 }
