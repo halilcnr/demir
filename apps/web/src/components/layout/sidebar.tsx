@@ -15,6 +15,8 @@ import {
   Gauge,
   Activity,
   BarChart3,
+  Radar,
+  Radio,
 } from 'lucide-react';
 import { cn } from '@repo/shared';
 
@@ -26,7 +28,9 @@ const navItems = [
   { href: '/alerts', label: 'Alarmlar', icon: Bell },
   { href: '/sync', label: 'Senkronizasyon', icon: RefreshCw },
   { href: '/sync-control', label: 'Operasyon Merkezi', icon: Gauge },
+  { href: '/command-center', label: 'Komuta Merkezi', icon: Radio },
   { href: '/scrape-health', label: 'Scrape Sağlık', icon: Activity },
+  { href: '/scrape-diagnostics', label: 'Scrape Teşhisi', icon: Radar },
   { href: '/analytics', label: 'Analitik', icon: BarChart3 },
   { href: '/settings/telegram', label: 'Telegram', icon: Bot },
   { href: '/settings', label: 'Ayarlar', icon: Settings },

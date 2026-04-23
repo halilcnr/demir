@@ -18,6 +18,8 @@ import {
   ZapOff,
   Terminal,
   VolumeX,
+  Radio,
+  Radar,
 } from 'lucide-react';
 import { cn } from '@repo/shared';
 import { SyncStatusPill } from '../sync-status-pill';
@@ -30,6 +32,8 @@ const navItems = [
   { href: '/alerts', label: 'Alarmlar', icon: Bell },
   { href: '/sync', label: 'Senkronizasyon', icon: RefreshCw },
   { href: '/sync-control', label: 'Operasyon Merkezi', icon: Gauge },
+  { href: '/command-center', label: 'Komuta Merkezi', icon: Radio },
+  { href: '/scrape-diagnostics', label: 'Scrape Teşhisi', icon: Radar },
   { href: '/settings', label: 'Ayarlar', icon: Settings },
 ];
 
