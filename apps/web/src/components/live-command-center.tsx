@@ -111,10 +111,18 @@ export function LiveCommandCenter() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode }),
       });
-      if (!res.ok) throw new Error('mode switch failed');
-      return res.json() as Promise<{ ok: boolean }>;
+      const data = await res.json() as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) throw new Error(data.error ?? 'mode switch failed');
+      return data;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['live-telemetry'] }),
+    onSuccess: () => {
+      // Invalidate query to fetch fresh telemetry with new mode
+      qc.invalidateQueries({ queryKey: ['live-telemetry'] });
+    },
+    onError: (err: Error) => {
+      console.error('[mode mutation error]', err.message);
+      // TODO: show toast to user
+    },
   });
 
   const data = query.data;

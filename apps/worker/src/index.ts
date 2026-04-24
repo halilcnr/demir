@@ -153,15 +153,30 @@ const server = createServer(async (req, res) => {
   // Public (no auth) — dashboard polls this every 3s to render the live
   // engine state, speedometer, and history chart.
   if (req.method === 'GET' && req.url === '/auto-tune') {
-    const state = getTunerState();
-    const aimd = getAIMDTelemetry();
-    res.writeHead(200);
-    res.end(JSON.stringify({
-      workerId: WORKER_ID,
-      ...state,
-      liveTelemetry: aimd,
-      fetchedAt: new Date().toISOString(),
-    }));
+    (async () => {
+      try {
+        const state = getTunerState();
+        const aimd = getAIMDTelemetry();
+        
+        // Refresh config so mode changes appear immediately (not just on next tick)
+        const cfg = await getWorkerConfig();
+        state.activeMode = cfg.activeMode;
+        state.concurrency = cfg.globalConcurrency;
+        state.delayMinMs = cfg.requestDelayMinMs;
+        state.delayMaxMs = cfg.requestDelayMaxMs;
+        
+        res.writeHead(200);
+        res.end(JSON.stringify({
+          workerId: WORKER_ID,
+          ...state,
+          liveTelemetry: aimd,
+          fetchedAt: new Date().toISOString(),
+        }));
+      } catch (err) {
+        res.writeHead(500);
+        res.end(JSON.stringify({ error: err instanceof Error ? err.message : 'Internal error' }));
+      }
+    })();
     return;
   }
 

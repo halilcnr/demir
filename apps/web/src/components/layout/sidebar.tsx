@@ -29,6 +29,7 @@ const navItems = [
   { href: '/alerts', label: 'Alarmlar', icon: Bell },
   { href: '/sync', label: 'Senkronizasyon', icon: RefreshCw },
   { href: '/sync-control', label: 'Operasyon Merkezi', icon: Gauge },
+  { href: '/live-engine', label: 'Live Engine', icon: Sparkles },
   { href: '/command-center', label: 'Komuta Merkezi', icon: Radio },
   { href: '/feedback-events', label: 'Topluluk Oyları', icon: MessageSquare },
   { href: '/scrape-health', label: 'Scrape Sağlık', icon: Activity },
