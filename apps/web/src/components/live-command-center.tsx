@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { useMemo } from 'react';
 import {
-  Area, ComposedChart, Line, ResponsiveContainer, Tooltip,
+  Area, AreaChart, ComposedChart, Line, ResponsiveContainer, Tooltip,
   XAxis, YAxis, CartesianGrid,
 } from 'recharts';
 import { cn } from '@repo/shared';
@@ -69,6 +69,17 @@ const MODES: Array<{ id: string; label: string; icon: React.ReactNode; hint: str
   { id: 'safe',       label: 'Safe',       icon: <Shield className="h-3.5 w-3.5" />,    hint: 'Güvenli' },
 ];
 
+function stateLabelForMode(mode: string): string {
+  switch (mode) {
+    case 'auto': return 'Auto pilot';
+    case 'god': return 'Max speed';
+    case 'aggressive': return 'Fast lane';
+    case 'balanced': return 'Balanced';
+    case 'safe': return 'Safe mode';
+    default: return mode;
+  }
+}
+
 function stateTheme(state: EngineState | 'UNKNOWN') {
   switch (state) {
     case 'OVERCLOCKING':
@@ -112,6 +123,11 @@ export function LiveCommandCenter() {
   const state: EngineState | 'UNKNOWN' = engine?.state ?? 'UNKNOWN';
   const theme = stateTheme(state);
   const activeMode = engine?.activeMode ?? 'balanced';
+  const cleanProgress = Math.min(100, ((engine?.cleanStreak ?? 0) / 3) * 100);
+  const errorRate = cluster?.errorRate ?? 0;
+  const paceRatio = cluster && cluster.totalConcurrency > 0
+    ? Math.min(100, Math.round((cluster.scrapesPerMin / (cluster.totalConcurrency * 20)) * 100))
+    : 0;
 
   const chartData = useMemo(() => {
     return (data?.history ?? []).map(p => ({
@@ -120,8 +136,11 @@ export function LiveCommandCenter() {
       heat: p.p95LatencyMs,
       concurrency: p.concurrency,
       err: p.errors429 + p.errors403 + p.errors503,
+      state: p.state,
     }));
   }, [data?.history]);
+
+  const recentHistory = (data?.history ?? []).slice(-8).reverse();
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 p-6">
@@ -149,6 +168,75 @@ export function LiveCommandCenter() {
           )}>
             <Gauge className="h-4 w-4" />
             {theme.label}
+          </div>
+        </div>
+
+        {/* ── Snapshot strip ── */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 backdrop-blur-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[11px] uppercase tracking-wider text-slate-400">Engine State</div>
+                <div className={cn('mt-1 text-lg font-bold', theme.text)}>{theme.label}</div>
+              </div>
+              <div className={cn('h-3 w-3 rounded-full', theme.dot)} />
+            </div>
+            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-white/10">
+              <div className={cn('h-full rounded-full bg-gradient-to-r', theme.accent)} style={{ width: state === 'OVERCLOCKING' ? '100%' : state === 'THROTTLING' ? '35%' : state === 'CRUISING' ? '72%' : '50%' }} />
+            </div>
+            <div className="mt-2 text-[11px] text-slate-400">
+              Son tetik: {engine?.lastTickAt ? new Date(engine.lastTickAt).toLocaleTimeString('tr-TR') : '—'}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 backdrop-blur-sm">
+            <div className="text-[11px] uppercase tracking-wider text-slate-400">Mode</div>
+            <div className="mt-1 flex items-center gap-2 text-lg font-bold text-slate-100">
+              {activeMode}
+              {activeMode === 'auto' && <span className="rounded-full bg-cyan-400/15 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider text-cyan-300">AIMD</span>}
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {['auto', 'god', 'aggressive', 'balanced', 'safe'].map(mode => (
+                <span
+                  key={mode}
+                  className={cn(
+                    'rounded-full px-2.5 py-1 text-[11px] font-medium capitalize',
+                    mode === activeMode
+                      ? 'bg-cyan-400/15 text-cyan-300 ring-1 ring-cyan-400/30'
+                      : 'bg-white/5 text-slate-400',
+                  )}
+                >
+                  {mode}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 backdrop-blur-sm">
+            <div className="text-[11px] uppercase tracking-wider text-slate-400">Concurrency</div>
+            <div className="mt-1 text-lg font-bold text-slate-100 tabular-nums">
+              {cluster?.totalConcurrency ?? 0}
+              <span className="ml-2 text-xs font-medium text-slate-400">aktif</span>
+            </div>
+            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-white/10">
+              <div className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-blue-500" style={{ width: `${Math.min(100, (cluster?.totalConcurrency ?? 0) * 2.5)}%` }} />
+            </div>
+            <div className="mt-2 text-[11px] text-slate-400">
+              Worker başı: <span className="font-mono text-slate-200">{engine?.perWorkerConcurrency ?? 0}</span>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 backdrop-blur-sm">
+            <div className="text-[11px] uppercase tracking-wider text-slate-400">Stability</div>
+            <div className="mt-1 text-lg font-bold text-slate-100 tabular-nums">
+              {engine?.cleanStreak ?? 0}<span className="text-sm font-medium text-slate-400">/3 temiz dakika</span>
+            </div>
+            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-white/10">
+              <div className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-teal-400" style={{ width: `${cleanProgress}%` }} />
+            </div>
+            <div className="mt-2 text-[11px] text-slate-400">
+              Error rate: <span className={cn('font-mono', errorRate > 0 ? 'text-rose-300' : 'text-emerald-300')}>{errorRate}%</span>
+            </div>
           </div>
         </div>
 
@@ -186,6 +274,137 @@ export function LiveCommandCenter() {
                 </button>
               );
             })}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+            <div className="flex items-center justify-between text-xs text-slate-400">
+              <span>RPM Hedefi</span>
+              <span className="font-mono text-slate-200">{cluster?.scrapesPerMin ?? 0}/dk</span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
+              <div className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-blue-500" style={{ width: `${paceRatio}%` }} />
+            </div>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+            <div className="flex items-center justify-between text-xs text-slate-400">
+              <span>P95 Isı</span>
+              <span className={cn('font-mono', (cluster?.p95LatencyMs ?? 0) < 1500 ? 'text-emerald-300' : (cluster?.p95LatencyMs ?? 0) < 4000 ? 'text-amber-300' : 'text-rose-300')}>
+                {cluster?.p95LatencyMs ?? 0}ms
+              </span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
+              <div className={cn('h-full rounded-full', (cluster?.p95LatencyMs ?? 0) < 1500 ? 'bg-gradient-to-r from-emerald-400 to-teal-400' : (cluster?.p95LatencyMs ?? 0) < 4000 ? 'bg-gradient-to-r from-amber-400 to-orange-500' : 'bg-gradient-to-r from-rose-500 to-red-500')} style={{ width: `${Math.min(100, ((cluster?.p95LatencyMs ?? 0) / 4000) * 100)}%` }} />
+            </div>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+            <div className="flex items-center justify-between text-xs text-slate-400">
+              <span>Son Aksiyon</span>
+              <span className="font-mono text-slate-200">{engine?.lastActionAt ? new Date(engine.lastActionAt).toLocaleTimeString('tr-TR') : '—'}</span>
+            </div>
+            <div className={cn('mt-2 text-sm font-medium', theme.text)}>
+              {engine?.lastAction ?? 'henüz aksiyon yok'}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Mode cards ── */}
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-5">
+          {MODES.map(mode => {
+            const isActive = activeMode === mode.id;
+            const themeClass = isActive
+              ? 'border-cyan-400/40 bg-cyan-500/10 shadow-[0_0_24px_-10px_rgba(56,189,248,0.55)]'
+              : 'border-white/10 bg-white/[0.03] hover:border-white/20 hover:bg-white/[0.05]';
+            return (
+              <div key={mode.id} className={cn('rounded-2xl border p-4 transition-all', themeClass)}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className={cn('flex items-center gap-2 text-sm font-semibold', isActive ? 'text-cyan-300' : 'text-slate-200')}>
+                      {mode.icon}
+                      {mode.label}
+                    </div>
+                    <div className="mt-1 text-[11px] text-slate-400">{mode.hint}</div>
+                  </div>
+                  {isActive && <span className="rounded-full bg-cyan-400/15 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider text-cyan-300">active</span>}
+                </div>
+                <div className="mt-3 text-xs text-slate-400">{stateLabelForMode(mode.id)}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* ── Mini sparkline + decision rail ── */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 backdrop-blur-sm lg:col-span-2">
+            <div className="mb-2 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold">Mini Sparkline</h3>
+                <p className="text-xs text-slate-400">Concurrency trend · son {chartData.length} nokta</p>
+              </div>
+              <div className="flex items-center gap-3 text-[11px]">
+                <LegendDot color="#38bdf8" label="Concurrency" />
+                <LegendDot color="#10b981" label="State" />
+              </div>
+            </div>
+            <div className="h-36">
+              {chartData.length === 0 ? (
+                <div className="flex h-full items-center justify-center text-sm text-slate-500">Henüz trend oluşmadı.</div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartData}>
+                    <defs>
+                      <linearGradient id="miniConcurrencyFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#38bdf8" stopOpacity={0.55} />
+                        <stop offset="100%" stopColor="#38bdf8" stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="rgba(255,255,255,0.05)" />
+                    <XAxis dataKey="t" hide />
+                    <YAxis hide domain={[0, 'dataMax + 3']} />
+                    <Tooltip
+                      contentStyle={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 12 }}
+                      labelStyle={{ color: '#94a3b8' }}
+                    />
+                    <Area type="monotone" dataKey="concurrency" stroke="#38bdf8" fill="url(#miniConcurrencyFill)" strokeWidth={2} isAnimationActive={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 backdrop-blur-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold">Decision Timeline</h3>
+                <p className="text-xs text-slate-400">AutoTuner history</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {recentHistory.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-white/10 p-4 text-sm text-slate-500">Bekleniyor…</div>
+              ) : (
+                recentHistory.map(point => {
+                  const pointTheme = stateTheme(point.state as EngineState | 'UNKNOWN');
+                  return (
+                    <div key={point.ts} className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <span className={cn('h-2.5 w-2.5 rounded-full', pointTheme.dot)} />
+                          <span className="text-xs font-semibold text-slate-100">{point.state}</span>
+                        </div>
+                        <span className="text-[11px] text-slate-400">{new Date(point.ts).toLocaleTimeString('tr-TR')}</span>
+                      </div>
+                      <div className="mt-2 grid grid-cols-3 gap-2 text-[11px] text-slate-400">
+                        <span>conc <span className="font-mono text-slate-200">{point.concurrency}</span></span>
+                        <span>rpm <span className="font-mono text-slate-200">{point.scrapesPerMin}</span></span>
+                        <span>p95 <span className="font-mono text-slate-200">{point.p95LatencyMs}ms</span></span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
         </div>
 

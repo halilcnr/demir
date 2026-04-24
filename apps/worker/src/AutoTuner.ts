@@ -1,12 +1,12 @@
 /**
  * Phase 10 — Autonomous AIMD Engine.
  *
- * Runs on a single leader (DistributedLock("autotuner")). Every 60s it pulls
+ * Runs on a single leader (DistributedLock("autotuner")). Every 30s it pulls
  * the cluster's rolling telemetry, classifies the state (CRUISING, OVERCLOCKING,
  * THROTTLING) and nudges `globalConcurrency` + `requestDelayMinMs` accordingly.
  *
  * Additive Increase (Overclock):
- *   errorRate == 0 AND p95 < 1500ms for 3 consecutive minutes
+ *   errorRate == 0 AND p95 < 1500ms for 2 consecutive ticks
  *     → concurrency += 2, delayMin -= 100ms
  *
  * Multiplicative Decrease (Emergency Brake):
@@ -33,11 +33,11 @@ const BOUNDS = {
 // ─── AIMD thresholds ─────────────────────────────────────────────
 
 const OVERCLOCK_P95_MS = 1500;
-const OVERCLOCK_STREAK_REQUIRED = 3;
-const BRAKE_P95_MS = 4000;
+const OVERCLOCK_STREAK_REQUIRED = 2;
+const BRAKE_P95_MS = 5000;
 
 const TUNER_LOCK_TTL_MS = 90_000;   // survives a missed tick
-const TICK_INTERVAL_MS  = 60_000;
+const TICK_INTERVAL_MS  = 30_000;
 const HISTORY_MAX       = 120;      // 2 hours of minutely points
 
 // ─── Engine state machine ───────────────────────────────────────
@@ -215,7 +215,7 @@ async function runTick(): Promise<void> {
     console.log(`[auto-tuner] 🛑 Status: THROTTLING. Tarpit detected. ${tuner.lastAction} (429:${t.errors429} 403:${t.errors403} 503:${t.errors503} p95:${t.p95LatencyMs}ms)`);
   } else if (decision.kind === 'overclock') {
     tuner.state = 'OVERCLOCKING';
-    tuner.cleanStreak = 0; // reset after acting so we need another 3-min streak
+    tuner.cleanStreak = 0; // reset after acting so we need another 2 clean ticks
     const updated = await publishConfig(
       { globalConcurrency: decision.newConcurrency, requestDelayMinMs: decision.newDelayMin },
       cfg,
