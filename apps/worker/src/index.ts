@@ -17,8 +17,9 @@ import { computeAllVariantAnalytics, detectSmartDeals, buildSmartDealMessage } f
 import { runPriceMaintenance, getPriceStorageStats } from './services/price-maintenance';
 import { runDealRadar } from './services/deal-radar';
 import { getRecentSnapshots } from './scrape-toolkit';
-import { getRollingLatency } from './telemetry';
+import { getRollingLatency, getAIMDTelemetry } from './telemetry';
 import { getLocalWorkerStats } from './worker-identity';
+import { startAutoTuner, stopAutoTuner, getTunerState } from './AutoTuner';
 
 const startedAt = new Date().toISOString();
 console.log('=== BakiTracker Worker ===');
@@ -121,6 +122,7 @@ const server = createServer(async (req, res) => {
     const tw = getTaskWorkerState();
     const queue = getQueueDepth();
     const active = getActiveRequests();
+    const aimd = getAIMDTelemetry();
     res.writeHead(200);
     res.end(JSON.stringify({
       workerId: WORKER_ID,
@@ -137,11 +139,28 @@ const server = createServer(async (req, res) => {
         avgTaskTimeMs: local.avgTaskTimeMs,
       },
       rollingLatency: rolling,
+      aimd,
       providerQueue: {
         depth: queue,
         activeGlobal: active.global,
         activePerProvider: active.perProvider,
       },
+    }));
+    return;
+  }
+
+  // ─── Phase 10: AutoTuner state (AIMD engine) ───────────────────
+  // Public (no auth) — dashboard polls this every 3s to render the live
+  // engine state, speedometer, and history chart.
+  if (req.method === 'GET' && req.url === '/auto-tune') {
+    const state = getTunerState();
+    const aimd = getAIMDTelemetry();
+    res.writeHead(200);
+    res.end(JSON.stringify({
+      workerId: WORKER_ID,
+      ...state,
+      liveTelemetry: aimd,
+      fetchedAt: new Date().toISOString(),
     }));
     return;
   }
@@ -719,6 +738,9 @@ setInterval(async () => {
     await resetAllConcurrency();
     console.log(`[worker] ✅ Worker identity registered: ${WORKER_ID}`);
     await startScheduler();
+    // AIMD engine — every replica launches the loop; DistributedLock picks one leader.
+    await startAutoTuner();
+    console.log('[worker] ✅ AutoTuner (AIMD engine) running');
   } catch (err) {
     console.error('[worker] Kritik hata:', err);
     process.exit(1);
@@ -779,11 +801,12 @@ async function gracefulShutdown(signal: string) {
     console.error('[worker] price-buffer drain failed:', err);
   }
 
-  // 4. Release distributed locks + heartbeat
+  // 4. Release distributed locks + heartbeat + AIMD
   await Promise.allSettled([
     taskGenLock.release(),
     cleanupLock.release(),
     stopWorkerIdentity(),
+    stopAutoTuner(),
   ]);
 
   clearTimeout(forceExit);

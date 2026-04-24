@@ -19,6 +19,8 @@ interface LatencySample {
   latencyMs: number;
   retailerSlug: string;
   ok: boolean;
+  /** Optional HTTP status code for AIMD error classification (429/403/503) */
+  statusCode?: number;
 }
 
 const WINDOW_MS = 60_000;
@@ -32,8 +34,13 @@ function prune(): void {
   if (samples.length > MAX_SAMPLES) samples.splice(0, samples.length - MAX_SAMPLES);
 }
 
-export function recordScrapeLatency(retailerSlug: string, latencyMs: number, ok: boolean): void {
-  samples.push({ ts: Date.now(), latencyMs, retailerSlug, ok });
+export function recordScrapeLatency(
+  retailerSlug: string,
+  latencyMs: number,
+  ok: boolean,
+  statusCode?: number,
+): void {
+  samples.push({ ts: Date.now(), latencyMs, retailerSlug, ok, statusCode });
   prune();
 }
 
@@ -85,5 +92,55 @@ export function getRollingLatency(): {
     p99: percentile(all, 99),
     successRate: samples.length > 0 ? Math.round((oks / samples.length) * 1000) / 10 : 0,
     perProvider,
+  };
+}
+
+/**
+ * AIMD snapshot — rolled-up view of the last 60s tuned for the AutoTuner.
+ * Counts 429/403/503 separately because they're the signals we brake on.
+ */
+export interface AIMDTelemetry {
+  sampleCount: number;
+  scrapesPerMin: number;
+  p95LatencyMs: number;
+  successRate: number;
+  errorRate: number;
+  errors429: number;
+  errors403: number;
+  errors503: number;
+  totalErrors: number;
+}
+
+export function getAIMDTelemetry(): AIMDTelemetry {
+  prune();
+  const n = samples.length;
+  if (n === 0) {
+    return {
+      sampleCount: 0, scrapesPerMin: 0, p95LatencyMs: 0,
+      successRate: 100, errorRate: 0,
+      errors429: 0, errors403: 0, errors503: 0, totalErrors: 0,
+    };
+  }
+
+  const sorted = samples.map(s => s.latencyMs).sort((a, b) => a - b);
+  let ok = 0, e429 = 0, e403 = 0, e503 = 0;
+  for (const s of samples) {
+    if (s.ok) ok++;
+    if (s.statusCode === 429) e429++;
+    else if (s.statusCode === 403) e403++;
+    else if (s.statusCode === 503) e503++;
+  }
+  const totalErrors = n - ok;
+
+  return {
+    sampleCount: n,
+    scrapesPerMin: Math.round(n * (60_000 / WINDOW_MS)),
+    p95LatencyMs: percentile(sorted, 95),
+    successRate: Math.round((ok / n) * 1000) / 10,
+    errorRate: Math.round((totalErrors / n) * 1000) / 10,
+    errors429: e429,
+    errors403: e403,
+    errors503: e503,
+    totalErrors,
   };
 }

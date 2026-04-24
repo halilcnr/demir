@@ -1,6 +1,6 @@
 import { prisma } from '@repo/shared';
 
-// ─── Worker Config Cache (DB-backed with 30s TTL) ───────────────
+// ─── Worker Config Cache (DB-backed with 5s TTL) ────────────────
 
 export interface WorkerSettings {
   syncIntervalMinMs: number;
@@ -152,6 +152,21 @@ export const MODE_PRESETS: ModePreset[] = [
     blockCooldownMinutes: 3,
     syncIntervalMinMs: 15000,
     syncIntervalMaxMs: 300000,
+  },
+  {
+    name: 'auto',
+    label: 'Auto (AIMD)',
+    description: 'Otonom — AutoTuner sınırı bulana dek üstüne basıyor',
+    globalConcurrency: 2,
+    providerConcurrency: 1,
+    requestDelayMinMs: 1000,
+    requestDelayMaxMs: 2000,
+    jitterPercent: 25,
+    maxRetries: 2,
+    cooldownMultiplier: 1.4,
+    blockCooldownMinutes: 5,
+    syncIntervalMinMs: 30000,
+    syncIntervalMaxMs: 600000,
   },
 ];
 

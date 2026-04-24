@@ -405,7 +405,7 @@ async function processOneTask(task: ClaimedTask): Promise<'success' | 'failure' 
       await recordFailure(slug);
       recordTaskFailed();
       recordHealthFailure(slug, listingId, 'error');
-      recordScrapeLatency(slug, Date.now() - startMs, false);
+      recordScrapeLatency(slug, Date.now() - startMs, false, 0);
       addSyncLog({ type: 'error', retailer: slug, variant: variantLabel, message: `${slug} — veri alınamadı` });
       return 'failure';
     }
@@ -443,6 +443,7 @@ async function handleTaskError(task: ClaimedTask, err: unknown): Promise<'succes
     incrementProviderCounter(slug, 'blockedCount');
     recordTaskFailed();
     recordHealthFailure(slug, listingId, 'blocked', 403);
+    recordScrapeLatency(slug, 0, false, 403);
     await prisma.listing.update({ where: { id: listingId }, data: { lastBlockedAt: new Date(), lastFailureAt: new Date() } }).catch(() => {});
     await handleScrapeFailure(listingId).catch(() => {});
     addSyncLog({ type: 'error', retailer: slug, variant: variantLabel, message: `${slug} engellendi (403)`, blocked: true });
@@ -457,6 +458,7 @@ async function handleTaskError(task: ClaimedTask, err: unknown): Promise<'succes
     recordMetricEvent(slug, 'rate_limited', 0);
     incrementProviderCounter(slug, 'rateLimitCount');
     recordTaskFailed();    recordHealthFailure(slug, listingId, 'blocked', 429);    addSyncLog({ type: 'warn', retailer: slug, variant: variantLabel, message: `${slug} hız limiti (429)` });
+    recordScrapeLatency(slug, 0, false, 429);
     await handleScrapeFailure(listingId).catch(() => {});
     return 'failure';
   }
@@ -504,6 +506,7 @@ async function handleTaskError(task: ClaimedTask, err: unknown): Promise<'succes
     await failTask(taskId, `server error (${err.statusCode})`, 'server_error');
     await recordFailure(slug);
     recordTaskFailed();
+    recordScrapeLatency(slug, 0, false, err.statusCode);
     await prisma.listing.update({ where: { id: listingId }, data: { lastFailureAt: new Date() } }).catch(() => {});
     await handleScrapeFailure(listingId).catch(() => {});
     addSyncLog({ type: 'error', retailer: slug, variant: variantLabel, message: `${slug} — sunucu hatası (${err.statusCode})` });
