@@ -16,6 +16,9 @@ import { getScrapeHealthDashboard, generateDailyReport, buildHealthReportMessage
 import { computeAllVariantAnalytics, detectSmartDeals, buildSmartDealMessage } from './services/price-analytics';
 import { runPriceMaintenance, getPriceStorageStats } from './services/price-maintenance';
 import { runDealRadar } from './services/deal-radar';
+import { runMuteAutoThaw } from './services/price-seal';
+import { runTrustScoreDecay } from './services/trust-score';
+import { runDailyOpsSummary } from './services/daily-ops-summary';
 import { getRecentSnapshots } from './scrape-toolkit';
 import { getRollingLatency, getAIMDTelemetry } from './telemetry';
 import { getLocalWorkerStats } from './worker-identity';
@@ -686,6 +689,21 @@ createResilientInterval(
   30 * 60_000,
 );
 
+// V5: Price-Seal auto-thaw — sweep stale (>24h) Listing.mutedAt rows hourly.
+createResilientInterval(
+  'price-seal-thaw',
+  async () => { await runMuteAutoThaw(); },
+  60 * 60_000,
+);
+
+// V5: Trust-Score daily decay — mean-revert each Retailer.trustScore towards 100.
+// Runs every 6h; the function self-rate-limits to ≤1 effective application per 23h.
+createResilientInterval(
+  'trust-score-decay',
+  async () => { await runTrustScoreDecay(); },
+  6 * 60 * 60_000,
+);
+
 // Cleanup old snapshots + price maintenance (daily)
 createResilientInterval(
   'daily-maintenance',
@@ -705,6 +723,25 @@ createResilientInterval(
   },
   10 * 60_000,
 );
+
+// V5: 00:00 Istanbul — Daily Ops Summary (Brier + per-retailer health card).
+// Hour-tick driver (same pattern as the 09:00 health report): every hour we check
+// whether IST hour == 0 and we haven't fired today; if so, broadcast.
+let lastOpsSummaryDate = '';
+setInterval(async () => {
+  const now = new Date();
+  const istHour = parseInt(now.toLocaleString('en-US', { timeZone: 'Europe/Istanbul', hour: 'numeric', hour12: false }));
+  const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'Europe/Istanbul' });
+  if (istHour === 0 && lastOpsSummaryDate !== todayStr) {
+    lastOpsSummaryDate = todayStr;
+    try {
+      const result = await runDailyOpsSummary();
+      console.log(`[worker] 📊 Daily ops summary: deals=${result.deals}, brier=${result.brier ?? 'n/a'}, broadcast=${result.broadcast}`);
+    } catch (err) {
+      console.error('[worker] Daily ops summary failed:', err);
+    }
+  }
+}, 60 * 60_000);
 
 // Daily health report to Telegram (check every hour, send at ~09:00 Istanbul time)
 let lastReportDate = '';

@@ -73,6 +73,14 @@ model Retailer {
   // Used as a secondary ranking signal in deal detection.
   confidenceScore     Float     @default(0.5)
 
+  // V5: Trust-Score Reinforcement (Learning).
+  // 0..100 int, default 100. Daily mean-reversion towards 100 (decay = 2%/day).
+  // Used by Baki-Quant to scale required margin: trustScore < 50 → margin × 1.5.
+  // Drives AIMD effective concurrency: effectiveConcurrency = base × (trustScore/100).
+  // confidenceScore stays untouched for backward compat (legacy float signal).
+  trustScore           Int       @default(100)
+  lastTrustDecayAt     DateTime?
+
   listings  Listing[]
   syncJobs  SyncJob[]
 }
@@ -123,6 +131,18 @@ model Listing {
   // within 10 minutes, ghostUntil is set. generateTasks() skips ghosted listings.
   ghostUntil          DateTime?
   ghostReason         String?   // "community-vote", "admin", etc.
+
+  // V5: Price-Seal (Anti-Spam / Zero-Miss).
+  // Scraper NEVER stops — these fields ONLY suppress notifications.
+  //   mutedPrice: the price at which a user said "Stok Yok / Hatalı".
+  //              While mutedPrice is set and scrapedPrice == mutedPrice, no alert is sent.
+  //   mutedAt:    24h auto-thaw — stale mutes expire so we don't permanently silence a listing.
+  //   muteSource: "community-vote", "admin", "auto", etc.
+  // If scraped price differs → mute is cleared and a notify event fires immediately.
+  mutedPrice          Float?
+  mutedAt             DateTime?
+  muteSource          String?
+
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
@@ -150,6 +170,8 @@ model Listing {
   @@index([isActive, skipUntilCycle])
   @@index([isFresh])
   @@index([ghostUntil])
+  // V5: mute auto-thaw — daily cron scans this index for mutedAt < now-24h
+  @@index([mutedAt])
 }
 
 enum StockStatus {
@@ -380,6 +402,77 @@ model AutoTunerHistory {
 
   @@index([ts])
   @@index([state])
+}
+
+// ─── V5: MuteEvent — audit log for Listing.mutedPrice transitions ─
+// Boolean alone is too thin: we need to answer "how often was this listing
+// muted in the last 7 days?" and "how long did each mute last?".
+// One row per mute lifecycle (mute → unmute is a single row when closed).
+model MuteEvent {
+  id             String    @id @default(cuid())
+  listingId      String
+  variantId      String?   // denorm
+  retailerSlug   String?   // denorm — fast per-retailer mute-rate queries
+  mutedPrice     Float
+  mutedAt        DateTime  @default(now())
+  unmutedAt      DateTime?
+  unmuteReason   String?   // "auto-thaw-24h" | "price-changed" | "no-miss-override" | "admin"
+  source         String    @default("community-vote") // "community-vote" | "admin" | "auto"
+  voteCount      Int?      // distinct OUT_OF_STOCK votes that triggered the mute
+
+  @@index([listingId, mutedAt])
+  @@index([retailerSlug, mutedAt])
+  @@index([unmutedAt])
+  @@index([mutedAt])
+}
+
+// ─── V5: NoMissEvent — high-discount alerts that bypass filters ───
+// Two purposes:
+//   1. Burst-throttle: count events in last 5 minutes; if ≥5, suspend bypass
+//      (CSV bug / mass parse-fail kaskadlarını yakalar).
+//   2. Audit: which products triggered NO-MISS, and was the second confirm fetch consistent?
+model NoMissEvent {
+  id                String    @id @default(cuid())
+  listingId         String
+  variantId         String?
+  retailerSlug      String?
+  observedPrice     Float
+  confirmedPrice    Float?    // second-fetch result (null if not yet confirmed)
+  discountPercent   Float
+  status            String    // "PENDING_CONFIRM" | "CONFIRMED" | "ANOMALY" | "BURST_SUPPRESSED" | "ALERTED"
+  reason            String?
+  observedAt        DateTime  @default(now())
+  confirmedAt       DateTime?
+  alertedAt         DateTime?
+
+  @@index([observedAt])
+  @@index([status, observedAt])
+  @@index([retailerSlug, observedAt])
+}
+
+// ─── V5: DailyOpsSummary — rolling per-day rollup the 00:00 cron writes ─
+// Idempotent (date is unique). UI can show 30 days of system health at a glance.
+model DailyOpsSummary {
+  id                 String   @id @default(cuid())
+  date               DateTime @unique // start-of-day (Europe/Istanbul, in UTC)
+  totalScrapes       Int
+  totalDeals         Int
+  totalSkipped       Int
+  totalNoMiss        Int
+  avgP50LatencyMs    Int
+  avgP95LatencyMs    Int
+  brierScore         Float?   // calibration: lower = better (NaN if no feedback)
+  feedbackCount      Int      @default(0)
+  feedbackPositive   Int      @default(0) // GOT_IT
+  feedbackNegative   Int      @default(0) // OUT_OF_STOCK
+  bestDealVariantId  String?
+  bestDealPrice      Float?
+  bestDealRetailer   String?
+  bestDealDropPct    Float?
+  perRetailerHealth  Json?    // [{ slug, deals, fakes, trustScore }]
+  createdAt          DateTime @default(now())
+
+  @@index([date])
 }
 
 // ─── Senkronizasyon İşleri ───────────────────────────────────────

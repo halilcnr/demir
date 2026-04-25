@@ -42,6 +42,10 @@ export interface BakiQuantResult {
   liquidityPenalty: number;         // Commandment #6 penalty applied
   isFlashCrash: boolean;            // Commandment #8 flag
   stockWarning: boolean;            // Commandment #10 flag
+  // V5: Trust-aware margin scaling — surfaced for telemetry + UI/messages
+  trustMultiplier: number;          // 1.0 normal, 1.5 if retailer trust low
+  trustTag: 'NORMAL' | 'ESCALATED';
+  trustReason: string;              // wilson(LB=…) | trustScore=… | cache | unknown-retailer
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -234,7 +238,8 @@ function commandment4_ResaleMargin(
   currentPrice: number,
   genContext: GenerationalContext | null,
   market: GlobalMarketSnapshot,
-): CommandmentResult & { resaleMarginTL: number | null } {
+  marginMultiplier = 1.0,
+): CommandmentResult & { resaleMarginTL: number | null; requiredMarginTL: number } {
   // Resale margin = what you gain vs cheapest next-gen equivalent
   let resaleMarginTL: number | null = null;
 
@@ -250,26 +255,34 @@ function commandment4_ResaleMargin(
     resaleMarginTL = Math.round(market.marketAverage - currentPrice);
   }
 
-  if (resaleMarginTL != null && resaleMarginTL >= MIN_RESALE_MARGIN_TL) {
+  // V5: Trust-aware required margin. Düşük trust → daha yüksek bar.
+  const requiredMarginTL = Math.round(MIN_RESALE_MARGIN_TL * marginMultiplier);
+  const escalated = marginMultiplier > 1.001;
+
+  if (resaleMarginTL != null && resaleMarginTL >= requiredMarginTL) {
     return {
       id: 4, name: 'Yeniden Satış Marjı', passed: true,
-      reason: `${fmtTL(resaleMarginTL)} yeniden satış marjı`,
-      penalty: 0, resaleMarginTL,
+      reason: escalated
+        ? `${fmtTL(resaleMarginTL)} (yüksek bar: ${fmtTL(requiredMarginTL)} — düşük trust retailer)`
+        : `${fmtTL(resaleMarginTL)} yeniden satış marjı`,
+      penalty: 0, resaleMarginTL, requiredMarginTL,
     };
   }
 
   if (resaleMarginTL != null && resaleMarginTL > 0) {
     return {
       id: 4, name: 'Yeniden Satış Marjı', passed: true,
-      reason: `Düşük marj: ${fmtTL(resaleMarginTL)}`,
-      penalty: 5, resaleMarginTL,
+      reason: escalated
+        ? `Düşük marj: ${fmtTL(resaleMarginTL)} (gerekli: ${fmtTL(requiredMarginTL)} — trust düşük)`
+        : `Düşük marj: ${fmtTL(resaleMarginTL)}`,
+      penalty: escalated ? 10 : 5, resaleMarginTL, requiredMarginTL,
     };
   }
 
   return {
     id: 4, name: 'Yeniden Satış Marjı', passed: true,
     reason: 'Yeniden satış marjı yok veya negatif',
-    penalty: 10, resaleMarginTL,
+    penalty: escalated ? 15 : 10, resaleMarginTL, requiredMarginTL,
   };
 }
 
@@ -702,11 +715,18 @@ export async function runBakiQuantEngine(input: BakiQuantInput): Promise<BakiQua
   );
   const currentColor = thisListing?.color ?? '';
 
+  // ── V5: Pull retailer trust margin multiplier (1.0 normal, 1.5 if low-trust) ──
+  // Late-import to avoid a hard cycle (telegram-feedback → trust-score → baki-quant).
+  const { getMarginMultiplier } = await import('./services/trust-score');
+  const marginInfo = await getMarginMultiplier(input.retailerSlug).catch(() => ({
+    multiplier: 1.0, tag: 'NORMAL' as const, reason: 'lookup-failed',
+  }));
+
   // ── Run all 10 commandments ──
   const c1 = commandment1_GenerationalBarrier(genContext);
   const c2 = commandment2_MarketCorrection(market);
   const c3 = commandment3_OutlierGap(currentPrice, market);
-  const c4 = commandment4_ResaleMargin(currentPrice, genContext, market);
+  const c4 = commandment4_ResaleMargin(currentPrice, genContext, market, marginInfo.multiplier);
   const c5 = commandment5_ColorAgnosticFloor(currentPrice, arb);
   const c6 = commandment6_LiquidityPenalty(market, currentColor);
   const c7 = await commandment7_48HourLock(variantId);
@@ -765,6 +785,9 @@ export async function runBakiQuantEngine(input: BakiQuantInput): Promise<BakiQua
     liquidityPenalty: c6.liquidityPenalty,
     isFlashCrash: c8.isFlashCrash,
     stockWarning: c10.stockWarning,
+    trustMultiplier: marginInfo.multiplier,
+    trustTag: marginInfo.tag,
+    trustReason: marginInfo.reason,
   };
 }
 

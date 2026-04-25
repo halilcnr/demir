@@ -32,6 +32,8 @@ import { prisma } from '@repo/shared';
 import { DistributedLock, INSTANCE_ID } from './distributed-lock';
 import { getAIMDTelemetry, getAIMDTelemetryByProvider, type AIMDTelemetry, type ProviderAIMDTelemetry } from './telemetry';
 import { getWorkerConfig, invalidateConfigCache, type WorkerSettings } from './worker-config';
+import { getClusterAvgTrust } from './services/trust-score';
+import { getRecentMuteRate } from './services/price-seal';
 
 // ─── Tuning bounds (hard safety rails) ──────────────────────────
 
@@ -58,8 +60,13 @@ export type EngineState =
   | 'OVERCLOCKING'
   | 'THROTTLING'
   | 'STARVED'
+  | 'DEGRADED'        // V5: mute-rate spike → likely scraper bug, hold tuning
   | 'DISABLED'
   | 'PAUSED';
+
+// V5: mute-rate sinyali
+const DEGRADED_MUTE_PER_HOUR = 12;        // ≥12 new mutes in last 1h → DEGRADED
+const TRUST_DERATE_FLOOR = 0.6;           // never derate below 60% of base concurrency
 
 export interface TunerHistoryPoint {
   ts: number;
@@ -93,6 +100,12 @@ export interface TunerState {
   stateEnteredAt: number | null;
   /** Leader churn (Faz 2) — son leader değişimi */
   lastLeaderChangeAt: number | null;
+  /** V5: avg retailer trustScore at last tick — drives effective concurrency */
+  avgTrustScore: number;
+  /** V5: derate factor applied to base concurrency (1.0 = no derate) */
+  trustDerateFactor: number;
+  /** V5: new MuteEvent count in last 1h — input to DEGRADED detection */
+  recentMutesPerHour: number;
 }
 
 const tuner: TunerState = {
@@ -111,6 +124,9 @@ const tuner: TunerState = {
   perProvider: [],
   stateEnteredAt: null,
   lastLeaderChangeAt: null,
+  avgTrustScore: 100,
+  trustDerateFactor: 1.0,
+  recentMutesPerHour: 0,
 };
 
 const tunerLock = new DistributedLock('autotuner', TUNER_LOCK_TTL_MS);
@@ -229,6 +245,17 @@ async function runTick(): Promise<void> {
   tuner.telemetry = t;
   tuner.perProvider = getAIMDTelemetryByProvider();
 
+  // V5: pull retailer trust + mute-rate signals (cached, cheap).
+  const [avgTrust, muteRate] = await Promise.all([
+    getClusterAvgTrust().catch(() => 100),
+    getRecentMuteRate().catch(() => ({ ratePerHour: 0, newMutes: 0, totalListings: 0, mutedListings: 0 })),
+  ]);
+  tuner.avgTrustScore = avgTrust;
+  tuner.recentMutesPerHour = muteRate.ratePerHour;
+  // Derate factor: trustScore=100 → 1.0, trustScore=60 → 0.6 (floor).
+  // Çöp retailer scrape budget yemesin diye base concurrency'yi düşürür.
+  tuner.trustDerateFactor = Math.max(TRUST_DERATE_FLOOR, avgTrust / 100);
+
   // Track state transitions for time-in-state metric
   const previousState = tuner.state;
 
@@ -244,11 +271,25 @@ async function runTick(): Promise<void> {
     return;
   }
 
+  // V5: DEGRADED — ani mute-rate spike = scraper bug ihtimali yüksek.
+  // AIMD bu state'te tuning değişikliği yapmaz; admin müdahalesi bekler.
+  if (muteRate.ratePerHour >= DEGRADED_MUTE_PER_HOUR) {
+    tuner.state = 'DEGRADED';
+    tuner.lastAction = `DEGRADED — ${muteRate.newMutes} new mutes/hour (≥${DEGRADED_MUTE_PER_HOUR}). Tuning paused, investigate parser.`;
+    if (previousState !== 'DEGRADED') {
+      console.warn(`[auto-tuner] 🚧 ${tuner.lastAction}`);
+    }
+    if (tuner.state !== previousState) tuner.stateEnteredAt = Date.now();
+    await pushHistory(t, cfg, tuner.state, tuner.lastAction);
+    return;
+  }
+
   const decision = decide(cfg, t, tuner.cleanStreak);
 
   if (decision.kind === 'brake') {
     tuner.state = 'THROTTLING';
     tuner.cleanStreak = 0;
+    // V5: derate doesn't kick in on brake — we WANT the floor.
     const updated = await publishConfig(
       { globalConcurrency: decision.newConcurrency, requestDelayMinMs: decision.newDelayMin },
       cfg,
@@ -264,15 +305,25 @@ async function runTick(): Promise<void> {
     // Decay streak by 1 (keep momentum) instead of resetting to 0.
     // Sonuç: peş peşe overclock için 1 ek temiz tick yeterli (~30s yerine 60s).
     tuner.cleanStreak = Math.max(0, tuner.cleanStreak - 1);
+    // V5: trust-derate the target concurrency. Düşük trust cluster'ında
+    // agresif overclock yapma — gereksiz banlanmaya açar.
+    const targetConc = clamp(
+      Math.round(decision.newConcurrency * tuner.trustDerateFactor),
+      BOUNDS.concurrency.min,
+      BOUNDS.concurrency.max,
+    );
     const updated = await publishConfig(
-      { globalConcurrency: decision.newConcurrency, requestDelayMinMs: decision.newDelayMin },
+      { globalConcurrency: targetConc, requestDelayMinMs: decision.newDelayMin },
       cfg,
     );
     tuner.concurrency = updated.globalConcurrency;
     tuner.delayMinMs = updated.requestDelayMinMs;
     tuner.delayMaxMs = updated.requestDelayMaxMs;
     tuner.lastActionAt = Date.now();
-    tuner.lastAction = `OVERCLOCK → conc ${cfg.globalConcurrency}→${updated.globalConcurrency}, delay ${cfg.requestDelayMinMs}→${updated.requestDelayMinMs}ms`;
+    const trustNote = tuner.trustDerateFactor < 0.999
+      ? ` [trust-derated ×${tuner.trustDerateFactor.toFixed(2)} — avgTrust=${Math.round(tuner.avgTrustScore)}]`
+      : '';
+    tuner.lastAction = `OVERCLOCK → conc ${cfg.globalConcurrency}→${updated.globalConcurrency}, delay ${cfg.requestDelayMinMs}→${updated.requestDelayMinMs}ms${trustNote}`;
     console.log(`[auto-tuner] 🚀 Status: OVERCLOCKING. Pushing the limits. ${tuner.lastAction} (p95:${t.p95LatencyMs}ms, errRate:${t.errorRate}%)`);
   } else {
     // 'cruise' veya 'starved'. Starvation'ı ayrı state olarak tut.

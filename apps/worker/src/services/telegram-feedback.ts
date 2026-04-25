@@ -20,6 +20,8 @@
  */
 
 import { prisma } from '@repo/shared';
+import { applyMute } from './price-seal';
+import { bumpTrustScore } from './trust-score';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
 
@@ -89,10 +91,16 @@ export async function handleFeedbackVote(
   button: FeedbackButton,
   messageId?: number,
 ): Promise<HandleFeedbackResult> {
-  // Make sure the listing exists and capture denorm fields for the event row
+  // Make sure the listing exists and capture denorm fields for the event row.
+  // V5: also pull currentPrice — needed to seal the mute at the price the user objected to.
   const listing = await prisma.listing.findUnique({
     where: { id: listingId },
-    select: { id: true, variantId: true, retailer: { select: { id: true, slug: true } } },
+    select: {
+      id: true,
+      variantId: true,
+      currentPrice: true,
+      retailer: { select: { id: true, slug: true } },
+    },
   });
   if (!listing) {
     return { ok: false, status: 'unknown-listing', message: 'Listing bulunamadı.' };
@@ -145,18 +153,34 @@ export async function handleFeedbackVote(
             ghostReason: 'community-vote',
           },
         });
+
+        // V5 Price-Seal: aynı zamanda mute kaydı aç (price-aware, 24h TTL).
+        // Aynı fiyat scrape edilirse alert gönderilmez; fiyat değişirse mute otomatik kalkar.
+        if (listing.currentPrice != null && listing.currentPrice > 0) {
+          await applyMute({
+            listingId,
+            mutedPrice: listing.currentPrice,
+            source: 'community-vote',
+            voteCount,
+          });
+        }
+
         ghosted = true;
-        message = `🔍 Bu fiyat doğrulama aşamasında (${voteCount} şüphe oyu / 10dk). Bir sonraki scrape'te otomatik yeniden kontrol edilecek — stok varsa bayrak kaldırılır.`;
-        console.log(`[telegram-feedback] Listing ${listingId} flagged for verify after ${voteCount} votes`);
+        message = `🔇 Bu fiyat ${voteCount} şüphe oyuyla sustruldu. Aynı fiyat scrape edilirse bildirim gitmez; fiyat değişirse hemen yeniden uyarı gelir (24s otomatik açılır).`;
+        console.log(`[telegram-feedback] Listing ${listingId} muted+ghosted after ${voteCount} votes @ ${listing.currentPrice} TL`);
       }
-      // Also decrement retailer confidence
+      // Legacy float signal (0..1 confidenceScore)
       await adjustRetailerConfidence(listing.retailer.slug, -CONFIDENCE_DELTA);
+      // V5 trustScore (0..100 int) — drives margin multiplier + AIMD concurrency.
+      await bumpTrustScore(listing.retailer.slug, -5).catch(() => {});
       break;
     }
 
     case 'GOT_IT': {
       message = '🎉 Tebrikler! Bilgi güvenilirliği arttı.';
       await adjustRetailerConfidence(listing.retailer.slug, +CONFIDENCE_DELTA);
+      // V5 trustScore reinforcement.
+      await bumpTrustScore(listing.retailer.slug, +10).catch(() => {});
       break;
     }
 

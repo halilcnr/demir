@@ -16,6 +16,8 @@ import {
   handleFeedbackVote,
   answerCallbackQuery,
 } from './telegram-feedback';
+import { shouldSilenceForMute, clearMute } from './price-seal';
+import { isNoMissCandidate, evaluateNoMiss, markNoMissAlerted } from './no-miss-engine';
 
 // ─── Configuration ───────────────────────────────────────────────
 const TELEGRAM_ENABLED = process.env.TELEGRAM_ENABLED === 'true';
@@ -538,6 +540,41 @@ function buildDetailMessage(
   return lines.join('\n');
 }
 
+/**
+ * V5 — NO-MISS flash message. One-shot, intentionally compact:
+ * the user has ~seconds to act, so we lead with tag + price + link.
+ * Tag is provided by the engine (CONFIRMED → 🚨 NO-MISS, ANOMALY → ⚠️ NO-MISS DOĞRULANMADI).
+ */
+function buildNoMissFlashMessage(
+  payload: SmartDealPayload,
+  tag: string,
+  discountPercent: number,
+): string {
+  const fmtPrice = (p: number) => p.toLocaleString('tr-TR', { maximumFractionDigits: 0 });
+  const lines: string[] = [];
+  lines.push(`<b>${tag}</b>`);
+  lines.push('');
+  lines.push(`📱 <b>${payload.variantLabel}</b>`);
+  if (payload.oldPrice != null) {
+    lines.push(`<s>${fmtPrice(payload.oldPrice)} TL</s> → <b>${fmtPrice(payload.newPrice)} TL</b>`);
+    lines.push(`📉 İndirim: <b>%${discountPercent.toFixed(0)}</b>`);
+  } else {
+    lines.push(`💰 <b>${fmtPrice(payload.newPrice)} TL</b>`);
+  }
+  lines.push(`🏪 ${payload.retailerName}`);
+  lines.push('');
+  lines.push(`🔗 <a href="${payload.productUrl}">Hemen Satın Al →</a>`);
+  lines.push('');
+  if (tag.includes('DOĞRULANMADI')) {
+    lines.push('<i>⚠️ Geçmiş veride bu fiyat aralığında bir anchor bulunamadı. Sayfayı doğrulamadan satın almayın — fiyat hatası olabilir.</i>');
+  } else {
+    lines.push('<i>✅ Tarihsel veriyle doğrulandı. Filtreler atlandı.</i>');
+  }
+  lines.push('');
+  lines.push(`<i>${istanbulTimestamp()}</i>`);
+  return lines.join('\n');
+}
+
 /** Combined message for test endpoint (single message) */
 function buildArbitrageAlertMessage(
   payload: SmartDealPayload,
@@ -579,6 +616,90 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
       reason: `Sanity check fail: ${payload.newPrice} TL outside ${MIN_SANE_PHONE_PRICE_TL}–${MAX_SANE_PHONE_PRICE_TL} TL band`,
     });
     return;
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  //  V5: Global No-Miss Override (>45% discount).
+  //  Bypasses Baki-Quant, mute, and tier classification — but applies
+  //  its own anchor-confirm + burst-throttle. ALWAYS evaluated FIRST so
+  //  a real %50 deal isn't lost to a slow Baki gate.
+  // ──────────────────────────────────────────────────────────────────
+  if (isNoMissCandidate({
+    listingId: payload.listingId,
+    variantId: payload.variantId,
+    retailerSlug: payload.retailerSlug,
+    newPrice: payload.newPrice,
+    oldPrice: payload.oldPrice,
+  })) {
+    const noMiss = await evaluateNoMiss({
+      listingId: payload.listingId,
+      variantId: payload.variantId,
+      retailerSlug: payload.retailerSlug,
+      newPrice: payload.newPrice,
+      oldPrice: payload.oldPrice,
+    });
+
+    if (noMiss.alert) {
+      // Bypass mute — user said "stok yok" but a 45%+ drop deserves a fresh look.
+      await clearMute(payload.listingId, 'no-miss-override').catch(() => {});
+
+      const flashMsg = buildNoMissFlashMessage(payload, noMiss.tag, noMiss.discountPercent);
+      const feedbackKb = buildFeedbackKeyboard(payload.listingId);
+      const result = await broadcast(flashMsg, { replyMarkup: feedbackKb });
+
+      if (noMiss.eventId) await markNoMissAlerted(noMiss.eventId);
+
+      const dropPercent = noMiss.discountPercent;
+      sentCount += result.sent > 0 ? 1 : 0;
+      failCount += result.sent === 0 ? 1 : 0;
+
+      await prisma.notificationLog.create({
+        data: {
+          messageType: 'GLOBAL_FLOOR' as never, // no-miss is the strongest tier
+          status: result.sent > 0 ? (result.failed > 0 ? 'PARTIAL' : 'SENT') : 'FAILED',
+          productName: payload.variantLabel,
+          retailer: payload.retailerName,
+          oldPrice: payload.oldPrice,
+          newPrice: payload.newPrice,
+          dropPercent,
+          messageText: flashMsg,
+          sentTo: result.sent,
+          failedTo: result.failed,
+          listingId: payload.listingId,
+          variantId: payload.variantId,
+          tier: 'NO_MISS',
+          isAllTimeLow: noMiss.status === 'CONFIRMED',
+          rejectionReason: noMiss.status === 'ANOMALY' ? noMiss.reason : null,
+        } as never,
+      }).catch(() => {});
+
+      console.log(`[no-miss] ${noMiss.status} → broadcast: ${payload.variantLabel} ${noMiss.discountPercent.toFixed(1)}% (${noMiss.reason})`);
+      return; // NO-MISS short-circuit — skip Baki entirely.
+    }
+
+    // burst-suppressed or sub-threshold path → fall through to standard logic
+    await logSkipped({
+      ...baseSkipCtx,
+      reason: `NO-MISS suppressed (${noMiss.status}): ${noMiss.reason}`,
+    });
+    if (noMiss.burst) return; // burst lockdown — don't fall through to Baki either
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  //  V5: Price-Seal Mute Gate.
+  //  If the user said "Stok Yok" at this exact price, stay silent.
+  //  Different price → mute auto-clears + we proceed.
+  // ──────────────────────────────────────────────────────────────────
+  const muteState = await shouldSilenceForMute(payload.listingId, payload.newPrice);
+  if (muteState.silent) {
+    await logSkipped({
+      ...baseSkipCtx,
+      reason: `Price-Seal mute: same price as user-flagged ${muteState.mutedPrice} TL (24h TTL)`,
+    });
+    return;
+  }
+  if (muteState.didThaw) {
+    console.log(`[price-seal] 🔓 Thawed listing ${payload.listingId} — price changed from ${muteState.mutedPrice} to ${payload.newPrice}`);
   }
 
   const settings = await getNotifySettings();
