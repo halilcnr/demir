@@ -144,3 +144,52 @@ export function getAIMDTelemetry(): AIMDTelemetry {
     totalErrors,
   };
 }
+
+/**
+ * Per-provider AIMD telemetri (Faz 2).
+ * Cluster geneli sinyal yerine retailer-bazlı sinyal almak için. AutoTuner
+ * tek bir provider'ın 429 yağmuruna girip cluster'ı tamamen frenlemesini
+ * önlemek için bu sinyali kullanır → kötü provider'ı izole eder.
+ */
+export interface ProviderAIMDTelemetry extends AIMDTelemetry {
+  retailerSlug: string;
+}
+
+export function getAIMDTelemetryByProvider(): ProviderAIMDTelemetry[] {
+  prune();
+  if (samples.length === 0) return [];
+
+  const byProv = new Map<string, LatencySample[]>();
+  for (const s of samples) {
+    if (!byProv.has(s.retailerSlug)) byProv.set(s.retailerSlug, []);
+    byProv.get(s.retailerSlug)!.push(s);
+  }
+
+  const results: ProviderAIMDTelemetry[] = [];
+  for (const [slug, arr] of byProv) {
+    const n = arr.length;
+    const sorted = arr.map(s => s.latencyMs).sort((a, b) => a - b);
+    let ok = 0, e429 = 0, e403 = 0, e503 = 0;
+    for (const s of arr) {
+      if (s.ok) ok++;
+      if (s.statusCode === 429) e429++;
+      else if (s.statusCode === 403) e403++;
+      else if (s.statusCode === 503) e503++;
+    }
+    const totalErrors = n - ok;
+    results.push({
+      retailerSlug: slug,
+      sampleCount: n,
+      scrapesPerMin: Math.round(n * (60_000 / WINDOW_MS)),
+      p95LatencyMs: percentile(sorted, 95),
+      successRate: Math.round((ok / n) * 1000) / 10,
+      errorRate: Math.round((totalErrors / n) * 1000) / 10,
+      errors429: e429,
+      errors403: e403,
+      errors503: e503,
+      totalErrors,
+    });
+  }
+
+  return results;
+}

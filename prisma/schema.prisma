@@ -318,16 +318,32 @@ model NotificationLog {
   failedTo      Int                @default(0)
   errorMessage  String?
   listingId     String?
+
+  // ── Yapısal alanlar (filtreleme + analiz için) ──
+  bakiScore         Int?      // Baki-Quant skoru
+  arbScore          Int?      // Arbitraj motorunun skoru
+  tier              String?   // 'GLOBAL_FLOOR' | 'FAMILY_ARBITRAGE'
+  isAllTimeLow      Boolean   @default(false)
+  marketFloorAtSend Float?    // Mesaj anındaki global taban
+  groupAtlAtSend    Float?    // Mesaj anındaki grup ATL
+  variantId         String?
+  rejectionReason   String?   // SKIPPED satırlar için
+  failedEmirs       Int[]     // Reddedilen Emir ID'leri
+
   createdAt     DateTime           @default(now())
 
   @@index([createdAt])
   @@index([messageType])
   @@index([status])
+  @@index([isAllTimeLow])
+  @@index([variantId])
 }
 
 enum NotificationMsgType {
   PRICE_DROP
   ALL_TIME_LOW
+  GLOBAL_FLOOR
+  FAMILY_ARBITRAGE
   TEST_MESSAGE
   HEALTH_REPORT
   DEAL_ALERT
@@ -338,6 +354,32 @@ enum NotificationStatus {
   PARTIAL
   FAILED
   SKIPPED
+}
+
+// ─── AutoTuner History (Faz 2: AIMD telemetri kalıcılığı) ──────
+// Leader replica restart'ında in-memory history kaybolur. Bu tablo
+// retrospektif analiz, model eğitimi ve UI time-range navigation için.
+// Insert sıklığı: dakikada 1 (her tick).
+model AutoTunerHistory {
+  id              String   @id @default(cuid())
+  ts              DateTime @default(now())
+  state           String   // CRUISING | OVERCLOCKING | THROTTLING | DISABLED | STARVED | PAUSED
+  activeMode      String   // auto | god | aggressive | balanced | safe | pause
+  concurrency     Int
+  delayMinMs      Int
+  scrapesPerMin   Int
+  p95LatencyMs    Int
+  errorRate       Float
+  errors429       Int      @default(0)
+  errors403       Int      @default(0)
+  errors503       Int      @default(0)
+  sampleCount     Int      @default(0)
+  cleanStreak     Int      @default(0)
+  action          String?  // "BRAKE conc 8→4", "OVERCLOCK conc 6→8"
+  leaderWorkerId  String?
+
+  @@index([ts])
+  @@index([state])
 }
 
 // ─── Senkronizasyon İşleri ───────────────────────────────────────

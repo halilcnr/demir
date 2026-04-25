@@ -71,7 +71,7 @@ interface TelegramStatus {
 
 interface NotificationLog {
   id: string;
-  messageType: 'PRICE_DROP' | 'ALL_TIME_LOW' | 'TEST_MESSAGE';
+  messageType: 'PRICE_DROP' | 'ALL_TIME_LOW' | 'GLOBAL_FLOOR' | 'FAMILY_ARBITRAGE' | 'TEST_MESSAGE' | 'HEALTH_REPORT' | 'DEAL_ALERT';
   status: 'SENT' | 'PARTIAL' | 'FAILED' | 'SKIPPED';
   productName: string | null;
   retailer: string | null;
@@ -83,6 +83,16 @@ interface NotificationLog {
   failedTo: number;
   errorMessage: string | null;
   listingId: string | null;
+  // Structured fields (Telegram log refactor)
+  bakiScore: number | null;
+  arbScore: number | null;
+  tier: string | null;
+  isAllTimeLow: boolean;
+  marketFloorAtSend: number | null;
+  groupAtlAtSend: number | null;
+  variantId: string | null;
+  rejectionReason: string | null;
+  failedEmirs: number[];
   createdAt: string;
 }
 
@@ -1034,8 +1044,12 @@ export default function TelegramSettingsPage() {
               onChange={setTypeFilter}
               options={[
                 { value: '', label: 'Tüm tipler' },
+                { value: 'ALL_TIME_LOW', label: '🏆 ATL (En Düşük)' },
+                { value: 'GLOBAL_FLOOR', label: 'Tier 1 — Global Taban' },
+                { value: 'FAMILY_ARBITRAGE', label: 'Tier 2 — Renk Arbitrajı' },
                 { value: 'PRICE_DROP', label: 'Fiyat Düşüşü' },
-                { value: 'ALL_TIME_LOW', label: 'En Düşük' },
+                { value: 'DEAL_ALERT', label: 'Eski Deal Alert' },
+                { value: 'HEALTH_REPORT', label: 'Sağlık Raporu' },
                 { value: 'TEST_MESSAGE', label: 'Test' },
               ]}
             />
@@ -1046,6 +1060,7 @@ export default function TelegramSettingsPage() {
               options={[
                 { value: '', label: 'Tüm durumlar' },
                 { value: 'SENT', label: 'Gönderildi' },
+                { value: 'PARTIAL', label: 'Kısmi' },
                 { value: 'FAILED', label: 'Başarısız' },
                 { value: 'SKIPPED', label: 'Atlandı' },
               ]}
@@ -1072,10 +1087,12 @@ export default function TelegramSettingsPage() {
                   <th className="pb-2 pr-3">Tip</th>
                   <th className="pb-2 pr-3">Ürün</th>
                   <th className="pb-2 pr-3">Mağaza</th>
-                  <th className="pb-2 pr-3 text-right">Eski Fiyat</th>
                   <th className="pb-2 pr-3 text-right">Yeni Fiyat</th>
+                  <th className="pb-2 pr-3 text-right">Taban</th>
+                  <th className="pb-2 pr-3 text-right">Skor</th>
                   <th className="pb-2 pr-3 text-right">Düşüş</th>
                   <th className="pb-2 pr-3">Durum</th>
+                  <th className="pb-2 pr-3">Neden / Emir</th>
                   <th className="pb-2">Detay</th>
                 </tr>
               </thead>
@@ -1090,7 +1107,12 @@ export default function TelegramSettingsPage() {
                       {formatRelativeDate(log.createdAt)}
                     </td>
                     <td className="py-2.5 pr-3">
-                      <MsgTypeBadge type={log.messageType} />
+                      <div className="flex items-center gap-1">
+                        <MsgTypeBadge type={log.messageType} />
+                        {log.isAllTimeLow && log.messageType !== 'ALL_TIME_LOW' && (
+                          <span title="Tüm zamanların en düşüğü" className="text-amber-500">🏆</span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-2.5 pr-3 max-w-[200px] truncate font-medium text-text-primary">
                       {log.productName ?? '—'}
@@ -1098,11 +1120,18 @@ export default function TelegramSettingsPage() {
                     <td className="py-2.5 pr-3 text-text-secondary">
                       {log.retailer ?? '—'}
                     </td>
-                    <td className="py-2.5 pr-3 text-right text-text-secondary tabular-nums">
-                      {log.oldPrice ? formatPrice(log.oldPrice) : '—'}
-                    </td>
                     <td className="py-2.5 pr-3 text-right font-medium text-text-primary tabular-nums">
                       {log.newPrice ? formatPrice(log.newPrice) : '—'}
+                    </td>
+                    <td className="py-2.5 pr-3 text-right text-text-secondary tabular-nums" title="Mesaj anındaki global market floor">
+                      {log.marketFloorAtSend ? formatPrice(log.marketFloorAtSend) : '—'}
+                    </td>
+                    <td className="py-2.5 pr-3 text-right tabular-nums">
+                      {log.bakiScore != null ? (
+                        <span className={cn('font-semibold', log.bakiScore >= 90 ? 'text-emerald-600' : log.bakiScore >= 80 ? 'text-sky-600' : 'text-amber-600')}>
+                          {log.bakiScore}
+                        </span>
+                      ) : '—'}
                     </td>
                     <td className="py-2.5 pr-3 text-right">
                       {log.dropPercent ? (
@@ -1111,6 +1140,13 @@ export default function TelegramSettingsPage() {
                     </td>
                     <td className="py-2.5 pr-3">
                       <StatusBadge status={log.status} />
+                    </td>
+                    <td className="py-2.5 pr-3 max-w-[260px] truncate text-[11px] text-text-tertiary" title={log.rejectionReason ?? ''}>
+                      {log.status === 'SKIPPED' && log.rejectionReason
+                        ? log.rejectionReason
+                        : log.failedEmirs && log.failedEmirs.length > 0
+                          ? `Emir: ${log.failedEmirs.join(', ')}`
+                          : '—'}
                     </td>
                     <td className="py-2.5">
                       <button className="text-xs text-primary hover:underline">Görüntüle</button>
@@ -1152,11 +1188,14 @@ function HealthRow({ label, ok, detail }: { label: string; ok: boolean; detail: 
 }
 
 function MsgTypeBadge({ type }: { type: string }) {
-  const map: Record<string, { label: string; variant: 'info' | 'warning' | 'default' | 'success' }> = {
-    PRICE_DROP: { label: 'Fiyat Düşüşü', variant: 'info' },
-    ALL_TIME_LOW: { label: 'En Düşük', variant: 'warning' },
-    DEAL_ALERT: { label: 'Akıllı Fırsat', variant: 'success' },
-    TEST_MESSAGE: { label: 'Test', variant: 'default' },
+  const map: Record<string, { label: string; variant: 'info' | 'warning' | 'default' | 'success' | 'danger' }> = {
+    PRICE_DROP:       { label: 'Fiyat Düşüşü',       variant: 'info' },
+    ALL_TIME_LOW:     { label: '🏆 ATL',              variant: 'warning' },
+    GLOBAL_FLOOR:     { label: 'Tier 1 — Taban',     variant: 'success' },
+    FAMILY_ARBITRAGE: { label: 'Tier 2 — Arbitraj',  variant: 'info' },
+    DEAL_ALERT:       { label: 'Akıllı Fırsat',      variant: 'success' },
+    HEALTH_REPORT:    { label: 'Sağlık Raporu',      variant: 'default' },
+    TEST_MESSAGE:     { label: 'Test',               variant: 'default' },
   };
   const cfg = map[type] ?? { label: type, variant: 'default' as const };
   return <Badge variant={cfg.variant} size="sm">{cfg.label}</Badge>;
@@ -1265,7 +1304,49 @@ function MessagePreviewModal({ log, onClose }: { log: NotificationLog; onClose: 
               )}
             </Fragment>
           )}
+          {log.bakiScore != null && (
+            <MetaItem label="Baki Skor" value={
+              <span className={cn('text-xs font-semibold', log.bakiScore >= 90 ? 'text-emerald-600' : log.bakiScore >= 80 ? 'text-sky-600' : 'text-amber-600')}>
+                {log.bakiScore}/100
+              </span>
+            } />
+          )}
+          {log.arbScore != null && (
+            <MetaItem label="Arbitraj Skor" value={
+              <span className="text-xs text-text-secondary">{log.arbScore}/100</span>
+            } />
+          )}
+          {log.tier && (
+            <MetaItem label="Tier" value={
+              <span className="text-xs text-text-secondary">{log.tier === 'GLOBAL_FLOOR' ? 'Tier 1 — Global Taban' : 'Tier 2 — Renk Arbitrajı'}</span>
+            } />
+          )}
+          {log.isAllTimeLow && (
+            <MetaItem label="ATL" value={<span className="text-xs font-medium text-amber-600">🏆 Tüm zamanların en düşüğü</span>} />
+          )}
+          {log.marketFloorAtSend != null && (
+            <MetaItem label="Market Tabanı (anlık)" value={
+              <span className="text-xs text-text-secondary tabular-nums">{formatPrice(log.marketFloorAtSend)}</span>
+            } />
+          )}
+          {log.groupAtlAtSend != null && (
+            <MetaItem label="Grup ATL (anlık)" value={
+              <span className="text-xs text-text-secondary tabular-nums">{formatPrice(log.groupAtlAtSend)}</span>
+            } />
+          )}
+          {log.failedEmirs && log.failedEmirs.length > 0 && (
+            <MetaItem label="Başarısız Emirler" value={
+              <span className="text-xs text-rose-600 font-mono">#{log.failedEmirs.join(', #')}</span>
+            } />
+          )}
         </div>
+
+        {/* Rejection reason (SKIPPED) */}
+        {log.rejectionReason && (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            <span className="font-medium">Atlama nedeni: </span>{log.rejectionReason}
+          </div>
+        )}
 
         {/* Error */}
         {log.errorMessage && (

@@ -10,17 +10,28 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Activity, AlertTriangle, Flame, Gauge, Rocket, Shield,
+  Activity, AlertTriangle, Flame, Gauge, Pause, Rocket, Shield,
   Sparkles, TrendingDown, Wind, Zap,
 } from 'lucide-react';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  Area, AreaChart, ComposedChart, Line, ResponsiveContainer, Tooltip,
+  Area, AreaChart, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip,
   XAxis, YAxis, CartesianGrid,
 } from 'recharts';
 import { cn } from '@repo/shared';
 
-type EngineState = 'CRUISING' | 'OVERCLOCKING' | 'THROTTLING' | 'DISABLED';
+type EngineState = 'CRUISING' | 'OVERCLOCKING' | 'THROTTLING' | 'STARVED' | 'DISABLED' | 'PAUSED';
+
+interface ProviderTelemetrySnippet {
+  retailerSlug: string;
+  scrapesPerMin: number;
+  p95LatencyMs: number;
+  errorRate: number;
+  sampleCount: number;
+  errors429: number;
+  errors403: number;
+  errors503: number;
+}
 
 interface LiveTelemetry {
   ok: boolean;
@@ -38,6 +49,13 @@ interface LiveTelemetry {
     perWorkerConcurrency: number;
     delayMinMs: number;
     delayMaxMs: number;
+    stateEnteredAt: number | null;
+    lastLeaderChangeAt: number | null;
+    perProvider: ProviderTelemetrySnippet[];
+    bounds: {
+      concurrency: { min: number; max: number };
+      delayMinMs: { min: number; max: number };
+    };
   };
   cluster: {
     totalConcurrency: number;
@@ -67,6 +85,7 @@ const MODES: Array<{ id: string; label: string; icon: React.ReactNode; hint: str
   { id: 'aggressive', label: 'Aggressive', icon: <Rocket className="h-3.5 w-3.5" />,    hint: 'Hızlı' },
   { id: 'balanced',   label: 'Balanced',   icon: <Wind className="h-3.5 w-3.5" />,      hint: 'Dengeli' },
   { id: 'safe',       label: 'Safe',       icon: <Shield className="h-3.5 w-3.5" />,    hint: 'Güvenli' },
+  { id: 'pause',      label: 'Pause',      icon: <Pause className="h-3.5 w-3.5" />,     hint: 'Motor donduruldu' },
 ];
 
 function stateLabelForMode(mode: string): string {
@@ -76,6 +95,7 @@ function stateLabelForMode(mode: string): string {
     case 'aggressive': return 'Fast lane';
     case 'balanced': return 'Balanced';
     case 'safe': return 'Safe mode';
+    case 'pause': return 'Frozen';
     default: return mode;
   }
 }
@@ -88,11 +108,24 @@ function stateTheme(state: EngineState | 'UNKNOWN') {
       return { label: 'THROTTLING',   accent: 'from-rose-500 to-orange-500', glow: 'shadow-[0_0_32px_-4px_rgba(244,63,94,0.8)]', text: 'text-rose-400', dot: 'bg-rose-400' };
     case 'CRUISING':
       return { label: 'CRUISING',     accent: 'from-emerald-500 to-teal-400', glow: 'shadow-[0_0_32px_-4px_rgba(16,185,129,0.7)]', text: 'text-emerald-400', dot: 'bg-emerald-400' };
+    case 'STARVED':
+      return { label: 'STARVED',      accent: 'from-amber-500 to-yellow-500', glow: 'shadow-[0_0_24px_-6px_rgba(245,158,11,0.55)]', text: 'text-amber-300', dot: 'bg-amber-400' };
+    case 'PAUSED':
+      return { label: 'PAUSED',       accent: 'from-purple-500 to-violet-500', glow: '', text: 'text-purple-300', dot: 'bg-purple-400' };
     case 'DISABLED':
       return { label: 'MANUAL',       accent: 'from-slate-500 to-slate-400', glow: '', text: 'text-slate-300', dot: 'bg-slate-400' };
     default:
       return { label: 'UNKNOWN',      accent: 'from-slate-600 to-slate-500', glow: '', text: 'text-slate-400', dot: 'bg-slate-500' };
   }
+}
+
+function formatDuration(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}dk ${s % 60}s`;
+  const h = Math.floor(m / 60);
+  return `${h}s ${m % 60}dk`;
 }
 
 export function LiveCommandCenter() {
@@ -104,6 +137,13 @@ export function LiveCommandCenter() {
     refetchIntervalInBackground: true,
   });
 
+  const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const id = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(id);
+  }, [toast]);
+
   const modeMutation = useMutation({
     mutationFn: async (mode: string) => {
       const res = await fetch('/api/live-telemetry/mode', {
@@ -111,17 +151,17 @@ export function LiveCommandCenter() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode }),
       });
-      const data = await res.json() as { ok?: boolean; error?: string };
+      const data = await res.json() as { ok?: boolean; error?: string; mode?: string };
       if (!res.ok || !data.ok) throw new Error(data.error ?? 'mode switch failed');
-      return data;
+      return { ...data, mode };
     },
-    onSuccess: () => {
-      // Invalidate query to fetch fresh telemetry with new mode
+    onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['live-telemetry'] });
+      setToast({ kind: 'ok', text: `Mod değiştirildi → ${data.mode ?? '?'}` });
     },
     onError: (err: Error) => {
       console.error('[mode mutation error]', err.message);
-      // TODO: show toast to user
+      setToast({ kind: 'err', text: `Mod değiştirilemedi: ${err.message}` });
     },
   });
 
@@ -137,6 +177,11 @@ export function LiveCommandCenter() {
     ? Math.min(100, Math.round((cluster.scrapesPerMin / (cluster.totalConcurrency * 20)) * 100))
     : 0;
 
+  const concurrencyMax = engine?.bounds?.concurrency.max ?? 40;
+  const timeInState = engine?.stateEnteredAt ? Date.now() - engine.stateEnteredAt : null;
+  const leaderChurnAgo = engine?.lastLeaderChangeAt ? Date.now() - engine.lastLeaderChangeAt : null;
+  const perProvider = engine?.perProvider ?? [];
+
   const chartData = useMemo(() => {
     return (data?.history ?? []).map(p => ({
       t: new Date(p.ts).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
@@ -146,6 +191,22 @@ export function LiveCommandCenter() {
       err: p.errors429 + p.errors403 + p.errors503,
       state: p.state,
     }));
+  }, [data?.history]);
+
+  // Faz 2: state geçişlerini chart üzerinde çizgi ile işaretle
+  const stateTransitions = useMemo(() => {
+    const points = data?.history ?? [];
+    const transitions: Array<{ t: string; from: string; to: string }> = [];
+    for (let i = 1; i < points.length; i++) {
+      if (points[i].state !== points[i - 1].state) {
+        transitions.push({
+          t: new Date(points[i].ts).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          from: points[i - 1].state,
+          to: points[i].state,
+        });
+      }
+    }
+    return transitions;
   }, [data?.history]);
 
   const recentHistory = (data?.history ?? []).slice(-8).reverse();
@@ -202,22 +263,28 @@ export function LiveCommandCenter() {
             <div className="mt-1 flex items-center gap-2 text-lg font-bold text-slate-100">
               {activeMode}
               {activeMode === 'auto' && <span className="rounded-full bg-cyan-400/15 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider text-cyan-300">AIMD</span>}
+              {activeMode === 'pause' && <span className="rounded-full bg-purple-400/15 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider text-purple-300">FROZEN</span>}
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
-              {['auto', 'god', 'aggressive', 'balanced', 'safe'].map(mode => (
+              {MODES.map(m => (
                 <span
-                  key={mode}
+                  key={m.id}
                   className={cn(
                     'rounded-full px-2.5 py-1 text-[11px] font-medium capitalize',
-                    mode === activeMode
+                    m.id === activeMode
                       ? 'bg-cyan-400/15 text-cyan-300 ring-1 ring-cyan-400/30'
                       : 'bg-white/5 text-slate-400',
                   )}
                 >
-                  {mode}
+                  {m.label}
                 </span>
               ))}
             </div>
+            {timeInState != null && (
+              <div className="mt-3 text-[11px] text-slate-400">
+                Bu state'te: <span className="font-mono text-slate-200">{formatDuration(timeInState)}</span>
+              </div>
+            )}
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 backdrop-blur-sm">
@@ -256,7 +323,7 @@ export function LiveCommandCenter() {
             </div>
             {modeMutation.isPending && <span className="text-xs text-slate-400 animate-pulse">uygulanıyor…</span>}
           </div>
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-6">
             {MODES.map(m => {
               const isActive = activeMode === m.id;
               return (
@@ -284,6 +351,21 @@ export function LiveCommandCenter() {
             })}
           </div>
         </div>
+
+        {/* ── Toast (mod değişikliği geri bildirimi) ── */}
+        {toast && (
+          <div
+            className={cn(
+              'fixed right-4 top-4 z-50 rounded-xl border px-4 py-3 text-sm shadow-lg backdrop-blur-md transition-opacity',
+              toast.kind === 'ok'
+                ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-200'
+                : 'border-rose-400/40 bg-rose-500/15 text-rose-200',
+            )}
+            role="status"
+          >
+            {toast.text}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
@@ -421,10 +503,10 @@ export function LiveCommandCenter() {
           <div className="lg:col-span-1">
             <Speedometer
               value={cluster?.totalConcurrency ?? 0}
-              max={40}
+              max={concurrencyMax}
               state={state}
               label="Cluster Concurrency"
-              sublabel={engine ? `per-worker: ${engine.perWorkerConcurrency}` : ''}
+              sublabel={engine ? `per-worker: ${engine.perWorkerConcurrency} · cap: ${concurrencyMax}` : ''}
             />
           </div>
 
@@ -536,6 +618,30 @@ export function LiveCommandCenter() {
                     dot={false}
                     isAnimationActive={false}
                   />
+                  {stateTransitions.map((tr, i) => {
+                    const color = tr.to === 'THROTTLING' ? '#f43f5e'
+                                : tr.to === 'OVERCLOCKING' ? '#06b6d4'
+                                : tr.to === 'STARVED' ? '#f59e0b'
+                                : tr.to === 'PAUSED' ? '#a855f7'
+                                : '#64748b';
+                    return (
+                      <ReferenceLine
+                        key={`${tr.t}-${i}`}
+                        yAxisId="rpm"
+                        x={tr.t}
+                        stroke={color}
+                        strokeDasharray="2 4"
+                        strokeOpacity={0.5}
+                        label={{
+                          value: tr.to,
+                          position: 'top',
+                          fill: color,
+                          fontSize: 9,
+                          opacity: 0.8,
+                        }}
+                      />
+                    );
+                  })}
                 </ComposedChart>
               </ResponsiveContainer>
             )}
@@ -552,11 +658,81 @@ export function LiveCommandCenter() {
               </span>
             </div>
             <div className="flex items-center gap-4 text-xs text-slate-400">
+              {timeInState != null && (
+                <span title="Bu state'te geçirilen süre">
+                  state: <span className="font-mono text-slate-200">{formatDuration(timeInState)}</span>
+                </span>
+              )}
               <span>clean streak: <span className="font-mono text-slate-200">{engine?.cleanStreak ?? 0}/3</span></span>
               <span>leader: <span className="font-mono text-slate-200">{engine?.leaderWorkerId ? engine.leaderWorkerId.slice(0, 8) : '—'}</span></span>
+              {leaderChurnAgo != null && (
+                <span title="Son leader değişikliği — sık değişim → distributed lock TTL sorunu">
+                  churn: <span className={cn('font-mono', leaderChurnAgo < 60_000 ? 'text-amber-300' : 'text-slate-200')}>{formatDuration(leaderChurnAgo)} önce</span>
+                </span>
+              )}
             </div>
           </div>
         </div>
+
+        {/* ── Per-Provider Telemetry (Faz 2) ── */}
+        {perProvider.length > 0 && (
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 backdrop-blur-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold">Provider Telemetri</h3>
+                <p className="text-xs text-slate-400">Cluster geneli yerine retailer-bazlı sinyal — hangi sağlayıcı sıkıntıda?</p>
+              </div>
+              <div className="text-[11px] text-slate-400">
+                {perProvider.length} aktif provider
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-white/10 text-left text-[10px] uppercase tracking-wider text-slate-400">
+                    <th className="pb-2 pr-3">Retailer</th>
+                    <th className="pb-2 pr-3 text-right">RPM</th>
+                    <th className="pb-2 pr-3 text-right">P95</th>
+                    <th className="pb-2 pr-3 text-right">Hata %</th>
+                    <th className="pb-2 pr-3 text-right">429</th>
+                    <th className="pb-2 pr-3 text-right">403</th>
+                    <th className="pb-2 pr-3 text-right">503</th>
+                    <th className="pb-2 pr-3 text-right">Sample</th>
+                    <th className="pb-2">Sağlık</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {[...perProvider].sort((a, b) => b.errorRate - a.errorRate || b.p95LatencyMs - a.p95LatencyMs).map(p => {
+                    const hardErrs = p.errors429 + p.errors403 + p.errors503;
+                    const isHurting = hardErrs > 0 || p.p95LatencyMs > 4000;
+                    const isWarning = p.errorRate > 0 || p.p95LatencyMs > 1500;
+                    return (
+                      <tr key={p.retailerSlug} className="hover:bg-white/[0.02]">
+                        <td className="py-2 pr-3 font-medium text-slate-200">{p.retailerSlug}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums text-slate-300">{p.scrapesPerMin}</td>
+                        <td className={cn('py-2 pr-3 text-right tabular-nums', p.p95LatencyMs > 4000 ? 'text-rose-300' : p.p95LatencyMs > 1500 ? 'text-amber-300' : 'text-emerald-300')}>{p.p95LatencyMs}ms</td>
+                        <td className={cn('py-2 pr-3 text-right tabular-nums', p.errorRate > 0 ? 'text-rose-300' : 'text-slate-400')}>{p.errorRate}%</td>
+                        <td className={cn('py-2 pr-3 text-right tabular-nums', p.errors429 > 0 ? 'text-rose-300' : 'text-slate-500')}>{p.errors429}</td>
+                        <td className={cn('py-2 pr-3 text-right tabular-nums', p.errors403 > 0 ? 'text-rose-300' : 'text-slate-500')}>{p.errors403}</td>
+                        <td className={cn('py-2 pr-3 text-right tabular-nums', p.errors503 > 0 ? 'text-rose-300' : 'text-slate-500')}>{p.errors503}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums text-slate-400">{p.sampleCount}</td>
+                        <td className="py-2">
+                          <span className={cn(
+                            'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                            isHurting ? 'bg-rose-500/15 text-rose-300' : isWarning ? 'bg-amber-500/15 text-amber-300' : 'bg-emerald-500/15 text-emerald-300',
+                          )}>
+                            <span className={cn('h-1.5 w-1.5 rounded-full', isHurting ? 'bg-rose-400' : isWarning ? 'bg-amber-400' : 'bg-emerald-400')} />
+                            {isHurting ? 'BLOCKED' : isWarning ? 'STRESSED' : 'HEALTHY'}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

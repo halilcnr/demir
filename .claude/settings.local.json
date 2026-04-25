@@ -5,7 +5,8 @@
       "Bash(npx tsc *)",
       "Bash(echo \"EXIT=$?\")",
       "Bash(npx prisma *)",
-      "Bash(pnpm install *)"
+      "Bash(pnpm install *)",
+      "Bash(xargs grep *)"
     ]
   }
 }

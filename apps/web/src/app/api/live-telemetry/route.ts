@@ -40,9 +40,20 @@ interface WorkerTelemetrySnippet {
   };
 }
 
+interface ProviderTelemetrySnippet {
+  retailerSlug: string;
+  scrapesPerMin: number;
+  p95LatencyMs: number;
+  errorRate: number;
+  sampleCount: number;
+  errors429: number;
+  errors403: number;
+  errors503: number;
+}
+
 interface TunerSnapshot {
   workerId: string;
-  state: 'CRUISING' | 'OVERCLOCKING' | 'THROTTLING' | 'DISABLED';
+  state: 'CRUISING' | 'OVERCLOCKING' | 'THROTTLING' | 'STARVED' | 'DISABLED' | 'PAUSED';
   leader: string | null;
   activeMode: string;
   concurrency: number;
@@ -52,6 +63,13 @@ interface TunerSnapshot {
   lastTickAt: number | null;
   lastActionAt: number | null;
   lastAction: string | null;
+  stateEnteredAt: number | null;
+  lastLeaderChangeAt: number | null;
+  perProvider: ProviderTelemetrySnippet[];
+  bounds: {
+    concurrency: { min: number; max: number };
+    delayMinMs: { min: number; max: number };
+  };
   history: Array<{
     ts: number;
     state: string;
@@ -107,10 +125,19 @@ export async function GET() {
       (s, w) => s + (w.aimd?.scrapesPerMin ?? Math.round((w.rollingLatency?.scrapesPerSec ?? 0) * 60)),
       0,
     );
-    const allP95 = [...telemetryById.values()]
-      .map(w => w.aimd?.p95LatencyMs ?? w.rollingLatency?.p95 ?? 0)
-      .filter(n => n > 0);
-    const clusterP95 = allP95.length ? Math.max(...allP95) : 0;
+    // Sample-weighted p95 across replicas. Önceki sürüm Math.max(...) kullanıyordu;
+    // tek bir worker'ın geçici yavaşlığı tüm cluster'ı throttle'a sokuyordu.
+    // Şimdi: her worker'ın p95'i kendi sample sayısıyla ağırlıklandırılır.
+    const p95Sources = [...telemetryById.values()]
+      .map(w => ({
+        p95: w.aimd?.p95LatencyMs ?? w.rollingLatency?.p95 ?? 0,
+        n:   w.aimd?.sampleCount ?? w.rollingLatency?.sampleCount ?? 0,
+      }))
+      .filter(s => s.p95 > 0 && s.n > 0);
+    const totalWeight = p95Sources.reduce((s, x) => s + x.n, 0);
+    const clusterP95 = totalWeight > 0
+      ? Math.round(p95Sources.reduce((s, x) => s + x.p95 * x.n, 0) / totalWeight)
+      : 0;
     const totalErrors = [...telemetryById.values()].reduce(
       (s, w) => s + (w.aimd?.totalErrors ?? 0),
       0,
@@ -140,6 +167,10 @@ export async function GET() {
             perWorkerConcurrency: leader.concurrency,
             delayMinMs: leader.delayMinMs,
             delayMaxMs: leader.delayMaxMs,
+            stateEnteredAt: leader.stateEnteredAt ?? null,
+            lastLeaderChangeAt: leader.lastLeaderChangeAt ?? null,
+            perProvider: leader.perProvider ?? [],
+            bounds: leader.bounds ?? { concurrency: { min: 1, max: 40 }, delayMinMs: { min: 100, max: 10000 } },
           }
         : null,
       cluster: {

@@ -147,6 +147,46 @@ export function getTelegramStats() {
   return { sentCount, failCount, skippedCount, subscriberCount, enabled: TELEGRAM_ENABLED };
 }
 
+// ─── Skip-log helper ─────────────────────────────────────────────
+// Tek noktadan SKIPPED log yazar. Önceden sadece console.log + sayaç vardı;
+// artık DB'ye gerekçeli kayıt giriyor → UI'da neden atlandığı görülebilir.
+interface SkipLogInput {
+  variantLabel?: string;
+  retailerName?: string;
+  retailerSlug?: string;
+  newPrice?: number;
+  oldPrice?: number | null;
+  variantId?: string;
+  listingId?: string;
+  reason: string;
+  bakiScore?: number;
+  arbScore?: number;
+  failedEmirs?: number[];
+}
+
+async function logSkipped(input: SkipLogInput): Promise<void> {
+  skippedCount++;
+  console.log(`[telegram-arb] SKIP: ${input.variantLabel ?? '?'} @ ${input.retailerName ?? '?'} — ${input.reason}`);
+  await prisma.notificationLog.create({
+    data: {
+      messageType: 'DEAL_ALERT',
+      status: 'SKIPPED',
+      productName: input.variantLabel ?? null,
+      retailer: input.retailerName ?? null,
+      oldPrice: input.oldPrice ?? null,
+      newPrice: input.newPrice ?? null,
+      sentTo: 0,
+      failedTo: 0,
+      listingId: input.listingId ?? null,
+      variantId: input.variantId ?? null,
+      bakiScore: input.bakiScore ?? null,
+      arbScore: input.arbScore ?? null,
+      rejectionReason: input.reason,
+      failedEmirs: input.failedEmirs ?? [],
+    } as never,
+  }).catch(err => console.warn('[telegram-arb] skip-log write failed:', err instanceof Error ? err.message : err));
+}
+
 // ─── Core: Send message to a single chat ─────────────────────────
 interface SendOptions {
   /** Optional inline keyboard (e.g. feedback buttons on deal alerts) */
@@ -522,17 +562,29 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
     return;
   }
 
+  const baseSkipCtx = {
+    variantLabel: payload.variantLabel,
+    retailerName: payload.retailerName,
+    retailerSlug: payload.retailerSlug,
+    newPrice: payload.newPrice,
+    oldPrice: payload.oldPrice,
+    variantId: payload.variantId,
+    listingId: payload.listingId,
+  };
+
   // ── Price sanity check: reject garbage scrape results (both ends) ──
   if (payload.newPrice < MIN_SANE_PHONE_PRICE_TL || payload.newPrice > MAX_SANE_PHONE_PRICE_TL) {
-    console.log(`[telegram-arb] Saçma fiyat atlandı: ${payload.variantLabel} = ${payload.newPrice} TL (outside ${MIN_SANE_PHONE_PRICE_TL}–${MAX_SANE_PHONE_PRICE_TL} TL band)`);
+    await logSkipped({
+      ...baseSkipCtx,
+      reason: `Sanity check fail: ${payload.newPrice} TL outside ${MIN_SANE_PHONE_PRICE_TL}–${MAX_SANE_PHONE_PRICE_TL} TL band`,
+    });
     return;
   }
 
   const settings = await getNotifySettings();
 
   if (!settings.notifySmartDeal) {
-    skippedCount++;
-    console.log(`[telegram-arb] Akıllı fırsat bildirimleri kapalı (setting)`);
+    await logSkipped({ ...baseSkipCtx, reason: 'Akıllı fırsat bildirimleri kapalı (setting)' });
     return;
   }
 
@@ -541,8 +593,10 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
   // ── Filter 1: Velocity — suppress oscillating variants ──
   const oscillating = await isVariantOscillating(payload.listingId);
   if (oscillating) {
-    skippedCount++;
-    console.log(`[telegram-arb] Oscillating variant (≥${VELOCITY_FLIP_THRESHOLD} flips in ${VELOCITY_WINDOW_MS / 3_600_000}h), suppressed: ${payload.variantLabel}`);
+    await logSkipped({
+      ...baseSkipCtx,
+      reason: `Oscillating variant (≥${VELOCITY_FLIP_THRESHOLD} flips in ${VELOCITY_WINDOW_MS / 3_600_000}h)`,
+    });
     return;
   }
 
@@ -550,8 +604,7 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
   const pipelineStartMs = Date.now();
   const market = await fetchGlobalMarketSnapshot(payload.variantId);
   if (!market) {
-    skippedCount++;
-    console.log(`[telegram-arb] No market data for ${payload.variantLabel}`);
+    await logSkipped({ ...baseSkipCtx, reason: 'No market snapshot' });
     return;
   }
   const dataMs = Date.now() - pipelineStartMs;
@@ -564,16 +617,22 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
 
   // ── Step 3: DISCARD — a cheaper option exists elsewhere ──
   if (arb.verdict === 'DISCARD') {
-    skippedCount++;
-    console.log(`[telegram-arb] DISCARD: ${payload.newPrice} TL > floor ${arb.globalFloor} TL @ ${arb.globalFloorRetailer}/${arb.globalFloorColor}`);
+    await logSkipped({
+      ...baseSkipCtx,
+      arbScore: arb.score,
+      reason: `DISCARD: floor ${arb.globalFloor} TL @ ${arb.globalFloorRetailer}/${arb.globalFloorColor}`,
+    });
     return;
   }
 
   // ── Step 4: Generational Barrier (pre-check, fast fail) ──
   const genContext = await checkGenerationalBarrier(payload.variantId, payload.newPrice);
   if (genContext && !genContext.barrierPassed) {
-    skippedCount++;
-    console.log(`[telegram-arb] Generational barrier: ${genContext.reason}`);
+    await logSkipped({
+      ...baseSkipCtx,
+      arbScore: arb.score,
+      reason: `Generational barrier: ${genContext.reason}`,
+    });
     return;
   }
 
@@ -593,24 +652,38 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
   console.log(`[baki-quant] ${payload.retailerSlug} ${payload.variantLabel}: verdict=${bakiResult.verdict} bakiScore=${bakiResult.bakiScore} failed=[${bakiResult.failedCommandments.join(',')}]`);
 
   if (bakiResult.verdict === 'REDDET') {
-    skippedCount++;
     console.log(buildRejectionLog(payload.variantLabel, payload.retailerName, payload.newPrice, bakiResult));
+    await logSkipped({
+      ...baseSkipCtx,
+      arbScore: arb.score,
+      bakiScore: bakiResult.bakiScore,
+      failedEmirs: bakiResult.failedCommandments,
+      reason: bakiResult.rejectionReason ?? 'Baki-Quant REDDET',
+    });
     return;
   }
 
   // ── Step 5: Tier classification ──
   const tier = classifyNotificationTier(arb, market, payload.newPrice);
   if (!tier) {
-    skippedCount++;
-    console.log(`[telegram-arb] No qualifying tier for ${payload.variantLabel} (score=${arb.score})`);
+    await logSkipped({
+      ...baseSkipCtx,
+      arbScore: arb.score,
+      bakiScore: bakiResult.bakiScore,
+      reason: `No qualifying tier (arbScore=${arb.score})`,
+    });
     return;
   }
 
   // ── Step 6: Anti-spam check ──
   const spam = await shouldSendSmartAlert(payload.listingId, payload.newPrice);
   if (!spam.send) {
-    skippedCount++;
-    console.log(`[telegram-arb] Anti-spam: ${spam.reason}`);
+    await logSkipped({
+      ...baseSkipCtx,
+      arbScore: arb.score,
+      bakiScore: bakiResult.bakiScore,
+      reason: `Anti-spam: ${spam.reason ?? 'unknown'}`,
+    });
     return;
   }
 
@@ -637,8 +710,12 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
   });
 
   if (claimed.count === 0) {
-    skippedCount++;
-    console.log(`[telegram-arb] Already claimed by another replica`);
+    await logSkipped({
+      ...baseSkipCtx,
+      arbScore: arb.score,
+      bakiScore: bakiResult.bakiScore,
+      reason: 'Already claimed by another replica',
+    });
     return;
   }
 
@@ -675,7 +752,6 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
     recordBakiNotification(variantInfo.familyId, variantInfo.storageGb);
   }
 
-  const tierLabel = tier === 'GLOBAL_FLOOR' ? 'Tier 1 — Global Taban' : 'Tier 2 — Renk Arbitrajı';
   const detailMsg = buildBakiDetailMessage(bakiNotifInput);
 
   // Fire-and-forget: detail mesajı flash'ı bekletmez
@@ -690,11 +766,25 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
     ? ((payload.oldPrice - payload.newPrice) / payload.oldPrice) * 100
     : null;
 
-  const msgType = tier === 'GLOBAL_FLOOR' ? 'DEAL_ALERT' : 'DEAL_ALERT';
+  // Tier-aware message type — DB'de filtrelenebilir kalsın diye DEAL_ALERT'i parçalıyoruz.
+  const isATL = market.groupAllTimeLow != null && payload.newPrice <= market.groupAllTimeLow;
+  const msgType: 'ALL_TIME_LOW' | 'GLOBAL_FLOOR' | 'FAMILY_ARBITRAGE' = isATL
+    ? 'ALL_TIME_LOW'
+    : tier === 'GLOBAL_FLOOR' ? 'GLOBAL_FLOOR' : 'FAMILY_ARBITRAGE';
+
+  const structuredFields = {
+    bakiScore: bakiResult.bakiScore,
+    arbScore: arb.score,
+    tier,
+    isAllTimeLow: isATL,
+    marketFloorAtSend: arb.globalFloor,
+    groupAtlAtSend: market.groupAllTimeLow ?? null,
+    variantId: payload.variantId,
+  };
 
   if (result.sent > 0) {
     sentCount++;
-    console.log(`[telegram-arb] ✓ ${tier} sent: ${payload.variantLabel} (${payload.newPrice} TL, bakiScore=${bakiResult.bakiScore}, arbScore=${arb.score}) → ${result.sent} subscriber(s)`);
+    console.log(`[telegram-arb] ✓ ${msgType} sent: ${payload.variantLabel} (${payload.newPrice} TL, bakiScore=${bakiResult.bakiScore}, arbScore=${arb.score}) → ${result.sent} subscriber(s)`);
 
     const fullMessage = flashMsg + '\n\n' + detailMsg;
     await prisma.notificationLog.create({
@@ -710,7 +800,8 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
         sentTo: result.sent,
         failedTo: result.failed,
         listingId: payload.listingId,
-      },
+        ...structuredFields,
+      } as never,
     }).catch(() => {});
   } else {
     failCount++;
@@ -731,7 +822,8 @@ export async function notifySmartDeal(payload: SmartDealPayload): Promise<void> 
         failedTo: result.failed,
         errorMessage: 'All subscribers failed',
         listingId: payload.listingId,
-      },
+        ...structuredFields,
+      } as never,
     }).catch(() => {});
   }
 }
